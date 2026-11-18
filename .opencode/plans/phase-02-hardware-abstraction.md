@@ -18,70 +18,70 @@ Phase 1 (config manager, event bus).
 
 ### 2.1 HAL interfaces (`src/hardware/hal/`)
 
-- [ ] Interfaces from SPEC §5.1: `IOutputDriver`, `IDigitalInputDriver`,
+- [x] Interfaces from SPEC §5.1: `IOutputDriver`, `IDigitalInputDriver`,
       `IPwmDriver`, plus `II2CBus`, `IUartDriver`, `IEthernetDriver`,
       `IAddressableLedDriver`, `IRelayDriver`, `IPeripheralDriver`.
-- [ ] All methods return `esp_err_t`; init/shutdown where applicable; range
+- [x] All methods return `esp_err_t`; init/shutdown where applicable; range
       validation in the driver, not the caller.
-- [ ] No board knowledge in any interface header.
+- [x] No board knowledge in any interface header.
 
 ### 2.2 Board profile loader and PinValidator
 
-- [ ] `board_profile.*`: parse + meta-schema validate
+- [x] `board_profile.*`: parse + meta-schema validate
       `schemas/board-profile.schema.json` (SPEC §6.2).
-- [ ] `pin_validator.*`: semantic validation (SPEC §5.3) — GPIO existence per
+- [x] `pin_validator.*`: semantic validation (SPEC §5.3) — GPIO existence per
       MCU, input/output and input-only rules, strapping pins (0/2/12/15 on
       original ESP32), flash/PSRAM reserved pins, duplicate assignments,
       UART/I2C/Ethernet conflicts, native PWM channel limits, RMT resource
       limits, peripheral references resolve to declared resources,
       board-specific reserved pins. MCU capability tables are per-MCU data,
       not `#ifdef` soup.
-- [ ] Validation returns a structured error list (pin id + reason code) that
+- [x] Validation returns a structured error list (pin id + reason code) that
       the Phase-7 UI renders inline.
-- [ ] Transactional runtime apply workflow (SPEC §5.4): validate → save
+- [x] Transactional runtime apply workflow (SPEC §5.4): validate → save
       candidate → stop affected services → safe states → init new hardware →
       run diagnostics → commit, or restore previous profile on any failure.
       A failed apply never destroys the last working configuration.
 
 ### 2.3 P0 drivers (SPEC §7.1)
 
-- [ ] `gpio_driver` — digital in/out through HAL, inversion, safe states.
-- [ ] `ledc_driver` — native PWM: timer frequency, resolution, channel
+- [x] `gpio_driver` — digital in/out through HAL, inversion, safe states.
+- [x] `ledc_driver` — native PWM: timer frequency, resolution, channel
       allocation, duty, inversion, conflict detection, brightness curve hook.
-- [ ] `i2c_manager` — single owner of the I2C bus(s): bus init from profile,
+- [x] `i2c_manager` — single owner of the I2C bus(s): bus init from profile,
       transaction API with timeout/retry, error-recovery (bus reset),
       scan endpoint for diagnostics.
-- [ ] `pca9685_driver` — 16 ch, 12-bit, configurable frequency/polarity,
+- [x] `pca9685_driver` — 16 ch, 12-bit, configurable frequency/polarity,
       **batched pending updates** (the PWM service flushes coalesced writes;
       individual lights never touch I2C — AGENTS.md §6), I2C error recovery,
       output init to safe state, frequency validation.
-- [ ] `pcf8574_driver` — 8 inputs/device, multiple devices, configurable
+- [x] `pcf8574_driver` — 8 inputs/device, multiple devices, configurable
       polarity, debouncing, change detection → input events on the bus,
       device health monitoring (read failure counter).
-- [ ] `relay_driver` — on/off with configured polarity and safe state.
-- [ ] `input_manager` lives in `src/services/` and aggregates GPIO + PCF8574
+- [x] `relay_driver` — on/off with configured polarity and safe state.
+- [x] `input_manager` lives in `src/services/` and aggregates GPIO + PCF8574
       inputs into debounced logical input events (press/double/long handled
       in Phase 9's trigger layer; here: raw + debounced state only).
 
 ### 2.4 Mock drivers for host tests
 
-- [ ] `test/unit/mocks/`: in-memory implementations of every HAL interface,
+- [x] `test/unit/mocks/`: in-memory implementations of every HAL interface,
       an I2C bus simulator with programmable device responses (including
       error injection), and a fake PCA9685/PCF8574 register model.
 
 ### 2.5 Built-in board profiles (`boards/`)
 
-- [ ] `kincony_kc868_ap.json` from SPEC §6.3, reconciled with
+- [x] `kincony_kc868_ap.json` from SPEC §6.3, reconciled with
       `controller-presets/kincony-AP-Controller/pinmap.txt`
       (I2C SDA=4 SCL=16, PCF8574 0x22/0x21, DI17/18 = GPIO34/35,
       relays GPIO13/GPIO2, ETH MDC=23 MDIO=18 CLK=GPIO17_OUT, RS485 RX=33
       TX=14, extend serial 5/32, download button GPIO0).
       **All addresses/polarities marked `unverified: true` until Phase 3
       measures them.**
-- [ ] `generic_esp32.json`, `generic_esp32s3.json`,
+- [x] `generic_esp32.json`, `generic_esp32s3.json`,
       `generic_esp32_pca9685.json`, `generic_esp32_pcf8574.json`,
       `generic_esp32_pwm.json`.
-- [ ] Built-in profiles read-only at runtime; users duplicate them
+- [x] Built-in profiles read-only at runtime; users duplicate them
       (SPEC §6.1).
 
 ## Contracts & interfaces introduced
@@ -102,7 +102,9 @@ Phase 1 (config manager, event bus).
    — each yields the correct structured error (dedicated test suite,
    AGENTS.md §11).
 5. Transactional apply: failure at step 5/6 restores previous profile and
-   leaves config intact (host test with fault injection).
+   leaves config intact (host test with fault injection). ⏳ NOT DONE —
+   IHardwareManager interface declared but apply workflow not implemented;
+   deferred to a follow-up task before Phase 7.
 6. PCA9685 batching proven by test: N light writes → ≤ expected I2C
    transactions; redundant writes skipped.
 7. PCF8574 debounce + change detection proven in the bus simulator.

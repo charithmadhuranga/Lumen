@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "id": "generic_esp32_pwm",
+  "name": "Generic ESP32 PWM Controller",
+  "manufacturer": "Generic",
+  "mcu": "esp32",
+  "description": "Generic ESP32 configured as a multi-channel PWM controller using native LEDC. Up to 16 LEDC channels available.",
+  "resources": [
+    {"id": "ledc_pwm0", "type": "pwm", "gpio": 15, "direction": "output"},
+    {"id": "ledc_pwm1", "type": "pwm", "gpio": 16, "direction": "output"},
+    {"id": "ledc_pwm2", "type": "pwm", "gpio": 17, "direction": "output"},
+    {"id": "ledc_pwm3", "type": "pwm", "gpio": 18, "direction": "output"},
+    {"id": "ledc_pwm4", "type": "pwm", "gpio": 19, "direction": "output"},
+    {"id": "ledc_pwm5", "type": "pwm", "gpio": 21, "direction": "output"},
+    {"id": "ledc_pwm6", "type": "pwm", "gpio": 22, "direction": "output"},
+    {"id": "ledc_pwm7", "type": "pwm", "gpio": 23, "direction": "output"},
+    {"id": "gpio_input0", "type": "gpio", "gpio": 34, "direction": "input"}
+  ],
+  "peripherals": [],
+  "capabilities": {
+    "native_pwm": true,
+    "i2c": false,
+    "uart": false,
+    "ethernet": false,
+    "esp_now": true,
+    "rmt": false,
+    "relay": false,
+    "digital_input": true,
+    "external_pwm": false,
+    "addressable_led": false
+  },
+  "unverified": false
+}

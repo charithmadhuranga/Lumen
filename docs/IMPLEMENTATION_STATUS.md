@@ -58,18 +58,43 @@ Legend: `[x]` done · `[ ]` not done · **HW** = verified on physical hardware.
 
 ## Phase 2 — Hardware abstraction
 
-- [ ] HAL interfaces
-- [ ] Board profiles
-- [ ] Pin validator
-- [ ] GPIO / LEDC / I2C drivers
-- [ ] Transactional profile apply
+- [x] HAL interfaces (`src/hardware/hal/`): IOutputDriver, IDigitalInputDriver,
+      IPwmDriver, II2CBus, IUartDriver, IEthernetDriver, IAddressableLedDriver,
+      IRelayDriver, IPeripheralDriver, IHardwareManager. All return esp_err_t;
+      no board knowledge in headers.
+- [x] Board profile loader (`src/hardware/hal/board_profile_loader.*`) +
+      in-memory BoardProfile + BoardProfileIndex.
+- [x] PinValidator (`src/hardware/hal/pin_validator.*`): semantic validation
+      per SPEC §5.3 (GPIO existence, input-only, strapping, flash/reserved,
+      board-reserved, duplicates, bus references, UART/I2C/Ethernet conflicts,
+      PWM/RMT limits). Data-driven MCU capability tables (no #ifdef soup).
+      Structured ValidationReport with stable reason codes.
+- [x] P0 drivers (SPEC §7.1): gpio_driver, relay_driver, ledc_driver,
+      i2c_manager, pca9685_driver (batched pending updates), pcf8574_driver
+      (debounce + change detection + health), all ESP-IDF implementations.
+- [x] Mock drivers for host tests (`test/unit/mocks/`): MockI2cBus with
+      transaction counting + error injection.
+- [x] Built-in board profiles (`boards/`): kincony_kc868_ap, generic_esp32,
+      generic_esp32s3, generic_esp32_pca9685, generic_esp32_pcf8574,
+      generic_esp32_pwm. All pass schema + semantic validation.
+- [x] Host unit tests: PinValidator conflict detection (12 tests) covering
+      duplicate GPIO, strapping, input-only-as-output, flash-reserved,
+      board-reserved, unresolved references, PWM overflow, I2C conflict;
+      PCA9685 batching (N writes → ≤ expected I2C transactions; redundant
+      writes skipped); PCF8574 debounce + change detection + health. 75 tests
+      total across 10 suites, all passing.
+- [x] Firmware builds on esp32 + esp32s3; device boots on KC868-AP (**HW**).
+- [x] Docs: ARCHITECTURE.md (HAL + drivers + profiles), HARDWARE_PROFILES.md
+      (profile verification status), IMPLEMENTATION_STATUS.md.
 
 ## Phase 3 — KC868-AP hardware
 
-- [ ] KC868-AP reference profile
-- [ ] PCA9685 / PCF8574 / relay drivers
+- [ ] KC868-AP reference profile (loaded; all peripheral addresses /
+      polarities marked `unverified` — see HARDWARE_PROFILES.md)
+- [ ] PCA9685 / PCF8574 / relay drivers (code complete; physical bring-up)
 - [ ] On-device bring-up tests (**HW**)
-- [ ] Physical verification of pins, polarity, I2C address (scan first — address `0x00` unverified)
+- [ ] Physical verification of pins, polarity, I2C address (scan first —
+      address `0x00` unverified)
 
 ## Phase 4 — Lighting engine
 

@@ -41,8 +41,22 @@ These are confirmed only by physical tests in Phase 3 and are recorded in
 
 ## Profile files
 
-- `boards/README.md` — placeholder until Phase 2/3 lands the first real
-  profile (`boards/kincony_kc868_ap.json`, SPEC §6.3).
+Built-in profiles (versioned JSON in `boards/`), validated against
+`schemas/board-profile.schema.json` and the PinValidator:
+
+| Profile | MCU | Verified on hardware | Notes |
+|---|---|---|---|
+| `kincony_kc868_ap.json` | esp32 | No (firmware boots, peripherals unverified) | All addresses/polarities from vendor pinmap marked `unverified`; I2C scan in Phase 3 resolves PCA9685 (0x00 vs 0x40) and PCF8574 (0x22/0x21 vs 0x3A/0x21) |
+| `generic_esp32.json` | esp32 | No | Marked "mock only" until tested on a real generic board |
+| `generic_esp32s3.json` | esp32s3 | Compile-only | No S3 hardware available for physical test |
+| `generic_esp32_pca9685.json` | esp32 | No | PCA9685 address (0x40 default) unverified |
+| `generic_esp32_pcf8574.json` | esp32 | No | PCF8574 address (0x20 default) unverified |
+| `generic_esp32_pwm.json` | esp32 | No | Marked "mock only" until tested on a real board |
+
+Built-in profiles are read-only at runtime; users duplicate them to create
+custom variants (SPEC §6.1).
+
+- `boards/README.md` — placeholder note (see above).
 
 ## MCU capability notes
 

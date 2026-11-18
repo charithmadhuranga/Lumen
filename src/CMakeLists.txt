@@ -13,6 +13,14 @@ idf_component_register(
         "core/system_manager.cpp"
         "core/diagnostics.cpp"
         "core/cJSON.c"
+        "hardware/hal/pin_validator.cpp"
+        "hardware/hal/board_profile_loader.cpp"
+        "hardware/drivers/gpio_driver.cpp"
+        "hardware/drivers/relay_driver.cpp"
+        "hardware/drivers/ledc_driver.cpp"
+        "hardware/drivers/i2c_manager.cpp"
+        "hardware/drivers/pca9685_driver.cpp"
+        "hardware/drivers/pcf8574_driver.cpp"
     INCLUDE_DIRS "." "../include"
 )
 

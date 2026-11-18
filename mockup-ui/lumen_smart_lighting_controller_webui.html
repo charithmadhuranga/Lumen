@@ -1,0 +1,3905 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lumen — ESP32 Smart Lighting Controller</title>
+  <style>
+    /* ==========================================================================
+       DESIGN.md Section 4: Design Tokens (OKLCH Light & Dark Modes)
+       Self-contained, offline-first, zero external requests.
+       ========================================================================== */
+    :root {
+      --background: oklch(0.985 0.003 90);
+      --foreground: oklch(0.21 0.01 260);
+
+      --card: oklch(1 0 0);
+      --card-foreground: var(--foreground);
+      --popover: oklch(1 0 0);
+      --popover-foreground: var(--foreground);
+
+      --primary: oklch(0.72 0.16 65);              /* warm amber */
+      --primary-foreground: oklch(0.2 0.02 65);
+      --secondary: oklch(0.96 0.005 90);
+      --secondary-foreground: var(--foreground);
+
+      --muted: oklch(0.96 0.004 90);
+      --muted-foreground: oklch(0.5 0.01 260);
+      --accent: oklch(0.95 0.02 75);
+      --accent-foreground: var(--foreground);
+
+      --border: oklch(0.91 0.005 90);
+      --input: oklch(0.91 0.005 90);
+      --ring: oklch(0.72 0.16 65);
+
+      --destructive: oklch(0.58 0.22 27);
+      --destructive-foreground: oklch(0.98 0.005 90);
+      --success: oklch(0.65 0.16 150);
+      --warning: oklch(0.78 0.15 80);
+      --info: oklch(0.62 0.13 245);
+
+      /* Lighting-specific */
+      --light-on-glow: #ffd68a;
+      --light-off: oklch(0.8 0.005 260);
+      --floor-bg: oklch(0.965 0.004 90);
+      --floor-wall: oklch(0.32 0.01 260);
+      --floor-grid: oklch(0.88 0.005 90);
+
+      /* Charts (categorical, colorblind-safe) */
+      --chart-1: oklch(0.72 0.16 65);
+      --chart-2: oklch(0.62 0.13 245);
+      --chart-3: oklch(0.65 0.16 150);
+      --chart-4: oklch(0.6 0.18 320);
+      --chart-5: oklch(0.58 0.22 27);
+
+      /* Radius & Motion (Section 4.2) */
+      --radius: 0.625rem;
+      --radius-sm: calc(var(--radius) - 4px);
+      --radius-md: calc(var(--radius) - 2px);
+      --radius-lg: var(--radius);
+      --radius-xl: calc(var(--radius) + 6px);
+
+      --duration-fast: 150ms;
+      --duration-normal: 250ms;
+      --duration-slow: 400ms;
+      --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+      --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+
+    html.dark {
+      --background: oklch(0.16 0.01 260);
+      --foreground: oklch(0.96 0.004 90);
+
+      --card: oklch(0.2 0.012 260);
+      --card-foreground: var(--foreground);
+      --popover: oklch(0.2 0.012 260);
+      --popover-foreground: var(--foreground);
+
+      --primary: oklch(0.78 0.15 70);
+      --primary-foreground: oklch(0.2 0.02 65);
+      --secondary: oklch(0.25 0.012 260);
+      --secondary-foreground: var(--foreground);
+
+      --muted: oklch(0.25 0.012 260);
+      --muted-foreground: oklch(0.7 0.01 260);
+      --accent: oklch(0.28 0.03 70);
+      --accent-foreground: var(--foreground);
+
+      --border: oklch(0.3 0.012 260);
+      --input: oklch(0.3 0.012 260);
+      --ring: oklch(0.78 0.15 70);
+
+      --destructive: oklch(0.65 0.2 25);
+      --destructive-foreground: oklch(0.98 0.005 90);
+      --success: oklch(0.72 0.16 150);
+      --warning: oklch(0.82 0.14 85);
+      --info: oklch(0.7 0.12 245);
+
+      --light-off: oklch(0.38 0.01 260);
+      --floor-bg: oklch(0.18 0.012 260);
+      --floor-wall: oklch(0.72 0.01 260);
+      --floor-grid: oklch(0.26 0.012 260);
+    }
+
+    /* ==========================================================================
+       Base Reset & Utility Classes
+       ========================================================================== */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      border-color: var(--border);
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background-color: var(--background);
+      color: var(--foreground);
+      font-family: var(--font-sans);
+      font-size: 15px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    .tabular-nums { font-variant-numeric: tabular-nums; }
+    .font-mono { font-family: var(--font-mono); }
+
+    /* Focus ring (Section 5.4 & 12) */
+    button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
+      outline: 2px solid var(--ring);
+      outline-offset: 2px;
+    }
+
+    /* ==========================================================================
+       App Shell Layout (Section 6.1)
+       ========================================================================== */
+    .app-shell {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      height: 60px;
+      background-color: var(--card);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      gap: 12px;
+    }
+
+    @media (min-width: 768px) { .topbar { padding: 0 24px; } }
+
+    .topbar-left, .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 18px;
+      letter-spacing: -0.02em;
+      color: var(--foreground);
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    .brand-sun {
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius-md);
+      background: var(--primary);
+      color: var(--primary-foreground);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 16px color-mix(in oklch, var(--primary) 45%, transparent);
+    }
+
+    .controller-pill {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: var(--secondary);
+      border: 1px solid var(--border);
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    @media (min-width: 640px) { .controller-pill { display: flex; } }
+
+    .status-dot {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      cursor: pointer;
+    }
+
+    .dot-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+    }
+    .status-dot.offline .dot-indicator { background: var(--destructive); }
+    .status-dot.online .dot-indicator { box-shadow: 0 0 0 3px color-mix(in oklch, var(--success) 22%, transparent); }
+
+    /* Connection Banner (Section 5.2 & 15) */
+    .connection-banner {
+      background: color-mix(in oklch, var(--destructive) 12%, var(--card));
+      border-bottom: 1px solid var(--destructive);
+      color: var(--foreground);
+      padding: 10px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 14px;
+    }
+
+    .shell-body {
+      display: flex;
+      flex: 1;
+      min-height: 0;
+    }
+
+    /* Sidebar Desktop & Tablet Rail (Section 6.1) */
+    .sidebar {
+      display: none;
+      flex-direction: column;
+      width: 240px;
+      flex-shrink: 0;
+      background: var(--card);
+      border-right: 1px solid var(--border);
+      padding: 16px 12px;
+      gap: 4px;
+      transition: width var(--duration-normal) var(--ease-out);
+    }
+
+    @media (min-width: 640px) and (max-width: 1023px) {
+      .sidebar {
+        display: flex;
+        width: 68px;
+        align-items: center;
+        padding: 16px 8px;
+      }
+      .sidebar .nav-label, .sidebar .nav-group-title { display: none; }
+      .sidebar .nav-item { justify-content: center; padding: 10px; }
+    }
+
+    @media (min-width: 1024px) {
+      .sidebar { display: flex; }
+      .sidebar.collapsed { width: 68px; align-items: center; padding: 16px 8px; }
+      .sidebar.collapsed .nav-label, .sidebar.collapsed .nav-group-title { display: none; }
+      .sidebar.collapsed .nav-item { justify-content: center; padding: 10px; }
+    }
+
+    .nav-group-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted-foreground);
+      padding: 8px 12px 4px;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      min-height: 44px;
+      padding: 10px 12px;
+      border-radius: var(--radius-md);
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--muted-foreground);
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      text-align: left;
+      transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+    }
+
+    .nav-item:hover {
+      background: var(--secondary);
+      color: var(--foreground);
+    }
+
+    .nav-item.active {
+      background: var(--accent);
+      color: var(--foreground);
+      border-color: color-mix(in oklch, var(--primary) 35%, var(--border));
+      font-weight: 600;
+    }
+
+    .nav-item.active svg { color: var(--primary); }
+
+    .nav-divider {
+      height: 1px;
+      background: var(--border);
+      margin: 10px 8px;
+      width: calc(100% - 16px);
+    }
+
+    /* Main Content Area (Section 4.2 gutters) */
+    .main-content {
+      flex: 1;
+      min-width: 0;
+      padding: 16px;
+      padding-bottom: 88px; /* Space for mobile bottom nav */
+      max-width: 1440px;
+      margin: 0 auto;
+      width: 100%;
+      animation: fadeUp var(--duration-normal) var(--ease-out);
+    }
+
+    @media (min-width: 640px) { .main-content { padding: 24px; padding-bottom: 32px; } }
+    @media (min-width: 1024px) { .main-content { padding: 32px; } }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Mobile Bottom Navigation (Section 6.1: <640px, 4 items) */
+    .bottom-nav {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 40;
+      height: 64px;
+      background: var(--card);
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+      padding: 0 4px;
+    }
+
+    @media (min-width: 640px) { .bottom-nav { display: none; } }
+
+    .bottom-nav-btn {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      min-height: 48px;
+      background: transparent;
+      border: none;
+      color: var(--muted-foreground);
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+
+    .bottom-nav-btn.active { color: var(--primary); font-weight: 600; }
+
+    /* ==========================================================================
+       shadcn-Inspired Primitive Components
+       ========================================================================== */
+    .card {
+      background: var(--card);
+      color: var(--card-foreground);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+    }
+
+    .card-compact { padding: 16px; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 40px;
+      padding: 8px 16px;
+      border-radius: var(--radius-md);
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 500;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--foreground);
+      cursor: pointer;
+      transition: all var(--duration-fast) var(--ease-out);
+      white-space: nowrap;
+    }
+
+    .btn:hover:not(:disabled) { background: var(--secondary); }
+    .btn:active:not(:disabled) { transform: scale(0.98); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .btn-primary {
+      background: var(--primary);
+      color: var(--primary-foreground);
+      border-color: var(--primary);
+      font-weight: 600;
+    }
+    .btn-primary:hover:not(:disabled) {
+      background: color-mix(in oklch, var(--primary) 90%, black);
+      border-color: color-mix(in oklch, var(--primary) 90%, black);
+    }
+
+    .btn-secondary {
+      background: var(--secondary);
+      color: var(--secondary-foreground);
+      border-color: var(--border);
+    }
+
+    .btn-destructive {
+      background: var(--destructive);
+      color: var(--destructive-foreground);
+      border-color: var(--destructive);
+    }
+
+    .btn-ghost {
+      background: transparent;
+      border-color: transparent;
+    }
+    .btn-ghost:hover:not(:disabled) { background: var(--secondary); }
+
+    .btn-sm { min-height: 34px; padding: 5px 12px; font-size: 13px; }
+    .btn-icon { width: 40px; height: 40px; padding: 0; }
+    .btn-icon-lg { width: 44px; height: 44px; padding: 0; } /* Section 5.2 min 44x44px */
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 2px 9px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 500;
+      border: 1px solid var(--border);
+      background: var(--secondary);
+      color: var(--secondary-foreground);
+    }
+    .badge-primary {
+      background: var(--accent);
+      border-color: color-mix(in oklch, var(--primary) 40%, var(--border));
+      color: var(--foreground);
+    }
+    .badge-success {
+      background: color-mix(in oklch, var(--success) 15%, var(--card));
+      border-color: color-mix(in oklch, var(--success) 40%, var(--border));
+      color: var(--success);
+    }
+    .badge-warning {
+      background: color-mix(in oklch, var(--warning) 18%, var(--card));
+      border-color: color-mix(in oklch, var(--warning) 45%, var(--border));
+      color: var(--foreground);
+    }
+    .badge-destructive {
+      background: color-mix(in oklch, var(--destructive) 15%, var(--card));
+      border-color: color-mix(in oklch, var(--destructive) 40%, var(--border));
+      color: var(--destructive);
+    }
+
+    .input, .select, .textarea {
+      width: 100%;
+      min-height: 40px;
+      padding: 8px 12px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--input);
+      background: var(--card);
+      color: var(--foreground);
+      font-family: inherit;
+      font-size: 14px;
+    }
+    .textarea { min-height: 84px; resize: vertical; }
+
+    .label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 6px;
+      color: var(--foreground);
+    }
+
+    /* Switch Toggle */
+    .switch {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      width: 46px;
+      height: 26px;
+      border-radius: 999px;
+      background: var(--light-off);
+      border: 1px solid var(--border);
+      cursor: pointer;
+      transition: background var(--duration-fast) var(--ease-out);
+      flex-shrink: 0;
+      padding: 0;
+    }
+    .switch[aria-checked="true"] {
+      background: var(--primary);
+      border-color: var(--primary);
+    }
+    .switch-thumb {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #ffffff;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+      transform: translateX(2px);
+      transition: transform var(--duration-fast) var(--ease-out);
+    }
+    .switch[aria-checked="true"] .switch-thumb {
+      transform: translateX(22px);
+    }
+
+    /* Power Toggle Button (Section 5.2: min 44x44px) */
+    .power-btn {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      border: 1px solid var(--border);
+      background: var(--secondary);
+      color: var(--muted-foreground);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all var(--duration-fast) var(--ease-out);
+      flex-shrink: 0;
+    }
+    .power-btn.on {
+      background: var(--primary);
+      color: var(--primary-foreground);
+      border-color: var(--primary);
+      box-shadow: 0 0 16px color-mix(in oklch, var(--primary) 50%, transparent);
+    }
+
+    /* Custom Accessible Range Sliders (Section 6.3: >=40px vertical hit area) */
+    .slider-wrap {
+      position: relative;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      width: 100%;
+    }
+    input[type="range"].lumen-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 10px;
+      border-radius: 999px;
+      background: var(--secondary);
+      border: 1px solid var(--border);
+      outline: none;
+      cursor: pointer;
+    }
+    input[type="range"].lumen-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--card);
+      border: 2.5px solid var(--primary);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+      cursor: pointer;
+      transition: transform var(--duration-fast) var(--ease-out);
+    }
+    input[type="range"].lumen-slider::-webkit-slider-thumb:hover {
+      transform: scale(1.12);
+    }
+    input[type="range"].cct-slider {
+      background: linear-gradient(90deg, #ff9d3b 0%, #ffd9a6 45%, #f5f8ff 75%, #b8d8ff 100%);
+    }
+
+    /* Segmented Tabs */
+    .tabs-list {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      padding: 4px;
+      border-radius: var(--radius-md);
+      background: var(--muted);
+      border: 1px solid var(--border);
+    }
+    .tab-trigger {
+      min-height: 36px;
+      padding: 6px 14px;
+      border-radius: var(--radius-sm);
+      border: none;
+      background: transparent;
+      color: var(--muted-foreground);
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all var(--duration-fast) var(--ease-out);
+    }
+    .tab-trigger:hover { color: var(--foreground); }
+    .tab-trigger.active {
+      background: var(--card);
+      color: var(--foreground);
+      font-weight: 600;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+    }
+
+    /* Grid Helpers */
+    .grid-cards {
+      display: grid;
+      grid-template-columns: repeat(1, minmax(0, 1fr));
+      gap: 16px;
+    }
+    @media (min-width: 640px) { .grid-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (min-width: 1120px) { .grid-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(1, minmax(0, 1fr));
+      gap: 16px;
+    }
+    @media (min-width: 768px) { .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(1, minmax(0, 1fr));
+      gap: 16px;
+    }
+    @media (min-width: 640px) { .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (min-width: 1120px) { .grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
+    /* Horizontal Snap Scenes Row (Section 7.2) */
+    .scenes-row {
+      display: flex;
+      gap: 14px;
+      overflow-x: auto;
+      scroll-snap-type: x mandatory;
+      padding-bottom: 6px;
+    }
+    .scene-chip-card {
+      flex: 0 0 220px;
+      scroll-snap-align: start;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border);
+      padding: 16px;
+      background: var(--card);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 12px;
+      transition: transform var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out);
+    }
+    .scene-chip-card:hover { transform: translateY(-2px); border-color: var(--primary); }
+
+    /* Table Responsive (Section 6.3) */
+    .table-wrap {
+      width: 100%;
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      background: var(--card);
+    }
+    table.lumen-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+      text-align: left;
+    }
+    table.lumen-table th {
+      padding: 12px 16px;
+      background: var(--muted);
+      color: var(--muted-foreground);
+      font-weight: 600;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      border-bottom: 1px solid var(--border);
+    }
+    table.lumen-table td {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    table.lumen-table tr:last-child td { border-bottom: none; }
+
+    /* Modal / Dialog & Sheet */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      background: rgba(0, 0, 0, 0.52);
+      backdrop-filter: blur(2px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .modal-panel {
+      width: 100%;
+      max-width: 520px;
+      max-height: 90vh;
+      overflow-y: auto;
+      background: var(--card);
+      color: var(--card-foreground);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      padding: 24px;
+      box-shadow: 0 20px 45px rgba(0,0,0,0.28);
+      animation: fadeUp var(--duration-fast) var(--ease-out);
+    }
+
+    .drawer-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      background: rgba(0, 0, 0, 0.45);
+      display: flex;
+    }
+    .drawer-panel {
+      width: 280px;
+      max-width: 85vw;
+      height: 100%;
+      background: var(--card);
+      border-right: 1px solid var(--border);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      overflow-y: auto;
+    }
+
+    /* Sonner-style Toasts (Section 8.6) */
+    .toast-viewport {
+      position: fixed;
+      z-index: 60;
+      bottom: 76px;
+      left: 16px;
+      right: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      pointer-events: none;
+    }
+    @media (min-width: 640px) {
+      .toast-viewport {
+        bottom: 20px;
+        left: auto;
+        right: 20px;
+        width: 360px;
+      }
+    }
+    .toast-item {
+      pointer-events: auto;
+      background: var(--popover);
+      color: var(--popover-foreground);
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--primary);
+      border-radius: var(--radius-md);
+      padding: 12px 14px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.14);
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 13px;
+      animation: fadeUp var(--duration-fast) var(--ease-out);
+    }
+    .toast-item.error { border-left-color: var(--destructive); }
+    .toast-item.success { border-left-color: var(--success); }
+
+    /* Floor Plan Container (Section 9) */
+    .floorplan-stage {
+      position: relative;
+      width: 100%;
+      height: 500px;
+      background: var(--floor-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      user-select: none;
+      touch-action: none;
+    }
+    .floorplan-stage.edit-mode {
+      border: 2px solid var(--warning);
+      box-shadow: inset 0 0 0 3px color-mix(in oklch, var(--warning) 18%, transparent);
+    }
+
+    /* Hardware PinChip Grid (Section 5.2 & 7.8) */
+    .gpio-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+      gap: 10px;
+    }
+    .pin-chip {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 10px 12px;
+      background: var(--card);
+      color: var(--foreground);
+      font-family: inherit;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      cursor: pointer;
+      text-align: left;
+      transition: border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
+    }
+    .pin-chip:hover { border-color: var(--primary); }
+    .pin-chip.conflict {
+      border-color: var(--destructive);
+      background: color-mix(in oklch, var(--destructive) 12%, var(--card));
+      color: var(--foreground);
+    }
+    .pin-chip-num {
+      font-family: var(--font-mono);
+      font-weight: 700;
+      font-size: 13px;
+      color: var(--foreground);
+    }
+    html.dark .pin-chip {
+      background: var(--secondary);
+      color: var(--foreground);
+    }
+    html.dark .pin-chip .pin-chip-num {
+      color: var(--foreground);
+    }
+    html.dark .pin-chip.conflict {
+      background: color-mix(in oklch, var(--destructive) 20%, var(--card));
+      color: var(--foreground);
+    }
+
+    /* Automation Node Graph Canvas (Section 10) */
+    .flow-canvas {
+      position: relative;
+      width: 100%;
+      height: 460px;
+      background-color: var(--floor-bg);
+      background-image: radial-gradient(var(--border) 1px, transparent 1px);
+      background-size: 20px 20px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      user-select: none;
+    }
+    .flow-node {
+      position: absolute;
+      width: 210px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      cursor: grab;
+      z-index: 2;
+    }
+    .flow-node:active { cursor: grabbing; }
+    .flow-node-header {
+      padding: 6px 10px;
+      font-size: 12px;
+      font-weight: 600;
+      border-bottom: 1px solid var(--border);
+      border-radius: var(--radius-md) var(--radius-md) 0 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .flow-node-body { padding: 10px; font-size: 12px; }
+    .flow-port {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--primary);
+      border: 2px solid var(--card);
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+    }
+    .flow-port.in { left: -6px; }
+    .flow-port.out { right: -6px; }
+
+    /* Profile Dropdown */
+    .dropdown-wrap { position: relative; }
+    .dropdown-menu {
+      position: absolute;
+      right: 0;
+      top: calc(100% + 6px);
+      width: 230px;
+      background: var(--popover);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 6px;
+      box-shadow: 0 10px 28px rgba(0,0,0,0.16);
+      z-index: 50;
+    }
+    .dropdown-item {
+      width: 100%;
+      padding: 9px 12px;
+      border-radius: var(--radius-sm);
+      border: none;
+      background: transparent;
+      color: var(--foreground);
+      font-family: inherit;
+      font-size: 13px;
+      text-align: left;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .dropdown-item:hover { background: var(--secondary); }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <div id="toast-viewport" class="toast-viewport" aria-live="polite"></div>
+
+  <script>
+    /* ==========================================================================
+       LUMEN WEBUI MOCKUP — UNIFIED REACTIVE STORE & CONTROLLER SIMULATOR
+       Strictly implements DESIGN.md & SPEC.md (KinCony KC868-AP reference profile)
+       ========================================================================== */
+
+    // --- Inline SVG Icon Library (Zero external dependencies, Lucide-style) ---
+    const Icons = {
+      sun: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>`,
+      moon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>`,
+      home: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`,
+      rooms: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>`,
+      map: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" x2="9" y1="3" y2="18"/><line x1="15" x2="15" y1="6" y2="21"/></svg>`,
+      sparkles: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg>`,
+      workflow: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="8" x="3" y="3" rx="2"/><path d="M7 11v4a2 2 0 0 0 2 2h4"/><rect width="8" height="8" x="13" y="13" rx="2"/></svg>`,
+      lightbulb: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>`,
+      cpu: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2M15 20v2M2 15h2M2 9h2M20 15h2M20 9h2M9 2v2M9 20v2"/></svg>`,
+      share: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"/><line x1="15.41" x2="8.59" y1="6.51" y2="10.49"/></svg>`,
+      wifi: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h.01"/><path d="M2 8.82a15 15 0 0 1 20 0"/><path d="M5 12.859a10 10 0 0 1 14 0"/><path d="M8.5 16.429a5 5 0 0 1 7 0"/></svg>`,
+      settings: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
+      power: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/></svg>`,
+      menu: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>`,
+      user: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
+      alert: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>`,
+      check: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+      plus: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>`,
+      play: `<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>`,
+      lock: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`,
+      edit: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>`,
+      chevronDown: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`,
+      chevronUp: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>`,
+      maximize: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" x2="14" y1="3" y2="10"/><line x1="3" x2="10" y1="21" y2="14"/></svg>`
+    };
+
+    // --- Initial Application State (Synchronized across all 11 screens) ---
+    const state = {
+      route: 'overview', // overview | rooms | floorplans | scenes | automations | devices | hardware | integrations | network | settings | login | setup-password
+      selectedRoomId: 'all',
+      theme: 'light', // light | dark | system
+      sidebarCollapsed: false,
+      mobileDrawerOpen: false,
+      profileDropdownOpen: false,
+      wsConnected: true,
+      wsLatencyMs: 14,
+      controllerName: 'Lumen KC868-AP Main',
+      firmwareVersion: '1.0.0',
+
+      // Sub-tabs
+      floorplanFloor: 'ground_floor',
+      floorplanMode: 'control', // control | edit
+      floorplanZoom: 1,
+      floorplanPan: { x: 0, y: 0 },
+      floorplanSnapGrid: true,
+      floorplanSelectedLightId: null,
+      floorplanShowListDrawer: false,
+
+      automationTab: 'simple', // simple | advanced
+      automationHistoryOpen: false,
+      devicesTab: 'lights', // lights | inputs | controllers
+      hardwareTab: 'board', // board | pinmap | peripherals | outputs | inputs | diagnostics
+      networkTab: 'wifi', // wifi | ap | ethernet
+
+      // Alerts (Section 7.2)
+      alerts: [
+        { id: 'pca_addr', severity: 'warning', title: 'PCA9685 I2C address 0x00 unverified', detail: 'KC868-AP profile reports 0x00; standard PCA9685 default is 0x40. Verify via I2C bus scan in Hardware.', actionRoute: 'hardware', actionTab: 'peripherals', actionLabel: 'Verify I2C' },
+        { id: 'ota_avail', severity: 'info', title: 'Firmware update v1.2.0 available', detail: 'Includes improved RMT WS2812B DMA timing and ESP-NOW peer heartbeat telemetry.', actionRoute: 'settings', actionLabel: 'Review OTA' }
+      ],
+
+      // Rooms (Section 7.3 & 9.1)
+      rooms: [
+        { id: 'living_room', name: 'Living Room', floor: 'Ground Floor', icon: 'sofa' },
+        { id: 'kitchen', name: 'Kitchen', floor: 'Ground Floor', icon: 'utensils' },
+        { id: 'master_bedroom', name: 'Master Bedroom', floor: 'Upper Level', icon: 'bed' },
+        { id: 'outdoor_patio', name: 'Outdoor Patio', floor: 'Ground Floor', icon: 'trees' }
+      ],
+
+      // All 7 Logical Light Types from DESIGN.md Section 5.3 & SPEC.md Section 8.2
+      lights: [
+        { id: 'living_room_main', name: 'Living Room Main', room_id: 'living_room', type: 'dimmer', driver: 'pca9685_0 ch 0', power: true, brightness: 78, expanded: false },
+        { id: 'living_room_cove', name: 'Living Room Cove LED', room_id: 'living_room', type: 'addressable_rgbw', driver: 'rmt_0 (GPIO 25, 120 LEDs)', power: true, brightness: 65, color: '#ff9e44', white: 40, effect: 'Solid', effectSpeed: 50, expanded: false },
+        { id: 'living_room_accent', name: 'Bookshelf Accent', room_id: 'living_room', type: 'rgb', driver: 'pca9685_0 ch 1-3', power: false, brightness: 55, color: '#8b5cf6', expanded: false },
+        { id: 'kitchen_main', name: 'Kitchen Ceiling Panel', room_id: 'kitchen', type: 'cct', driver: 'pca9685_0 ch 4-5', power: true, brightness: 85, cct: 3400, expanded: false },
+        { id: 'kitchen_island', name: 'Island Pendants', room_id: 'kitchen', type: 'dimmer', driver: 'pca9685_0 ch 6', power: true, brightness: 70, expanded: false },
+        { id: 'kitchen_under_cab', name: 'Under-Cabinet Strip', room_id: 'kitchen', type: 'rgbw', driver: 'pca9685_0 ch 7-10', power: false, brightness: 60, color: '#38bdf8', white: 80, expanded: false },
+        { id: 'bedroom_main', name: 'Master Ceiling CCT', room_id: 'master_bedroom', type: 'cct', driver: 'pca9685_0 ch 11-12', power: false, brightness: 45, cct: 2700, expanded: false },
+        { id: 'bedroom_bedside', name: 'Bedside Lamps', room_id: 'master_bedroom', type: 'dimmer', driver: 'pca9685_0 ch 13', power: true, brightness: 35, expanded: false },
+        { id: 'patio_flood', name: 'Patio Flood Relay', room_id: 'outdoor_patio', type: 'switch', driver: 'relay1 (GPIO 13)', power: false, brightness: 100, expanded: false },
+        { id: 'patio_pergola', name: 'Pergola Pixel Strip', room_id: 'outdoor_patio', type: 'addressable_rgb', driver: 'espnow_peer_02 rmt_0', power: true, brightness: 90, color: '#f59e0b', effect: 'Candlelight', effectSpeed: 35, expanded: false }
+      ],
+
+      // Floor Plans (Section 9 & SPEC 10.4)
+      floorplans: {
+        ground_floor: {
+          id: 'ground_floor',
+          name: 'Ground Floor',
+          viewBox: '0 0 900 520',
+          placements: [
+            { light_id: 'living_room_main', x: 230, y: 175, glow_radius: 78, glow_color: '#FFD68A' },
+            { light_id: 'living_room_cove', x: 140, y: 295, glow_radius: 65, glow_color: '#FF9E44' },
+            { light_id: 'living_room_accent', x: 345, y: 295, glow_radius: 55, glow_color: '#8B5CF6' },
+            { light_id: 'kitchen_main', x: 610, y: 165, glow_radius: 75, glow_color: '#FFE8C2' },
+            { light_id: 'kitchen_island', x: 610, y: 280, glow_radius: 60, glow_color: '#FFD68A' },
+            { light_id: 'kitchen_under_cab', x: 745, y: 140, glow_radius: 50, glow_color: '#38BDF8' },
+            { light_id: 'patio_flood', x: 250, y: 445, glow_radius: 70, glow_color: '#FFF3D1' },
+            { light_id: 'patio_pergola', x: 580, y: 445, glow_radius: 80, glow_color: '#F59E0B' }
+          ]
+        },
+        upper_level: {
+          id: 'upper_level',
+          name: 'Upper Level',
+          viewBox: '0 0 900 520',
+          placements: [
+            { light_id: 'bedroom_main', x: 450, y: 210, glow_radius: 85, glow_color: '#FFD68A' },
+            { light_id: 'bedroom_bedside', x: 310, y: 290, glow_radius: 55, glow_color: '#FFB86C' }
+          ]
+        }
+      },
+
+      // Scenes (Section 7.4 & SPEC 9.3)
+      scenes: [
+        {
+          id: 'movie_night', name: 'Movie Night', color: '#8b5cf6', transition_ms: 1500,
+          states: [
+            { light_id: 'living_room_main', power: true, brightness: 12 },
+            { light_id: 'living_room_cove', power: true, brightness: 35, color: '#7c3aed' },
+            { light_id: 'living_room_accent', power: true, brightness: 45, color: '#6366f1' },
+            { light_id: 'kitchen_main', power: false },
+            { light_id: 'kitchen_island', power: false }
+          ]
+        },
+        {
+          id: 'evening_relax', name: 'Evening Relax', color: '#f59e0b', transition_ms: 1200,
+          states: [
+            { light_id: 'living_room_main', power: true, brightness: 55 },
+            { light_id: 'living_room_cove', power: true, brightness: 50, color: '#ff9e44' },
+            { light_id: 'kitchen_main', power: true, brightness: 40, cct: 2700 },
+            { light_id: 'bedroom_bedside', power: true, brightness: 35 },
+            { light_id: 'patio_pergola', power: true, brightness: 75, color: '#f59e0b' }
+          ]
+        },
+        {
+          id: 'bright_morning', name: 'Bright Morning', color: '#38bdf8', transition_ms: 800,
+          states: [
+            { light_id: 'living_room_main', power: true, brightness: 100 },
+            { light_id: 'kitchen_main', power: true, brightness: 100, cct: 5400 },
+            { light_id: 'kitchen_island', power: true, brightness: 95 },
+            { light_id: 'bedroom_main', power: true, brightness: 80, cct: 4800 }
+          ]
+        },
+        {
+          id: 'dinner_party', name: 'Dinner Party', color: '#fb7185', transition_ms: 1000,
+          states: [
+            { light_id: 'living_room_main', power: true, brightness: 65 },
+            { light_id: 'living_room_cove', power: true, brightness: 60, color: '#fb7185' },
+            { light_id: 'kitchen_island', power: true, brightness: 80 },
+            { light_id: 'patio_pergola', power: true, brightness: 85, color: '#fb923c' }
+          ]
+        },
+        {
+          id: 'night_security', name: 'Night Security', color: '#10b981', transition_ms: 500,
+          states: [
+            { light_id: 'living_room_main', power: false },
+            { light_id: 'living_room_cove', power: false },
+            { light_id: 'kitchen_main', power: false },
+            { light_id: 'patio_flood', power: true, brightness: 100 },
+            { light_id: 'bedroom_bedside', power: true, brightness: 15 }
+          ]
+        }
+      ],
+
+      // Automations (Section 7.6 & Section 10)
+      automations: [
+        {
+          id: 'kitchen_evening', name: 'Kitchen Evening Lighting', enabled: true,
+          trigger: { type: 'input_state', target: 'Input 1 (PCF8574 #1)', event: 'turns on' },
+          condition: { enabled: true, type: 'time_range', start: '18:00', end: '23:00' },
+          action: { type: 'light_set', light_id: 'kitchen_main', power: true, brightness: 80, transition_ms: 500 },
+          execution: { cooldown_ms: 1000, max_per_hour: 100, allow_parallel: false }
+        },
+        {
+          id: 'patio_sunset', name: 'Patio Sunset Ambience', enabled: true,
+          trigger: { type: 'sunset', target: 'Astronomical Clock', event: 'at sunset' },
+          condition: { enabled: false, type: 'time_range', start: '17:00', end: '23:59' },
+          action: { type: 'scene_activate', scene_id: 'evening_relax' },
+          execution: { cooldown_ms: 5000, max_per_hour: 10, allow_parallel: false }
+        },
+        {
+          id: 'all_off_wall_long', name: 'Bedside Long-Press All Off', enabled: true,
+          trigger: { type: 'long_press', target: 'Input 17 (GPIO 34)', event: 'long press' },
+          condition: { enabled: false, type: 'time_range', start: '21:00', end: '06:00' },
+          action: { type: 'all_off' },
+          execution: { cooldown_ms: 2000, max_per_hour: 30, allow_parallel: false }
+        }
+      ],
+      selectedAutomationId: 'kitchen_evening',
+      automationHistory: [
+        { time: '18:42:11', name: 'Kitchen Evening Lighting', result: 'Success', duration: '4ms', detail: 'Kitchen Ceiling Panel -> ON 80%' },
+        { time: '18:14:00', name: 'Patio Sunset Ambience', result: 'Success', duration: '11ms', detail: 'Activated scene Evening Relax' },
+        { time: '14:05:22', name: 'Kitchen Evening Lighting', result: 'Skipped', duration: '1ms', detail: 'Condition time_range (18:00-23:00) false' }
+      ],
+
+      // Advanced React Flow Graph Nodes (Section 10)
+      flowNodes: [
+        { id: 'n1', category: 'trigger', title: 'Trigger: Digital Input', subtitle: 'PCF8574 #1 Ch 1 (Rising)', x: 30, y: 70 },
+        { id: 'n2', category: 'logic', title: 'Condition: Time Range', subtitle: '18:00 to 23:00 (Local RTC)', x: 290, y: 70 },
+        { id: 'n3', category: 'logic', title: 'Logic: AND Gate', subtitle: 'All inputs true', x: 290, y: 230 },
+        { id: 'n4', category: 'action', title: 'Action: Set Light', subtitle: 'Kitchen Main -> ON 80%', x: 570, y: 70 },
+        { id: 'n5', category: 'action', title: 'Action: MQTT Publish', subtitle: 'lumen/kc868/event', x: 570, y: 230 }
+      ],
+      flowEdges: [
+        { from: 'n1', to: 'n2' },
+        { from: 'n2', to: 'n3' },
+        { from: 'n3', to: 'n4' },
+        { from: 'n3', to: 'n5' }
+      ],
+
+      // Devices: Inputs & Controllers (Section 7.7)
+      digitalInputs: [
+        { id: 'in_01', name: 'Kitchen Wall Switch 1', source: 'pcf8574_1 ch 0 (0x22)', state: false, lastEvent: 'Single Press (12m ago)' },
+        { id: 'in_02', name: 'Living Room Dimmer Rocker', source: 'pcf8574_1 ch 1 (0x22)', state: false, lastEvent: 'Double Press (1h ago)' },
+        { id: 'in_17', name: 'Master Bedside Direct', source: 'GPIO 34 (Input-only)', state: false, lastEvent: 'Long Press (Yesterday)' },
+        { id: 'in_18', name: 'Patio Door Reed Sensor', source: 'GPIO 35 (Input-only)', state: true, lastEvent: 'Closed (3h ago)' }
+      ],
+      controllers: [
+        { id: 'ctrl_01', name: 'Lumen KC868-AP Main', role: 'Primary Controller', transport: 'Ethernet LAN8720 + ESP-NOW', ip: '192.168.1.42', rssi: 'Wired 100Mbps', status: 'online', lastSeen: 'Now' },
+        { id: 'ctrl_02', name: 'ESP32-S3 Patio Node', role: 'Secondary Peer', transport: 'ESP-NOW (Ch 6)', ip: '192.168.1.48', rssi: '-54 dBm (92%)', status: 'online', lastSeen: '2s ago' },
+        { id: 'ctrl_03', name: 'ESP32 Garage Relay', role: 'Secondary Peer', transport: 'ESP-NOW + MQTT', ip: '192.168.1.51', rssi: '-68 dBm (74%)', status: 'online', lastSeen: '5s ago' }
+      ],
+
+      // Hardware KC868-AP Reference Profile (Section 7.8 & SPEC 6.3)
+      activeBoardId: 'kincony_kc868_ap',
+      boardProfiles: [
+        { id: 'kincony_kc868_ap', name: 'KinCony KC868-AP', mcu: 'esp32', builtIn: true, desc: '16-channel PCA9685 PWM lighting controller with LAN8720 Ethernet, 2x PCF8574 inputs, 2 relays & RS485.' },
+        { id: 'generic_esp32', name: 'Generic ESP32 DevKit', mcu: 'esp32', builtIn: true, desc: 'Standard ESP32-WROOM-32 profile with native LEDC PWM and RMT addressable LED output.' },
+        { id: 'generic_esp32s3', name: 'Generic ESP32-S3', mcu: 'esp32s3', builtIn: true, desc: 'ESP32-S3 N16R8 profile with 8-channel LEDC, dual RMT, and native USB.' },
+        { id: 'custom_kc868_rmt', name: 'KC868-AP + Cove RMT Custom', mcu: 'esp32', builtIn: false, desc: 'Custom variant mapping GPIO 25 to RMT WS2812B cove strip.' }
+      ],
+      gpioPins: [
+        { gpio: 0, role: 'Download Button', dir: 'input', strapping: true, conflict: false },
+        { gpio: 2, role: 'Relay 2 (Safe: OFF)', dir: 'output', strapping: true, conflict: false },
+        { gpio: 4, role: 'I2C0 SDA', dir: 'bidirectional', strapping: false, conflict: false },
+        { gpio: 5, role: 'Serial RX', dir: 'input', strapping: true, conflict: false },
+        { gpio: 13, role: 'Relay 1 (Safe: OFF)', dir: 'output', strapping: false, conflict: false },
+        { gpio: 14, role: 'RS485 TX', dir: 'output', strapping: false, conflict: false },
+        { gpio: 16, role: 'I2C0 SCL', dir: 'bidirectional', strapping: false, conflict: false },
+        { gpio: 17, role: 'ETH Clock Out', dir: 'output', strapping: false, conflict: false },
+        { gpio: 18, role: 'ETH MDIO', dir: 'bidirectional', strapping: false, conflict: false },
+        { gpio: 23, role: 'ETH MDC', dir: 'output', strapping: false, conflict: false },
+        { gpio: 25, role: 'RMT0 Cove LEDs', dir: 'output', strapping: false, conflict: false },
+        { gpio: 32, role: 'Serial TX', dir: 'output', strapping: false, conflict: false },
+        { gpio: 33, role: 'RS485 RX', dir: 'input', strapping: false, conflict: false },
+        { gpio: 34, role: 'Digital Input 17', dir: 'input-only', strapping: false, conflict: false },
+        { gpio: 35, role: 'Digital Input 18', dir: 'input-only', strapping: false, conflict: false },
+        { gpio: 26, role: 'Unassigned', dir: 'free', strapping: false, conflict: false }
+      ],
+      i2cScanResults: null,
+      i2cScanning: false,
+      pca9685AddressConfirmed: false,
+      pca9685Channels: [82, 0, 0, 0, 90, 65, 70, 0, 0, 80, 0, 45, 45, 35, 0, 0],
+
+      // Integrations & Network (Section 7.9 & 7.10)
+      integrations: {
+        mqtt: { enabled: true, broker: 'mqtt://192.168.1.10', port: 1883, username: 'lumen_ctrl', passwordSet: true, tls: false, prefix: 'lighting/kc868_main' },
+        ha: { enabled: true, discoveryPrefix: 'homeassistant', entityCount: 14 },
+        espnow: { enabled: true, channel: 6, encrypted: true, peers: 2 },
+        tcp: { enabled: false, port: 8899, maxClients: 4 },
+        udp: { enabled: true, port: 8898, authRequired: true }
+      },
+      network: {
+        wifiEnabled: true,
+        ssid: 'Studio_IoT_VLAN20',
+        dhcp: true,
+        ip: '192.168.1.42',
+        gateway: '192.168.1.1',
+        apFallback: true,
+        apSsid: 'Lumen-AP-868A',
+        ethEnabled: true,
+        ethLink: '100 Mbps Full Duplex',
+        ethMac: '24:6F:28:A9:1C:04',
+        scannedNetworks: [
+          { ssid: 'Studio_IoT_VLAN20', rssi: -48, secure: true },
+          { ssid: 'Studio_Main_5G_2G', rssi: -61, secure: true },
+          { ssid: 'Neighbor_Mesh', rssi: -79, secure: true }
+        ]
+      },
+
+      // Modal State
+      modal: null
+    };
+
+    // --- Toast Notification Helper (Section 8.6 Sonner-style) ---
+    function showToast(message, type = 'default', detail = '') {
+      const viewport = document.getElementById('toast-viewport');
+      if (!viewport) return;
+      const el = document.createElement('div');
+      el.className = `toast-item ${type}`;
+      el.innerHTML = `
+        <div>
+          <div style="font-weight:600">${escapeHtml(message)}</div>
+          ${detail ? `<div style="color:var(--muted-foreground);font-size:12px;margin-top:2px">${escapeHtml(detail)}</div>` : ''}
+        </div>
+        <button class="btn btn-ghost btn-sm" style="min-height:24px;padding:2px 6px" aria-label="Dismiss notification">✕</button>
+      `;
+      el.querySelector('button').onclick = () => el.remove();
+      viewport.appendChild(el);
+      if (type !== 'error') {
+        setTimeout(() => { if (el.parentNode) el.remove(); }, 2800);
+      }
+    }
+
+    function escapeHtml(str) {
+      return String(str ?? '').replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+    }
+
+    // --- Color & Kelvin Helpers ---
+    function kelvinToHex(k) {
+      if (k <= 2700) return '#ffad5c';
+      if (k <= 3500) return '#ffd29d';
+      if (k <= 4800) return '#fff1dc';
+      return '#dbeafe';
+    }
+
+    function getLightGlowHex(light, fallback = '#FFD68A') {
+      if (light.color) return light.color;
+      if (light.cct) return kelvinToHex(light.cct);
+      return fallback;
+    }
+
+    // --- Lighting Actions (Device-is-source-of-truth simulation) ---
+    function toggleLightPower(id) {
+      if (!state.wsConnected) {
+        showToast('Controller offline', 'error', 'Reconnect WebSocket to send lighting commands.');
+        return;
+      }
+      const light = state.lights.find(l => l.id === id);
+      if (!light) return;
+      light.power = !light.power;
+      render();
+    }
+
+    function updateLightProp(id, patch, silent = true) {
+      if (!state.wsConnected) return;
+      const light = state.lights.find(l => l.id === id);
+      if (!light) return;
+      Object.assign(light, patch);
+      if (patch.brightness !== undefined && patch.brightness > 0 && !light.power) {
+        light.power = true;
+      }
+      render();
+      if (!silent) showToast(`Updated ${light.name}`);
+    }
+
+    function toggleRoomPower(roomId, targetState = null) {
+      if (!state.wsConnected) {
+        showToast('Controller offline', 'error');
+        return;
+      }
+      const roomLights = state.lights.filter(l => l.room_id === roomId);
+      const anyOn = roomLights.some(l => l.power);
+      const next = targetState !== null ? targetState : !anyOn;
+      roomLights.forEach(l => { l.power = next; });
+      const room = state.rooms.find(r => r.id === roomId);
+      showToast(`${room?.name || 'Room'} ${next ? 'turned ON' : 'turned OFF'}`, 'success');
+      render();
+    }
+
+    // Section 7.3: Room master brightness adjusts brightness while preserving each light's color
+    function setRoomBrightness(roomId, brightness) {
+      if (!state.wsConnected) return;
+      const val = Number(brightness);
+      state.lights.filter(l => l.room_id === roomId).forEach(l => {
+        l.brightness = val;
+        if (val > 0) l.power = true;
+      });
+      render();
+    }
+
+    function allLightsOff() {
+      if (!state.wsConnected) {
+        showToast('Controller offline', 'error');
+        return;
+      }
+      state.lights.forEach(l => { l.power = false; });
+      showToast('All lights turned off', 'success', 'Master command dispatched to HAL');
+      render();
+    }
+
+    function activateScene(sceneId, isPreview = false) {
+      if (!state.wsConnected) {
+        showToast('Controller offline', 'error');
+        return;
+      }
+      const scene = state.scenes.find(s => s.id === sceneId);
+      if (!scene) return;
+      scene.states.forEach(st => {
+        const light = state.lights.find(l => l.id === st.light_id);
+        if (!light) return;
+        light.power = st.power;
+        if (st.brightness !== undefined) light.brightness = st.brightness;
+        if (st.color !== undefined && light.color !== undefined) light.color = st.color;
+        if (st.cct !== undefined && light.cct !== undefined) light.cct = st.cct;
+      });
+      showToast(
+        isPreview ? `Previewing "${scene.name}"` : `Activated "${scene.name}"`,
+        'success',
+        `Transition: ${scene.transition_ms}ms across ${scene.states.length} channels`
+      );
+      render();
+    }
+
+    // --- Theme Application (Section 4.1) ---
+    function applyTheme(mode) {
+      state.theme = mode;
+      const html = document.documentElement;
+      if (mode === 'dark') {
+        html.classList.add('dark');
+      } else if (mode === 'light') {
+        html.classList.remove('dark');
+      } else {
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        html.classList.toggle('dark', prefersDark);
+      }
+      render();
+    }
+
+    // --- Navigation Helper ---
+    function navigate(route, subTab = null) {
+      state.route = route;
+      state.mobileDrawerOpen = false;
+      state.profileDropdownOpen = false;
+      if (subTab && route === 'hardware') state.hardwareTab = subTab;
+      render();
+    }
+
+    // ==========================================================================
+    // SCREEN 1: LOGIN & FIRST-RUN FORCED PASSWORD SETUP (Section 7.1)
+    // ==========================================================================
+    function renderAuthScreen(isFirstRunSetup) {
+      return `
+        <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px;background:var(--background)">
+          <div class="card" style="width:100%;max-width:420px;padding:28px">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+              <div class="brand-sun">${Icons.sun}</div>
+              <div>
+                <div style="font-weight:700;font-size:18px">Lumen Controller</div>
+                <div style="font-size:12px;color:var(--muted-foreground)">${escapeHtml(state.controllerName)} • Local Offline Auth</div>
+              </div>
+            </div>
+
+            ${isFirstRunSetup ? `
+              <div class="badge badge-warning" style="margin-bottom:12px">${Icons.lock} First-Run Security Provisioning</div>
+              <h1 style="font-size:22px;margin:0 0 6px">Set Administrator Password</h1>
+              <p style="font-size:14px;color:var(--muted-foreground);margin:0 0 18px">
+                Default credentials (<code>admin</code>) must be replaced before accessing controller routes (SPEC 16.1).
+              </p>
+              <form onsubmit="handleSetupPasswordSubmit(event)">
+                <div style="margin-bottom:14px">
+                  <label class="label" for="new-pass">New Password (min. 10 characters)</label>
+                  <input id="new-pass" type="password" class="input" placeholder="Enter strong password" oninput="updatePassStrength(this.value)" required />
+                  <div style="height:6px;background:var(--secondary);border-radius:999px;margin-top:8px;overflow:hidden">
+                    <div id="pass-strength-bar" style="height:100%;width:0%;background:var(--destructive);transition:all 200ms"></div>
+                  </div>
+                  <div id="pass-strength-label" style="font-size:12px;color:var(--muted-foreground);margin-top:4px">Minimum 10 characters, must differ from "admin"</div>
+                </div>
+                <div style="margin-bottom:18px">
+                  <label class="label" for="confirm-pass">Confirm New Password</label>
+                  <input id="confirm-pass" type="password" class="input" placeholder="Re-enter password" required />
+                </div>
+                <div style="display:flex;gap:10px">
+                  <button type="submit" class="btn btn-primary" style="flex:1">Save Password & Continue</button>
+                  <button type="button" class="btn btn-secondary" onclick="navigate('overview')">Back</button>
+                </div>
+              </form>
+            ` : `
+              <h1 style="font-size:22px;margin:0 0 6px">Sign in to Lumen</h1>
+              <p style="font-size:14px;color:var(--muted-foreground);margin:0 0 18px">
+                Authenticate with your local ESP32 controller session.
+              </p>
+              <form onsubmit="handleLoginSubmit(event)">
+                <div style="margin-bottom:14px">
+                  <label class="label" for="login-user">Username</label>
+                  <input id="login-user" type="text" class="input" placeholder="admin" autocomplete="username" required />
+                </div>
+                <div style="margin-bottom:18px">
+                  <label class="label" for="login-pass">Password</label>
+                  <input id="login-pass" type="password" class="input" placeholder="••••••••••" autocomplete="current-password" required />
+                </div>
+                <div style="display:flex;flex-direction:column;gap:8px">
+                  <button type="submit" class="btn btn-primary" style="width:100%">Sign In</button>
+                  <button type="button" class="btn btn-ghost btn-sm" onclick="navigate('setup-password')">Simulate First-Run Default Login →</button>
+                </div>
+              </form>
+            `}
+          </div>
+        </div>
+      `;
+    }
+
+    function updatePassStrength(val) {
+      const bar = document.getElementById('pass-strength-bar');
+      const lbl = document.getElementById('pass-strength-label');
+      if (!bar || !lbl) return;
+      let score = 0;
+      if (val.length >= 10) score += 40;
+      if (/[A-Z]/.test(val) && /[a-z]/.test(val)) score += 25;
+      if (/[0-9]/.test(val)) score += 20;
+      if (/[^A-Za-z0-9]/.test(val)) score += 15;
+      bar.style.width = `${score}%`;
+      bar.style.background = score >= 80 ? 'var(--success)' : score >= 40 ? 'var(--warning)' : 'var(--destructive)';
+      lbl.textContent = val.length < 10 ? `${10 - val.length} more characters required` : score >= 80 ? 'Strong password (PBKDF2-HMAC-SHA256 ready)' : 'Acceptable length — add numbers/symbols for stronger security';
+    }
+
+    function handleSetupPasswordSubmit(e) {
+      e.preventDefault();
+      const p1 = document.getElementById('new-pass').value;
+      const p2 = document.getElementById('confirm-pass').value;
+      if (p1.length < 10 || p1.toLowerCase() === 'admin') {
+        showToast('Validation error', 'error', 'Password must be at least 10 characters and not "admin".');
+        return;
+      }
+      if (p1 !== p2) {
+        showToast('Passwords do not match', 'error');
+        return;
+      }
+      showToast('Administrator password updated', 'success', 'Default credential invalidated in NVS.');
+      navigate('overview');
+    }
+
+    function handleLoginSubmit(e) {
+      e.preventDefault();
+      const user = document.getElementById('login-user').value.trim();
+      const pass = document.getElementById('login-pass').value;
+      if (user === 'admin' && pass === 'admin') {
+        showToast('Default credentials detected', 'default', 'Redirecting to mandatory password setup.');
+        navigate('setup-password');
+        return;
+      }
+      showToast('Signed in as ' + (user || 'admin'), 'success', 'HTTP-only session cookie issued.');
+      navigate('overview');
+    }
+
+    // ==========================================================================
+    // SHARED LIGHTING COMPONENTS (Section 5.2 & 5.3)
+    // ==========================================================================
+    function renderLightCard(light, showRoomBadge = false) {
+      const room = state.rooms.find(r => r.id === light.room_id);
+      const isDimmerCapable = light.type !== 'switch';
+      const hasColor = ['rgb', 'rgbw', 'addressable_rgb', 'addressable_rgbw'].includes(light.type);
+      const hasWhite = ['rgbw', 'addressable_rgbw'].includes(light.type);
+      const hasCct = light.type === 'cct';
+      const hasEffects = ['addressable_rgb', 'addressable_rgbw'].includes(light.type);
+      const glowHex = getLightGlowHex(light, '#ffd68a');
+
+      return `
+        <div class="card card-compact" style="display:flex;flex-direction:column;gap:12px;${light.power ? 'border-color:color-mix(in oklch, var(--primary) 45%, var(--border));' : ''}">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+            <div style="display:flex;align-items:center;gap:12px;min-width:0">
+              <button
+                class="power-btn ${light.power ? 'on' : ''}"
+                onclick="toggleLightPower('${light.id}')"
+                aria-label="Toggle ${escapeHtml(light.name)}"
+                aria-pressed="${light.power}">
+                ${Icons.power}
+              </button>
+              <div style="min-width:0">
+                <div style="font-weight:600;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(light.name)}</div>
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:2px">
+                  <span class="badge" style="font-size:11px;padding:1px 7px">${escapeHtml(light.type)}</span>
+                  ${showRoomBadge && room ? `<span style="font-size:12px;color:var(--muted-foreground)">${escapeHtml(room.name)}</span>` : ''}
+                  ${light.power && isDimmerCapable ? `<span class="tabular-nums" style="font-size:12px;font-weight:600;color:var(--primary)">${light.brightness}%</span>` : `<span style="font-size:12px;color:var(--muted-foreground)">${light.power ? 'ON' : 'OFF'}</span>`}
+                </div>
+              </div>
+            </div>
+            ${(hasColor || hasCct || hasEffects) ? `
+              <button class="btn btn-ghost btn-sm" onclick="toggleLightExpand('${light.id}')" aria-label="Expand controls for ${escapeHtml(light.name)}">
+                ${light.color ? `<span style="width:14px;height:14px;border-radius:50%;background:${light.color};border:1px solid var(--border)"></span>` : ''}
+                ${light.expanded ? Icons.chevronUp : Icons.chevronDown}
+              </button>
+            ` : ''}
+          </div>
+
+          ${isDimmerCapable ? `
+            <div>
+              <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted-foreground);margin-bottom:2px">
+                <span>Brightness</span>
+                <span class="tabular-nums">${light.brightness}%</span>
+              </div>
+              <div class="slider-wrap">
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value="${light.brightness}"
+                  class="lumen-slider"
+                  aria-label="${escapeHtml(light.name)} brightness"
+                  oninput="updateLightProp('${light.id}', { brightness: Number(this.value) })"
+                />
+              </div>
+            </div>
+          ` : `
+            <div style="font-size:12px;color:var(--muted-foreground);padding:4px 0">
+              Switched relay channel • Binary ON/OFF only
+            </div>
+          `}
+
+          ${light.expanded && (hasColor || hasCct || hasEffects) ? `
+            <div style="padding-top:10px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:12px">
+              ${hasCct ? `
+                <div>
+                  <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+                    <span style="color:var(--muted-foreground)">Color Temperature (Warm → Cool)</span>
+                    <span class="tabular-nums" style="font-weight:600">${light.cct} K</span>
+                  </div>
+                  <div class="slider-wrap">
+                    <input
+                      type="range"
+                      min="2200"
+                      max="6500"
+                      step="100"
+                      value="${light.cct}"
+                      class="lumen-slider cct-slider"
+                      aria-label="${escapeHtml(light.name)} color temperature"
+                      oninput="updateLightProp('${light.id}', { cct: Number(this.value) })"
+                    />
+                  </div>
+                </div>
+              ` : ''}
+
+              ${hasColor ? `
+                <div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-bottom:6px">
+                    <span style="color:var(--muted-foreground)">RGB Color</span>
+                    <span class="font-mono" style="font-size:12px">${escapeHtml(light.color)}</span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                    <input type="color" value="${light.color}" aria-label="${escapeHtml(light.name)} color wheel" style="width:44px;height:36px;border:1px solid var(--border);border-radius:var(--radius-sm);background:transparent;cursor:pointer" oninput="updateLightProp('${light.id}', { color: this.value })" />
+                    ${['#ff9e44', '#fb7185', '#8b5cf6', '#38bdf8', '#10b981', '#ffffff'].map(swatch => `
+                      <button
+                        type="button"
+                        aria-label="Set color ${swatch}"
+                        onclick="updateLightProp('${light.id}', { color: '${swatch}' })"
+                        style="width:28px;height:28px;border-radius:50%;background:${swatch};border:2px solid ${light.color.toLowerCase() === swatch ? 'var(--foreground)' : 'var(--border)'};cursor:pointer">
+                      </button>
+                    `).join('')}
+                  </div>
+                </div>
+              ` : ''}
+
+              ${hasWhite ? `
+                <div>
+                  <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px">
+                    <span style="color:var(--muted-foreground)">Dedicated White Channel</span>
+                    <span class="tabular-nums">${light.white}%</span>
+                  </div>
+                  <div class="slider-wrap">
+                    <input type="range" min="0" max="100" value="${light.white}" class="lumen-slider" oninput="updateLightProp('${light.id}', { white: Number(this.value) })" />
+                  </div>
+                </div>
+              ` : ''}
+
+              ${hasEffects ? `
+                <div class="grid-2" style="gap:10px">
+                  <div>
+                    <label class="label" style="font-size:12px">Effect</label>
+                    <select class="select" style="min-height:36px;font-size:13px" onchange="updateLightProp('${light.id}', { effect: this.value })">
+                      ${['Solid', 'Breathing', 'Rainbow', 'Candlelight', 'Sunrise', 'Pulse'].map(eff => `
+                        <option value="${eff}" ${light.effect === eff ? 'selected' : ''}>${eff}</option>
+                      `).join('')}
+                    </select>
+                  </div>
+                  <div>
+                    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+                      <span style="color:var(--muted-foreground)">Effect Speed</span>
+                      <span class="tabular-nums">${light.effectSpeed}%</span>
+                    </div>
+                    <div class="slider-wrap" style="height:36px">
+                      <input type="range" min="1" max="100" value="${light.effectSpeed}" class="lumen-slider" oninput="updateLightProp('${light.id}', { effectSpeed: Number(this.value) })" />
+                    </div>
+                  </div>
+                </div>
+              ` : ''}
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }
+
+    function toggleLightExpand(id) {
+      const l = state.lights.find(x => x.id === id);
+      if (l) { l.expanded = !l.expanded; render(); }
+    }
+
+    function renderRoomCard(room, detailedLink = false) {
+      const roomLights = state.lights.filter(l => l.room_id === room.id);
+      const onLights = roomLights.filter(l => l.power);
+      const anyOn = onLights.length > 0;
+      const avgBrightness = onLights.length
+        ? Math.round(onLights.reduce((acc, l) => acc + l.brightness, 0) / onLights.length)
+        : 0;
+
+      return `
+        <div class="card" style="display:flex;flex-direction:column;gap:14px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+            <div style="cursor:pointer" onclick="openRoomDetail('${room.id}')">
+              <div style="display:flex;align-items:center;gap:8px">
+                <h3 style="margin:0;font-size:17px;font-weight:600">${escapeHtml(room.name)}</h3>
+                <span class="badge" style="font-size:11px">${escapeHtml(room.floor)}</span>
+              </div>
+              <div style="font-size:13px;color:var(--muted-foreground);margin-top:2px">
+                ${onLights.length} of ${roomLights.length} lights on
+              </div>
+            </div>
+            <button
+              class="switch"
+              role="switch"
+              aria-checked="${anyOn}"
+              aria-label="Master power for ${escapeHtml(room.name)}"
+              onclick="toggleRoomPower('${room.id}')">
+              <span class="switch-thumb"></span>
+            </button>
+          </div>
+
+          <div>
+            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted-foreground);margin-bottom:2px">
+              <span>Room Brightness</span>
+              <span class="tabular-nums" style="font-weight:600;color:var(--foreground)">${avgBrightness}%</span>
+            </div>
+            <div class="slider-wrap">
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value="${avgBrightness}"
+                class="lumen-slider"
+                aria-label="${escapeHtml(room.name)} master brightness"
+                oninput="setRoomBrightness('${room.id}', this.value)"
+              />
+            </div>
+          </div>
+
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding-top:8px;border-top:1px solid var(--border)">
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              ${state.scenes.slice(0, 2).map(sc => `
+                <button class="btn btn-secondary btn-sm" style="min-height:30px;font-size:12px" onclick="activateScene('${sc.id}')">
+                  <span style="width:8px;height:8px;border-radius:50%;background:${sc.color}"></span>
+                  ${escapeHtml(sc.name)}
+                </button>
+              `).join('')}
+            </div>
+            ${detailedLink ? `
+              <button class="btn btn-ghost btn-sm" onclick="openRoomDetail('${room.id}')">Lights →</button>
+            ` : ''}
+          </div>
+        </div>
+      `;
+    }
+
+    function openRoomDetail(roomId) {
+      state.selectedRoomId = roomId;
+      navigate('rooms');
+    }
+
+    // ==========================================================================
+    // SCREEN 2: OVERVIEW (Section 7.2 — Everyday first, no engineering clutter)
+    // ==========================================================================
+    function renderOverview() {
+      const totalLights = state.lights.length;
+      const onCount = state.lights.filter(l => l.power).length;
+
+      return `
+        <div style="display:flex;flex-direction:column;gap:24px">
+          <!-- 1. Greeting & Status -->
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+            <div>
+              <h1 style="margin:0;font-size:24px;font-weight:700;letter-spacing:-0.02em">Good Evening</h1>
+              <p style="margin:4px 0 0;font-size:14px;color:var(--muted-foreground)">
+                ${escapeHtml(state.controllerName)} • ${state.wsConnected ? 'Synchronized over local WebSocket' : 'Controller disconnected'}
+              </p>
+            </div>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-secondary btn-sm" onclick="navigate('floorplans')">${Icons.map} Floor Plan</button>
+              <button class="btn btn-primary btn-sm" onclick="openSaveSceneModal()">${Icons.plus} Save Scene</button>
+            </div>
+          </div>
+
+          <!-- 2. Lights On Summary Card (Section 7.2) -->
+          <div class="card" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;background:linear-gradient(135deg, color-mix(in oklch, var(--primary) 12%, var(--card)), var(--card))">
+            <div style="display:flex;align-items:center;gap:16px">
+              <div style="width:52px;height:52px;border-radius:var(--radius-lg);background:var(--primary);color:var(--primary-foreground);display:flex;align-items:center;justify-content:center">
+                ${Icons.lightbulb}
+              </div>
+              <div>
+                <div style="font-size:13px;font-weight:500;color:var(--muted-foreground)">Active Lighting</div>
+                <div class="tabular-nums" style="font-size:26px;font-weight:700;letter-spacing:-0.02em">
+                  ${onCount} of ${totalLights} lights on
+                </div>
+              </div>
+            </div>
+            <button class="btn btn-secondary" onclick="allLightsOff()" ${onCount === 0 ? 'disabled' : ''}>
+              ${Icons.power} All Off
+            </button>
+          </div>
+
+          <!-- 5. System Alerts (Only shown if present, Section 7.2) -->
+          ${state.alerts.length > 0 ? `
+            <div style="display:flex;flex-direction:column;gap:10px">
+              ${state.alerts.map(al => `
+                <div class="card card-compact" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;border-left:4px solid ${al.severity === 'warning' ? 'var(--warning)' : 'var(--info)'}">
+                  <div style="display:flex;align-items:flex-start;gap:10px">
+                    <span style="color:${al.severity === 'warning' ? 'var(--warning)' : 'var(--info)'};margin-top:2px">${Icons.alert}</span>
+                    <div>
+                      <div style="font-weight:600;font-size:14px">${escapeHtml(al.title)}</div>
+                      <div style="font-size:13px;color:var(--muted-foreground)">${escapeHtml(al.detail)}</div>
+                    </div>
+                  </div>
+                  <div style="display:flex;gap:8px">
+                    <button class="btn btn-secondary btn-sm" onclick="navigate('${al.actionRoute}', '${al.actionTab || ''}')">${escapeHtml(al.actionLabel)}</button>
+                    <button class="btn btn-ghost btn-sm" onclick="dismissAlert('${al.id}')" aria-label="Dismiss alert">✕</button>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
+
+          <!-- 3. Rooms Grid -->
+          <section>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+              <h2 style="margin:0;font-size:18px;font-weight:600">Rooms</h2>
+              <button class="btn btn-ghost btn-sm" onclick="navigate('rooms')">All Rooms →</button>
+            </div>
+            <div class="grid-2">
+              ${state.rooms.map(r => renderRoomCard(r, true)).join('')}
+            </div>
+          </section>
+
+          <!-- 4. Scenes Horizontal Snap Row (Section 7.2) -->
+          <section>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+              <h2 style="margin:0;font-size:18px;font-weight:600">Scenes</h2>
+              <button class="btn btn-ghost btn-sm" onclick="navigate('scenes')">Manage Scenes →</button>
+            </div>
+            <div class="scenes-row">
+              ${state.scenes.map(sc => `
+                <div class="scene-chip-card" style="background:linear-gradient(160deg, color-mix(in srgb, ${sc.color} 16%, var(--card)), var(--card))">
+                  <div>
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+                      <span style="width:12px;height:12px;border-radius:50%;background:${sc.color}"></span>
+                      <span class="tabular-nums" style="font-size:11px;color:var(--muted-foreground)">${sc.transition_ms}ms</span>
+                    </div>
+                    <div style="font-weight:600;font-size:15px">${escapeHtml(sc.name)}</div>
+                    <div style="font-size:12px;color:var(--muted-foreground)">${sc.states.length} channels</div>
+                  </div>
+                  <button class="btn btn-primary btn-sm" style="width:100%" onclick="activateScene('${sc.id}')">
+                    ${Icons.play} Activate
+                  </button>
+                </div>
+              `).join('')}
+            </div>
+          </section>
+
+          <!-- 6. Active Automations Compact List -->
+          <section>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+              <h2 style="margin:0;font-size:18px;font-weight:600">Automations</h2>
+              <button class="btn btn-ghost btn-sm" onclick="navigate('automations')">Configure →</button>
+            </div>
+            <div class="card card-compact" style="display:flex;flex-direction:column;gap:10px">
+              ${state.automations.map(auto => `
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 4px">
+                  <div>
+                    <div style="font-weight:600;font-size:14px">${escapeHtml(auto.name)}</div>
+                    <div style="font-size:12px;color:var(--muted-foreground)">Trigger: ${escapeHtml(auto.trigger.target)} ${escapeHtml(auto.trigger.event)}</div>
+                  </div>
+                  <button
+                    class="switch"
+                    role="switch"
+                    aria-checked="${auto.enabled}"
+                    aria-label="Enable ${escapeHtml(auto.name)}"
+                    onclick="toggleAutomation('${auto.id}')">
+                    <span class="switch-thumb"></span>
+                  </button>
+                </div>
+              `).join('')}
+            </div>
+          </section>
+        </div>
+      `;
+    }
+
+    function dismissAlert(id) {
+      state.alerts = state.alerts.filter(a => a.id !== id);
+      render();
+    }
+
+    // ==========================================================================
+    // SCREEN 3: ROOMS (Section 7.3 — All 7 logical light types)
+    // ==========================================================================
+    function renderRooms() {
+      const activeRoom = state.selectedRoomId === 'all' ? null : state.rooms.find(r => r.id === state.selectedRoomId);
+      const visibleLights = activeRoom ? state.lights.filter(l => l.room_id === activeRoom.id) : state.lights;
+
+      return `
+        <div style="display:flex;flex-direction:column;gap:20px">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+            <div>
+              <h1 style="margin:0;font-size:24px;font-weight:700">Rooms & Lights</h1>
+              <p style="margin:4px 0 0;font-size:14px;color:var(--muted-foreground)">
+                Type-adaptive controls for switch, dimmer, RGB, RGBW, CCT, and addressable LEDs
+              </p>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="openAddRoomModal()">${Icons.plus} Add Room</button>
+          </div>
+
+          <!-- Room Filter Pills -->
+          <div class="tabs-list">
+            <button class="tab-trigger ${state.selectedRoomId === 'all' ? 'active' : ''}" onclick="state.selectedRoomId='all';render()">
+              All Rooms (${state.lights.length})
+            </button>
+            ${state.rooms.map(r => {
+              const cnt = state.lights.filter(l => l.room_id === r.id).length;
+              return `
+                <button class="tab-trigger ${state.selectedRoomId === r.id ? 'active' : ''}" onclick="state.selectedRoomId='${r.id}';render()">
+                  ${escapeHtml(r.name)} (${cnt})
+                </button>
+              `;
+            }).join('')}
+          </div>
+
+          ${activeRoom ? renderRoomCard(activeRoom, false) : `
+            <div class="grid-2">
+              ${state.rooms.map(r => renderRoomCard(r, true)).join('')}
+            </div>
+          `}
+
+          <div>
+            <h2 style="margin:0 0 12px;font-size:18px;font-weight:600">
+              ${activeRoom ? `${escapeHtml(activeRoom.name)} Channels` : 'All Lighting Channels'}
+            </h2>
+            <div class="grid-cards">
+              ${visibleLights.map(l => renderLightCard(l, !activeRoom)).join('')}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function openAddRoomModal() {
+      state.modal = `
+        <div class="modal-backdrop" onclick="if(event.target===this)closeModal()">
+          <div class="modal-panel">
+            <h2 style="margin:0 0 6px;font-size:18px">Create Room</h2>
+            <p style="margin:0 0 16px;font-size:13px;color:var(--muted-foreground)">Group logical lighting channels by physical space.</p>
+            <form onsubmit="handleCreateRoom(event)" style="display:flex;flex-direction:column;gap:14px">
+              <div>
+                <label class="label">Room Name</label>
+                <input id="new-room-name" class="input" placeholder="e.g., Home Office" required />
+              </div>
+              <div>
+                <label class="label">Floor</label>
+                <select id="new-room-floor" class="select">
+                  <option value="Ground Floor">Ground Floor</option>
+                  <option value="Upper Level">Upper Level</option>
+                </select>
+              </div>
+              <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px">
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Create Room</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      `;
+      render();
+    }
+
+    function handleCreateRoom(e) {
+      e.preventDefault();
+      const name = document.getElementById('new-room-name').value.trim();
+      const floor = document.getElementById('new-room-floor').value;
+      if (!name) return;
+      const id = name.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+      state.rooms.push({ id, name, floor, icon: 'home' });
+      closeModal();
+      showToast(`Room "${name}" created`, 'success');
+    }
+
+    // ==========================================================================
+    // SCREEN 4: FLOOR PLANS (Section 7.5 & Section 9 — Control vs Edit Mode)
+    // ==========================================================================
+    function renderFloorPlans() {
+      const fp = state.floorplans[state.floorplanFloor];
+      const isEdit = state.floorplanMode === 'edit';
+      const placedIds = new Set(fp.placements.map(p => p.light_id));
+      const unplacedLights = state.lights.filter(l => !placedIds.has(l.id));
+      const selectedPlacement = fp.placements.find(p => p.light_id === state.floorplanSelectedLightId);
+      const selectedLight = selectedPlacement ? state.lights.find(l => l.id === selectedPlacement.light_id) : null;
+
+      return `
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <!-- Top Toolbar -->
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <h1 style="margin:0;font-size:24px;font-weight:700">Floor Plans</h1>
+              <select class="select" style="width:auto;min-height:38px" aria-label="Select floor" onchange="state.floorplanFloor=this.value;state.floorplanSelectedLightId=null;render()">
+                <option value="ground_floor" ${state.floorplanFloor === 'ground_floor' ? 'selected' : ''}>Ground Floor</option>
+                <option value="upper_level" ${state.floorplanFloor === 'upper_level' ? 'selected' : ''}>Upper Level</option>
+              </select>
+              ${isEdit ? `<span class="badge badge-warning">${Icons.edit} Editing Mode — Drag nodes to reposition</span>` : ''}
+            </div>
+
+            <!-- Strict Segmented Toggle: Control | Edit (Section 9.5) -->
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <div class="tabs-list" role="group" aria-label="Floor plan mode">
+                <button class="tab-trigger ${!isEdit ? 'active' : ''}" onclick="setFloorplanMode('control')">Control</button>
+                <button class="tab-trigger ${isEdit ? 'active' : ''}" onclick="setFloorplanMode('edit')">Edit</button>
+              </div>
+              <button class="btn btn-secondary btn-sm" onclick="state.floorplanShowListDrawer=!state.floorplanShowListDrawer;render()">
+                List View
+              </button>
+            </div>
+          </div>
+
+          <!-- Architectural SVG Canvas Stage -->
+          <div id="fp-stage" class="floorplan-stage ${isEdit ? 'edit-mode' : ''}">
+            <svg id="fp-svg" viewBox="${fp.viewBox}" width="100%" height="100%" style="display:block">
+              <defs>
+                <pattern id="fp-grid-pattern" width="25" height="25" patternUnits="userSpaceOnUse">
+                  <path d="M 25 0 L 0 0 0 25" fill="none" stroke="var(--floor-grid)" stroke-width="0.8" />
+                </pattern>
+                <filter id="shared-glow-blur" x="-40%" y="-40%" width="180%" height="180%">
+                  <feGaussianBlur stdDeviation="12" />
+                </filter>
+                ${fp.placements.map(p => {
+                  const l = state.lights.find(x => x.id === p.light_id);
+                  const col = l ? getLightGlowHex(l, p.glow_color) : p.glow_color;
+                  return `
+                    <radialGradient id="grad-${p.light_id}" cx="50%" cy="50%" r="50%">
+                      <stop offset="0%" stop-color="${col}" stop-opacity="0.85" />
+                      <stop offset="55%" stop-color="${col}" stop-opacity="0.32" />
+                      <stop offset="100%" stop-color="${col}" stop-opacity="0" />
+                    </radialGradient>
+                  `;
+                }).join('')}
+              </defs>
+
+              <g transform="translate(${state.floorplanPan.x}, ${state.floorplanPan.y}) scale(${state.floorplanZoom})">
+                ${isEdit && state.floorplanSnapGrid ? `<rect x="0" y="0" width="900" height="520" fill="url(#fp-grid-pattern)" />` : ''}
+
+                <!-- Layer 1 & 2: Original Sanitized Architectural SVG + Room Hit Areas -->
+                ${state.floorplanFloor === 'ground_floor' ? `
+                  <g stroke="var(--floor-wall)" stroke-width="3" fill="none">
+                    <!-- Living Room -->
+                    <rect x="60" y="55" width="380" height="310" rx="6" fill="color-mix(in oklch, var(--card) 65%, transparent)" />
+                    <!-- Kitchen -->
+                    <rect x="440" y="55" width="400" height="310" rx="6" fill="color-mix(in oklch, var(--card) 50%, transparent)" />
+                    <!-- Outdoor Patio -->
+                    <rect x="60" y="365" width="780" height="125" rx="6" stroke-dasharray="8 5" fill="color-mix(in oklch, var(--secondary) 55%, transparent)" />
+                  </g>
+                  <g fill="var(--muted-foreground)" font-size="13" font-weight="600" letter-spacing="1.2">
+                    <text x="80" y="84">LIVING ROOM</text>
+                    <text x="460" y="84">KITCHEN &amp; ISLAND</text>
+                    <text x="80" y="392">OUTDOOR PATIO</text>
+                  </g>
+                  <!-- Furniture outlines for realism -->
+                  <g stroke="var(--border)" stroke-width="1.5" fill="none">
+                    <rect x="175" y="135" width="110" height="45" rx="6" />
+                    <rect x="555" y="255" width="110" height="48" rx="4" />
+                  </g>
+                ` : `
+                  <g stroke="var(--floor-wall)" stroke-width="3" fill="none">
+                    <rect x="160" y="75" width="580" height="360" rx="8" fill="color-mix(in oklch, var(--card) 65%, transparent)" />
+                    <line x1="560" y1="75" x2="560" y2="435" />
+                  </g>
+                  <g fill="var(--muted-foreground)" font-size="13" font-weight="600" letter-spacing="1.2">
+                    <text x="185" y="106">MASTER BEDROOM</text>
+                    <text x="580" y="106">ENSUITE &amp; WALK-IN</text>
+                  </g>
+                  <rect x="275" y="165" width="160" height="140" rx="6" stroke="var(--border)" stroke-width="1.5" fill="none" />
+                `}
+
+                <!-- Layer 3: Lighting Glow Overlay (Section 9.3) -->
+                <g>
+                  ${fp.placements.map(p => {
+                    const l = state.lights.find(x => x.id === p.light_id);
+                    if (!l || !l.power) return '';
+                    const scale = 0.6 + (l.brightness / 100) * 0.4;
+                    const opacity = 0.25 + (l.brightness / 100) * 0.75;
+                    return `
+                      <circle
+                        cx="${p.x}"
+                        cy="${p.y}"
+                        r="${p.glow_radius * scale}"
+                        fill="url(#grad-${p.light_id})"
+                        opacity="${opacity.toFixed(2)}"
+                        style="pointer-events:none;transition:opacity 250ms ease-out"
+                      />
+                    `;
+                  }).join('')}
+                </g>
+
+                <!-- Layer 5: Interactive Light Nodes (Accessible role="switch" per Section 12) -->
+                <g>
+                  ${fp.placements.map(p => {
+                    const l = state.lights.find(x => x.id === p.light_id);
+                    if (!l) return '';
+                    const isSelected = state.floorplanSelectedLightId === p.light_id;
+                    const activeColor = getLightGlowHex(l, p.glow_color);
+                    return `
+                      <g
+                        class="fp-light-node"
+                        data-light-id="${p.light_id}"
+                        transform="translate(${p.x}, ${p.y})"
+                        tabindex="0"
+                        role="switch"
+                        aria-checked="${l.power}"
+                        aria-label="${escapeHtml(l.name)}"
+                        style="cursor:${isEdit ? 'grab' : 'pointer'}"
+                        onmousedown="handleFpNodeDown(event, '${p.light_id}')"
+                        ontouchstart="handleFpNodeDown(event, '${p.light_id}')"
+                        onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleLightPower('${p.light_id}')}"
+                      >
+                        ${isSelected ? `<circle r="24" fill="none" stroke="var(--primary)" stroke-width="2.5" stroke-dasharray="4 3" />` : ''}
+                        <circle
+                          r="17"
+                          fill="${l.power ? activeColor : 'var(--card)'}"
+                          stroke="${l.power ? '#1f2937' : 'var(--border)'}"
+                          stroke-width="2"
+                        />
+                        <text y="4" text-anchor="middle" font-size="11" font-weight="700" fill="${l.power ? '#111827' : 'var(--muted-foreground)'}" style="pointer-events:none">
+                          ${l.power ? (l.type === 'switch' ? 'ON' : l.brightness) : 'OFF'}
+                        </text>
+                        <rect x="-54" y="21" width="108" height="18" rx="4" fill="var(--popover)" stroke="var(--border)" stroke-width="0.8" opacity="0.92" />
+                        <text y="33" text-anchor="middle" font-size="10" font-weight="600" fill="var(--foreground)" style="pointer-events:none">
+                          ${escapeHtml(l.name.length > 16 ? l.name.slice(0, 15) + '…' : l.name)}
+                        </text>
+                      </g>
+                    `;
+                  }).join('')}
+                </g>
+              </g>
+            </svg>
+
+            <!-- Floating Zoom & Fullscreen Controls (Section 9.3) -->
+            <div style="position:absolute;bottom:14px;left:14px;display:flex;gap:6px;background:var(--card);padding:4px;border-radius:var(--radius-md);border:1px solid var(--border)">
+              <button class="btn btn-ghost btn-sm" onclick="zoomFloorplan(0.15)" aria-label="Zoom in">+</button>
+              <button class="btn btn-ghost btn-sm tabular-nums" onclick="resetFloorplanView()" aria-label="Reset zoom">${Math.round(state.floorplanZoom * 100)}%</button>
+              <button class="btn btn-ghost btn-sm" onclick="zoomFloorplan(-0.15)" aria-label="Zoom out">−</button>
+              <button class="btn btn-ghost btn-sm" onclick="toggleFloorplanFullscreen()" aria-label="Toggle fullscreen">${Icons.maximize}</button>
+            </div>
+
+            <!-- Selected Light Quick Control / Edit Inspector Popover -->
+            ${selectedLight && selectedPlacement ? `
+              <div class="card card-compact" style="position:absolute;top:14px;right:14px;width:270px;box-shadow:0 10px 25px rgba(0,0,0,0.16);z-index:10">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+                  <div style="font-weight:600;font-size:14px">${escapeHtml(selectedLight.name)}</div>
+                  <button class="btn btn-ghost btn-sm" style="min-height:26px;padding:2px 6px" onclick="state.floorplanSelectedLightId=null;render()">✕</button>
+                </div>
+
+                ${!isEdit ? `
+                  <div style="display:flex;flex-direction:column;gap:10px">
+                    <div style="display:flex;align-items:center;justify-content:space-between">
+                      <span style="font-size:13px">Power</span>
+                      <button class="switch" role="switch" aria-checked="${selectedLight.power}" onclick="toggleLightPower('${selectedLight.id}')"><span class="switch-thumb"></span></button>
+                    </div>
+                    ${selectedLight.type !== 'switch' ? `
+                      <div>
+                        <div style="display:flex;justify-content:space-between;font-size:12px">
+                          <span>Brightness</span>
+                          <span class="tabular-nums">${selectedLight.brightness}%</span>
+                        </div>
+                        <div class="slider-wrap" style="height:34px">
+                          <input type="range" min="0" max="100" value="${selectedLight.brightness}" class="lumen-slider" oninput="updateLightProp('${selectedLight.id}', { brightness: Number(this.value) })" />
+                        </div>
+                      </div>
+                    ` : ''}
+                    ${selectedLight.color ? `
+                      <div style="display:flex;align-items:center;justify-content:space-between">
+                        <span style="font-size:12px">Color</span>
+                        <input type="color" value="${selectedLight.color}" oninput="updateLightProp('${selectedLight.id}', { color: this.value })" />
+                      </div>
+                    ` : ''}
+                  </div>
+                ` : `
+                  <div style="display:flex;flex-direction:column;gap:10px;font-size:12px">
+                    <div class="font-mono" style="color:var(--muted-foreground)">SVG Coords: (${Math.round(selectedPlacement.x)}, ${Math.round(selectedPlacement.y)})</div>
+                    <div>
+                      <div style="display:flex;justify-content:space-between">
+                        <span>Glow Radius</span>
+                        <span class="tabular-nums">${selectedPlacement.glow_radius}px</span>
+                      </div>
+                      <input type="range" min="30" max="130" value="${selectedPlacement.glow_radius}" class="lumen-slider" oninput="updatePlacementProp('${selectedLight.id}', { glow_radius: Number(this.value) })" />
+                    </div>
+                    <div style="display:flex;align-items:center;justify-content:space-between">
+                      <span>Default Glow Color</span>
+                      <input type="color" value="${selectedPlacement.glow_color}" oninput="updatePlacementProp('${selectedLight.id}', { glow_color: this.value })" />
+                    </div>
+                    <button class="btn btn-destructive btn-sm" onclick="removeLightFromFloorplan('${selectedLight.id}')">Remove from Floor</button>
+                  </div>
+                `}
+              </div>
+            ` : ''}
+          </div>
+
+          <!-- Edit Mode Bottom Tray: Snap to Grid, Unassigned Lights & Save (Section 9.4) -->
+          ${isEdit ? `
+            <div class="card card-compact" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+              <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+                  <input type="checkbox" ${state.floorplanSnapGrid ? 'checked' : ''} onchange="state.floorplanSnapGrid=this.checked;render()" />
+                  Snap to 25px grid
+                </label>
+                <span style="color:var(--border)">|</span>
+                <span style="font-size:13px;font-weight:500">Unplaced lights:</span>
+                ${unplacedLights.length ? unplacedLights.map(ul => `
+                  <button class="btn btn-secondary btn-sm" onclick="placeLightOnFloor('${ul.id}')">
+                    ${Icons.plus} ${escapeHtml(ul.name)}
+                  </button>
+                `).join('') : `<span style="font-size:12px;color:var(--muted-foreground)">All lights placed</span>`}
+              </div>
+              <div style="display:flex;gap:8px">
+                <button class="btn btn-secondary btn-sm" onclick="setFloorplanMode('control')">Discard</button>
+                <button class="btn btn-primary btn-sm" onclick="saveFloorplanLayout()">Save Layout</button>
+              </div>
+            </div>
+          ` : ''}
+
+          <!-- Accessible Equivalent Light List (Section 12) -->
+          ${state.floorplanShowListDrawer ? `
+            <div class="card card-compact">
+              <h3 style="margin:0 0 12px;font-size:16px">Accessible Floor Light List (${escapeHtml(fp.name)})</h3>
+              <div class="grid-cards">
+                ${fp.placements.map(p => {
+                  const l = state.lights.find(x => x.id === p.light_id);
+                  return l ? renderLightCard(l, true) : '';
+                }).join('')}
+              </div>
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }
+
+    function setFloorplanMode(mode) {
+      state.floorplanMode = mode;
+      state.floorplanSelectedLightId = null;
+      render();
+    }
+
+    function zoomFloorplan(delta) {
+      state.floorplanZoom = Math.min(2.5, Math.max(0.6, +(state.floorplanZoom + delta).toFixed(2)));
+      render();
+    }
+
+    function resetFloorplanView() {
+      state.floorplanZoom = 1;
+      state.floorplanPan = { x: 0, y: 0 };
+      render();
+    }
+
+    function toggleFloorplanFullscreen() {
+      const stage = document.getElementById('fp-stage');
+      if (!stage) return;
+      if (!document.fullscreenElement) {
+        stage.requestFullscreen?.().catch(() => showToast('Fullscreen blocked by sandbox'));
+      } else {
+        document.exitFullscreen?.();
+      }
+    }
+
+    let fpDragState = null;
+    function handleFpNodeDown(e, lightId) {
+      e.stopPropagation();
+      if (state.floorplanMode === 'control') {
+        toggleLightPower(lightId);
+        state.floorplanSelectedLightId = lightId;
+        render();
+        return;
+      }
+      // Edit mode drag in SVG viewBox coordinates
+      state.floorplanSelectedLightId = lightId;
+      const svg = document.getElementById('fp-svg');
+      if (!svg) return;
+      const rect = svg.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      const fp = state.floorplans[state.floorplanFloor];
+      const placement = fp.placements.find(p => p.light_id === lightId);
+      if (!placement) return;
+
+      fpDragState = {
+        lightId,
+        startClientX: clientX,
+        startClientY: clientY,
+        origX: placement.x,
+        origY: placement.y,
+        scaleX: (900 / rect.width) / state.floorplanZoom,
+        scaleY: (520 / rect.height) / state.floorplanZoom
+      };
+
+      const onMove = (ev) => {
+        if (!fpDragState) return;
+        const cx = ev.touches ? ev.touches[0].clientX : ev.clientX;
+        const cy = ev.touches ? ev.touches[0].clientY : ev.clientY;
+        let nx = fpDragState.origX + (cx - fpDragState.startClientX) * fpDragState.scaleX;
+        let ny = fpDragState.origY + (cy - fpDragState.startClientY) * fpDragState.scaleY;
+        if (state.floorplanSnapGrid) {
+          nx = Math.round(nx / 25) * 25;
+          ny = Math.round(ny / 25) * 25;
+        }
+        placement.x = Math.max(40, Math.min(860, nx));
+        placement.y = Math.max(40, Math.min(480, ny));
+        render();
+      };
+
+      const onUp = () => {
+        fpDragState = null;
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+        window.removeEventListener('touchmove', onMove);
+        window.removeEventListener('touchend', onUp);
+      };
+
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+      window.addEventListener('touchmove', onMove, { passive: false });
+      window.addEventListener('touchend', onUp);
+      render();
+    }
+
+    function updatePlacementProp(lightId, patch) {
+      const fp = state.floorplans[state.floorplanFloor];
+      const p = fp.placements.find(x => x.light_id === lightId);
+      if (p) { Object.assign(p, patch); render(); }
+    }
+
+    function placeLightOnFloor(lightId) {
+      const fp = state.floorplans[state.floorplanFloor];
+      fp.placements.push({ light_id: lightId, x: 450, y: 250, glow_radius: 65, glow_color: '#FFD68A' });
+      state.floorplanSelectedLightId = lightId;
+      render();
+    }
+
+    function removeLightFromFloorplan(lightId) {
+      const fp = state.floorplans[state.floorplanFloor];
+      fp.placements = fp.placements.filter(p => p.light_id !== lightId);
+      state.floorplanSelectedLightId = null;
+      render();
+    }
+
+    function saveFloorplanLayout() {
+      state.floorplanMode = 'control';
+      state.floorplanSelectedLightId = null;
+      showToast('Floor plan layout saved', 'success', 'PUT /api/v1/floorplans/ground_floor/layout');
+      render();
+    }
+
+    // ==========================================================================
+    // SCREEN 5: SCENES (Section 7.4)
+    // ==========================================================================
+    function renderScenes() {
+      return `
+        <div style="display:flex;flex-direction:column;gap:20px">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+            <div>
+              <h1 style="margin:0;font-size:24px;font-weight:700">Scenes</h1>
+              <p style="margin:4px 0 0;font-size:14px;color:var(--muted-foreground)">
+                Capture and recall synchronized lighting states with smooth hardware transitions
+              </p>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn btn-secondary btn-sm" onclick="exportScenesJson()">Export JSON</button>
+              <button class="btn btn-primary btn-sm" onclick="openSaveSceneModal()">${Icons.plus} Save Current State as Scene</button>
+            </div>
+          </div>
+
+          <div class="grid-cards">
+            ${state.scenes.map(sc => `
+              <div class="card" style="display:flex;flex-direction:column;justify-content:space-between;gap:16px;background:linear-gradient(155deg, color-mix(in srgb, ${sc.color} 15%, var(--card)), var(--card))">
+                <div>
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                    <span class="badge">
+                      <span style="width:9px;height:9px;border-radius:50%;background:${sc.color}"></span>
+                      <span class="tabular-nums">${sc.transition_ms}ms fade</span>
+                    </span>
+                    <div style="display:flex;gap:4px">
+                      <button class="btn btn-ghost btn-sm" onclick="openEditSceneModal('${sc.id}')" aria-label="Edit ${escapeHtml(sc.name)}">${Icons.edit}</button>
+                      <button class="btn btn-ghost btn-sm" onclick="duplicateScene('${sc.id}')" aria-label="Duplicate ${escapeHtml(sc.name)}">Copy</button>
+                    </div>
+                  </div>
+                  <h3 style="margin:0 0 4px;font-size:18px;font-weight:600">${escapeHtml(sc.name)}</h3>
+                  <div style="font-size:13px;color:var(--muted-foreground)">
+                    Affects ${sc.states.length} channels:
+                    ${sc.states.slice(0, 3).map(st => {
+                      const l = state.lights.find(x => x.id === st.light_id);
+                      return l ? `${escapeHtml(l.name)} (${st.power ? (st.brightness ?? 100) + '%' : 'OFF'})` : '';
+                    }).filter(Boolean).join(', ')}${sc.states.length > 3 ? '…' : ''}
+                  </div>
+                </div>
+                <div style="display:flex;gap:8px">
+                  <button class="btn btn-primary" style="flex:1" onclick="activateScene('${sc.id}')">${Icons.play} Activate</button>
+                  <button class="btn btn-secondary" onclick="activateScene('${sc.id}', true)">Preview</button>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    function openSaveSceneModal() {
+      state.modal = `
+        <div class="modal-backdrop" onclick="if(event.target===this)closeModal()">
+          <div class="modal-panel">
+            <h2 style="margin:0 0 6px;font-size:18px">Save Current State as Scene</h2>
+            <p style="margin:0 0 16px;font-size:13px;color:var(--muted-foreground)">Captures all ${state.lights.length} current light states from the controller.</p>
+            <form onsubmit="handleSaveNewScene(event)" style="display:flex;flex-direction:column;gap:14px">
+              <div>
+                <label class="label">Scene Name</label>
+                <input id="scene-new-name" class="input" placeholder="e.g., Sunset Reading" required />
+              </div>
+              <div class="grid-2">
+                <div>
+                  <label class="label">Transition Duration (ms)</label>
+                  <input id="scene-new-trans" type="number" class="input" value="1000" min="0" max="10000" step="100" />
+                </div>
+                <div>
+                  <label class="label">Accent Color</label>
+                  <input id="scene-new-color" type="color" value="#f59e0b" style="width:100%;height:40px;border:1px solid var(--border);border-radius:var(--radius-md)" />
+                </div>
+              </div>
+              <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px">
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save Scene</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      `;
+      render();
+    }
+
+    function handleSaveNewScene(e) {
+      e.preventDefault();
+      const name = document.getElementById('scene-new-name').value.trim();
+      const transition_ms = Number(document.getElementById('scene-new-trans').value) || 1000;
+      const color = document.getElementById('scene-new-color').value;
+      if (!name) return;
+      state.scenes.push({
+        id: 'scene_' + Date.now(),
+        name,
+        color,
+        transition_ms,
+        states: state.lights.map(l => ({
+          light_id: l.id,
+          power: l.power,
+          brightness: l.brightness,
+          ...(l.color ? { color: l.color } : {}),
+          ...(l.cct ? { cct: l.cct } : {})
+        }))
+      });
+      closeModal();
+      showToast(`Scene "${name}" saved`, 'success');
+    }
+
+    function openEditSceneModal(sceneId) {
+      const sc = state.scenes.find(s => s.id === sceneId);
+      if (!sc) return;
+      state.modal = `
+        <div class="modal-backdrop" onclick="if(event.target===this)closeModal()">
+          <div class="modal-panel">
+            <h2 style="margin:0 0 12px;font-size:18px">Edit Scene: ${escapeHtml(sc.name)}</h2>
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div>
+                <label class="label">Scene Name</label>
+                <input id="edit-sc-name" class="input" value="${escapeHtml(sc.name)}" />
+              </div>
+              <div>
+                <label class="label">Transition Duration (<span id="edit-sc-trans-val">${sc.transition_ms}</span> ms)</label>
+                <input type="range" min="0" max="5000" step="100" value="${sc.transition_ms}" class="lumen-slider" oninput="document.getElementById('edit-sc-trans-val').textContent=this.value;window._tmpTrans=Number(this.value)" />
+              </div>
+              <div style="border-top:1px solid var(--border);padding-top:10px">
+                <div class="label">Included Channels</div>
+                <div style="display:flex;flex-direction:column;gap:8px;max-height:200px;overflow-y:auto">
+                  ${sc.states.map((st, idx) => {
+                    const l = state.lights.find(x => x.id === st.light_id);
+                    return `
+                      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px;border:1px solid var(--border);border-radius:var(--radius-sm)">
+                        <span style="font-size:13px;font-weight:500">${escapeHtml(l ? l.name : st.light_id)}</span>
+                        <span class="badge">${st.power ? `ON • ${st.brightness ?? 100}%` : 'OFF'}</span>
+                      </div>
+                    `;
+                  }).join('')}
+                </div>
+              </div>
+              <div style="display:flex;justify-content:space-between;gap:8px;margin-top:8px">
+                <button type="button" class="btn btn-destructive btn-sm" onclick="deleteScene('${sc.id}')">Delete</button>
+                <div style="display:flex;gap:8px">
+                  <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                  <button type="button" class="btn btn-primary" onclick="saveEditedScene('${sc.id}')">Save Changes</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+      window._tmpTrans = sc.transition_ms;
+      render();
+    }
+
+    function saveEditedScene(sceneId) {
+      const sc = state.scenes.find(s => s.id === sceneId);
+      if (sc) {
+        sc.name = document.getElementById('edit-sc-name').value.trim() || sc.name;
+        sc.transition_ms = window._tmpTrans ?? sc.transition_ms;
+      }
+      closeModal();
+      showToast('Scene updated', 'success');
+    }
+
+    function deleteScene(sceneId) {
+      state.scenes = state.scenes.filter(s => s.id !== sceneId);
+      closeModal();
+      showToast('Scene deleted');
+    }
+
+    function duplicateScene(sceneId) {
+      const sc = state.scenes.find(s => s.id === sceneId);
+      if (!sc) return;
+      state.scenes.push({ ...JSON.parse(JSON.stringify(sc)), id: 'scene_' + Date.now(), name: sc.name + ' (Copy)' });
+      showToast(`Duplicated "${sc.name}"`, 'success');
+      render();
+    }
+
+    function exportScenesJson() {
+      const json = JSON.stringify({ schema_version: 1, scenes: state.scenes }, null, 2);
+      state.modal = `
+        <div class="modal-backdrop" onclick="if(event.target===this)closeModal()">
+          <div class="modal-panel">
+            <h2 style="margin:0 0 8px;font-size:18px">Scenes JSON Export</h2>
+            <textarea class="textarea font-mono" style="min-height:240px;font-size:12px" readonly>${escapeHtml(json)}</textarea>
+            <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+              <button class="btn btn-primary" onclick="closeModal()">Done</button>
+            </div>
+          </div>
+        </div>
+      `;
+      render();
+    }
+
+    // ==========================================================================
+    // SCREEN 6: AUTOMATIONS (Section 7.6 & Section 10 — Simple & Advanced)
+    // ==========================================================================
+    function renderAutomations() {
+      const activeAuto = state.automations.find(a => a.id === state.selectedAutomationId) || state.automations[0];
+      const targetLight = activeAuto.action.light_id ? state.lights.find(l => l.id === activeAuto.action.light_id) : null;
+
+      // Plain-language summary banner (Section 7.6)
+      const summaryText = `When ${activeAuto.trigger.target} ${activeAuto.trigger.event}${activeAuto.condition.enabled ? `, between ${activeAuto.condition.start} and ${activeAuto.condition.end}` : ''}, ${
+        activeAuto.action.type === 'light_set'
+          ? `turn ${activeAuto.action.power ? 'on' : 'off'} ${targetLight ? targetLight.name : 'light'} at ${activeAuto.action.brightness}%`
+          : activeAuto.action.type === 'scene_activate'
+          ? `activate scene "${state.scenes.find(s => s.id === activeAuto.action.scene_id)?.name || 'Scene'}"`
+          : 'turn all lights off'
+      }.`;
+
+      return `
+        <div style="display:flex;flex-direction:column;gap:20px">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+            <div>
+              <h1 style="margin:0;font-size:24px;font-weight:700">Automations</h1>
+              <p style="margin:4px 0 0;font-size:14px;color:var(--muted-foreground)">
+                Local offline trigger-condition-action engine with loop protection
+              </p>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <div class="tabs-list">
+                <button class="tab-trigger ${state.automationTab === 'simple' ? 'active' : ''}" onclick="state.automationTab='simple';render()">Simple</button>
+                <button class="tab-trigger ${state.automationTab === 'advanced' ? 'active' : ''}" onclick="state.automationTab='advanced';render()">Advanced</button>
+              </div>
+              <button class="btn btn-secondary btn-sm" onclick="state.automationHistoryOpen=!state.automationHistoryOpen;render()">History</button>
+              <button class="btn btn-primary btn-sm" onclick="testRunAutomation('${activeAuto.id}')">${Icons.play} Test Run</button>
+            </div>
+          </div>
+
+          <!-- Rule Selector Strip -->
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            ${state.automations.map(a => `
+              <button class="btn ${a.id === activeAuto.id ? 'btn-primary' : 'btn-secondary'} btn-sm" onclick="state.selectedAutomationId='${a.id}';render()">
+                ${escapeHtml(a.name)} ${a.enabled ? '●' : '○'}
+              </button>
+            `).join('')}
+          </div>
+
+          ${state.automationTab === 'simple' ? `
+            <!-- Plain-Language Summary Banner (Section 7.6) -->
+            <div class="card card-compact" style="background:var(--accent);border-color:color-mix(in oklch, var(--primary) 40%, var(--border))">
+              <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;color:var(--primary);margin-bottom:4px">Rule Summary</div>
+              <div style="font-size:15px;font-weight:500">"${escapeHtml(summaryText)}"</div>
+            </div>
+
+            <div class="grid-2">
+              <!-- 1. Trigger -->
+              <div class="card">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+                  <h3 style="margin:0;font-size:16px">1. Trigger</h3>
+                  <span class="badge badge-primary">Event</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:12px">
+                  <div>
+                    <label class="label">Trigger Type</label>
+                    <select class="select" onchange="updateAutomationField('${activeAuto.id}', 'trigger.type', this.value)">
+                      <option value="input_state" ${activeAuto.trigger.type === 'input_state' ? 'selected' : ''}>Physical Switch / Digital Input</option>
+                      <option value="sunset" ${activeAuto.trigger.type === 'sunset' ? 'selected' : ''}>Astronomical Sunset / Sunrise</option>
+                      <option value="long_press" ${activeAuto.trigger.type === 'long_press' ? 'selected' : ''}>Button Long Press</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="label">Source</label>
+                    <input class="input" value="${escapeHtml(activeAuto.trigger.target)}" onchange="updateAutomationField('${activeAuto.id}', 'trigger.target', this.value)" />
+                  </div>
+                </div>
+              </div>
+
+              <!-- 2. Conditions -->
+              <div class="card">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+                  <h3 style="margin:0;font-size:16px">2. Conditions (Optional)</h3>
+                  <button class="switch" role="switch" aria-checked="${activeAuto.condition.enabled}" onclick="updateAutomationField('${activeAuto.id}', 'condition.enabled', ${!activeAuto.condition.enabled})">
+                    <span class="switch-thumb"></span>
+                  </button>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:12px;opacity:${activeAuto.condition.enabled ? '1' : '0.5'}">
+                  <div class="grid-2">
+                    <div>
+                      <label class="label">Start Time</label>
+                      <input type="time" class="input" value="${activeAuto.condition.start}" onchange="updateAutomationField('${activeAuto.id}', 'condition.start', this.value)" />
+                    </div>
+                    <div>
+                      <label class="label">End Time</label>
+                      <input type="time" class="input" value="${activeAuto.condition.end}" onchange="updateAutomationField('${activeAuto.id}', 'condition.end', this.value)" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 3. Actions -->
+              <div class="card">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+                  <h3 style="margin:0;font-size:16px">3. Action</h3>
+                  <span class="badge badge-success">HAL Output</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:12px">
+                  <div>
+                    <label class="label">Action Type</label>
+                    <select class="select" onchange="updateAutomationField('${activeAuto.id}', 'action.type', this.value)">
+                      <option value="light_set" ${activeAuto.action.type === 'light_set' ? 'selected' : ''}>Set Light Power &amp; Brightness</option>
+                      <option value="scene_activate" ${activeAuto.action.type === 'scene_activate' ? 'selected' : ''}>Activate Scene</option>
+                      <option value="all_off" ${activeAuto.action.type === 'all_off' ? 'selected' : ''}>All Lights Off</option>
+                    </select>
+                  </div>
+                  ${activeAuto.action.type === 'light_set' ? `
+                    <div>
+                      <label class="label">Target Light</label>
+                      <select class="select" onchange="updateAutomationField('${activeAuto.id}', 'action.light_id', this.value)">
+                        ${state.lights.map(l => `<option value="${l.id}" ${activeAuto.action.light_id === l.id ? 'selected' : ''}>${escapeHtml(l.name)}</option>`).join('')}
+                      </select>
+                    </div>
+                    <div>
+                      <label class="label">Target Brightness (<span class="tabular-nums">${activeAuto.action.brightness ?? 80}%</span>)</label>
+                      <input type="range" min="0" max="100" value="${activeAuto.action.brightness ?? 80}" class="lumen-slider" oninput="updateAutomationField('${activeAuto.id}', 'action.brightness', Number(this.value))" />
+                    </div>
+                  ` : ''}
+                </div>
+              </div>
+
+              <!-- 4. Execution Settings -->
+              <div class="card">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+                  <h3 style="margin:0;font-size:16px">4. Execution Safety</h3>
+                  <span class="badge">Anti-loop</span>
+                </div>
+                <div class="grid-2">
+                  <div>
+                    <label class="label">Cooldown (ms)</label>
+                    <input type="number" class="input tabular-nums" value="${activeAuto.execution.cooldown_ms}" onchange="updateAutomationField('${activeAuto.id}', 'execution.cooldown_ms', Number(this.value))" />
+                  </div>
+                  <div>
+                    <label class="label">Max Runs / Hour</label>
+                    <input type="number" class="input tabular-nums" value="${activeAuto.execution.max_per_hour}" onchange="updateAutomationField('${activeAuto.id}', 'execution.max_per_hour', Number(this.value))" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          ` : `
+            <!-- Advanced Visual Node Editor (Section 10) -->
+            <div class="card card-compact" style="display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+                <div style="display:flex;gap:6px;flex-wrap:wrap">
+                  <button class="btn btn-secondary btn-sm" onclick="addFlowNode('trigger')">+ Trigger</button>
+                  <button class="btn btn-secondary btn-sm" onclick="addFlowNode('logic')">+ Condition / AND</button>
+                  <button class="btn btn-secondary btn-sm" onclick="addFlowNode('action')">+ Light / Scene Action</button>
+                </div>
+                <div style="display:flex;gap:8px">
+                  <button class="btn btn-secondary btn-sm" onclick="validateFlowGraph()">Validate Graph</button>
+                  <button class="btn btn-primary btn-sm" onclick="showToast('Serialized declarative automation graph v1', 'success')">Save Graph</button>
+                </div>
+              </div>
+
+              <div id="flow-canvas" class="flow-canvas">
+                <svg width="100%" height="100%" style="position:absolute;inset:0;pointer-events:none">
+                  ${state.flowEdges.map(edge => {
+                    const nFrom = state.flowNodes.find(n => n.id === edge.from);
+                    const nTo = state.flowNodes.find(n => n.id === edge.to);
+                    if (!nFrom || !nTo) return '';
+                    const x1 = nFrom.x + 210;
+                    const y1 = nFrom.y + 34;
+                    const x2 = nTo.x;
+                    const y2 = nTo.y + 34;
+                    const dx = Math.max(40, Math.abs(x2 - x1) * 0.5);
+                    return `<path d="M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}" fill="none" stroke="var(--primary)" stroke-width="2.2" />`;
+                  }).join('')}
+                </svg>
+
+                ${state.flowNodes.map(node => {
+                  const hdrBg = node.category === 'trigger'
+                    ? 'color-mix(in oklch, var(--primary) 24%, var(--card))'
+                    : node.category === 'logic'
+                    ? 'color-mix(in oklch, var(--info) 22%, var(--card))'
+                    : 'color-mix(in oklch, var(--success) 22%, var(--card))';
+                  return `
+                    <div
+                      class="flow-node"
+                      style="left:${node.x}px;top:${node.y}px"
+                      onmousedown="startFlowNodeDrag(event, '${node.id}')"
+                    >
+                      ${node.category !== 'trigger' ? `<div class="flow-port in"></div>` : ''}
+                      <div class="flow-node-header" style="background:${hdrBg}">
+                        <span>${escapeHtml(node.title)}</span>
+                        <span style="font-size:10px;text-transform:uppercase">${node.category}</span>
+                      </div>
+                      <div class="flow-node-body">
+                        <div style="color:var(--muted-foreground)">${escapeHtml(node.subtitle)}</div>
+                      </div>
+                      ${node.category !== 'action' ? `<div class="flow-port out"></div>` : ''}
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+          `}
+
+          <!-- Execution History Log (Section 7.6) -->
+          ${state.automationHistoryOpen ? `
+            <div class="card card-compact">
+              <h3 style="margin:0 0 12px;font-size:16px">Execution History</h3>
+              <div class="table-wrap">
+                <table class="lumen-table">
+                  <thead><tr><th>Time</th><th>Automation</th><th>Result</th><th>Duration</th><th>Detail</th></tr></thead>
+                  <tbody>
+                    ${state.automationHistory.map(h => `
+                      <tr>
+                        <td class="font-mono tabular-nums">${h.time}</td>
+                        <td style="font-weight:500">${escapeHtml(h.name)}</td>
+                        <td><span class="badge ${h.result === 'Success' ? 'badge-success' : ''}">${h.result}</span></td>
+                        <td class="tabular-nums">${h.duration}</td>
+                        <td style="color:var(--muted-foreground)">${escapeHtml(h.detail)}</td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }
+
+    function toggleAutomation(id) {
+      const a = state.automations.find(x => x.id === id);
+      if (a) {
+        a.enabled = !a.enabled;
+        showToast(`${a.name} ${a.enabled ? 'enabled' : 'disabled'}`);
+        render();
+      }
+    }
+
+    function updateAutomationField(id, path, val) {
+      const a = state.automations.find(x => x.id === id);
+      if (!a) return;
+      const parts = path.split('.');
+      if (parts.length === 2) a[parts[0]][parts[1]] = val;
+      render();
+    }
+
+    function testRunAutomation(id) {
+      const a = state.automations.find(x => x.id === id);
+      if (!a) return;
+      if (a.action.type === 'light_set' && a.action.light_id) {
+        updateLightProp(a.action.light_id, { power: true, brightness: a.action.brightness ?? 80 });
+      } else if (a.action.type === 'scene_activate' && a.action.scene_id) {
+        activateScene(a.action.scene_id);
+      } else if (a.action.type === 'all_off') {
+        allLightsOff();
+      }
+      state.automationHistory.unshift({
+        time: new Date().toTimeString().slice(0, 8),
+        name: a.name,
+        result: 'Success',
+        duration: '3ms',
+        detail: 'Manual test execution triggered from WebUI'
+      });
+      showToast(`Executed "${a.name}"`, 'success', 'Recorded in automation execution log');
+      render();
+    }
+
+    function startFlowNodeDrag(e, nodeId) {
+      const node = state.flowNodes.find(n => n.id === nodeId);
+      if (!node) return;
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const origX = node.x;
+      const origY = node.y;
+      const onMove = (ev) => {
+        node.x = Math.max(8, Math.min(620, origX + (ev.clientX - startX)));
+        node.y = Math.max(8, Math.min(360, origY + (ev.clientY - startY)));
+        render();
+      };
+      const onUp = () => {
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+      };
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+    }
+
+    function addFlowNode(category) {
+      const id = 'n_' + Date.now();
+      const map = {
+        trigger: { title: 'Trigger: Schedule', subtitle: 'Daily at 22:30' },
+        logic: { title: 'Logic: Delay', subtitle: 'Wait 1500 ms (non-blocking)' },
+        action: { title: 'Action: Activate Scene', subtitle: 'Scene -> Night Security' }
+      };
+      state.flowNodes.push({ id, category, ...map[category], x: 160 + (state.flowNodes.length * 25) % 240, y: 180 });
+      render();
+    }
+
+    function validateFlowGraph() {
+      const triggers = state.flowNodes.filter(n => n.category === 'trigger');
+      if (triggers.length !== 1) {
+        showToast('Graph validation warning', 'error', 'Graph must have exactly 1 trigger node.');
+        return;
+      }
+      showToast('Graph valid (DFS acyclic check passed)', 'success', `${state.flowNodes.length} nodes, ${state.flowEdges.length} edges ready for firmware.`);
+    }
+
+    // ==========================================================================
+    // SCREEN 7: DEVICES (Section 7.7 — Lights, Inputs, Controllers)
+    // ==========================================================================
+    function renderDevices() {
+      return `
+        <div style="display:flex;flex-direction:column;gap:20px">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+            <div>
+              <h1 style="margin:0;font-size:24px;font-weight:700">Devices</h1>
+              <p style="margin:4px 0 0;font-size:14px;color:var(--muted-foreground)">
+                Logical lighting channels, physical switch inputs, and synchronized ESP-NOW/MQTT controllers
+              </p>
+            </div>
+            <div style="display:flex;gap:8px">
+              <div class="tabs-list">
+                <button class="tab-trigger ${state.devicesTab === 'lights' ? 'active' : ''}" onclick="state.devicesTab='lights';render()">Lights (${state.lights.length})</button>
+                <button class="tab-trigger ${state.devicesTab === 'inputs' ? 'active' : ''}" onclick="state.devicesTab='inputs';render()">Inputs (${state.digitalInputs.length})</button>
+                <button class="tab-trigger ${state.devicesTab === 'controllers' ? 'active' : ''}" onclick="state.devicesTab='controllers';render()">Controllers (${state.controllers.length})</button>
+              </div>
+              ${state.devicesTab === 'lights' ? `<button class="btn btn-primary btn-sm" onclick="openAddLightModal()">${Icons.plus} Add Light</button>` : ''}
+            </div>
+          </div>
+
+          ${state.devicesTab === 'lights' ? `
+            <div class="table-wrap">
+              <table class="lumen-table">
+                <thead>
+                  <tr><th>Channel Name</th><th>Logical Type</th><th>Hardware Driver</th><th>Room</th><th>Live State</th></tr>
+                </thead>
+                <tbody>
+                  ${state.lights.map(l => {
+                    const room = state.rooms.find(r => r.id === l.room_id);
+                    return `
+                      <tr>
+                        <td style="font-weight:600">${escapeHtml(l.name)}</td>
+                        <td><span class="badge">${escapeHtml(l.type)}</span></td>
+                        <td class="font-mono" style="font-size:12px">${escapeHtml(l.driver)}</td>
+                        <td>${escapeHtml(room ? room.name : 'Unassigned')}</td>
+                        <td>
+                          <span class="badge ${l.power ? 'badge-success' : ''}">
+                            ${l.power ? (l.type === 'switch' ? 'ON' : `ON • ${l.brightness}%`) : 'OFF'}
+                          </span>
+                        </td>
+                      </tr>
+                    `;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>
+          ` : state.devicesTab === 'inputs' ? `
+            <div class="grid-2">
+              ${state.digitalInputs.map(inp => `
+                <div class="card card-compact" style="display:flex;flex-direction:column;gap:12px">
+                  <div style="display:flex;align-items:center;justify-content:space-between">
+                    <div>
+                      <div style="font-weight:600;font-size:15px">${escapeHtml(inp.name)}</div>
+                      <div class="font-mono" style="font-size:12px;color:var(--muted-foreground)">${escapeHtml(inp.source)}</div>
+                    </div>
+                    <span class="badge ${inp.state ? 'badge-primary' : ''}">${inp.state ? 'ACTIVE (HIGH)' : 'IDLE (LOW)'}</span>
+                  </div>
+                  <div style="font-size:12px;color:var(--muted-foreground)">Last event: <strong>${escapeHtml(inp.lastEvent)}</strong></div>
+                  <div style="display:flex;gap:6px;flex-wrap:wrap">
+                    <button class="btn btn-secondary btn-sm" onclick="simulatePhysicalInput('${inp.id}', 'Single Press')">Sim Press</button>
+                    <button class="btn btn-secondary btn-sm" onclick="simulatePhysicalInput('${inp.id}', 'Double Press')">Sim Double</button>
+                    <button class="btn btn-secondary btn-sm" onclick="simulatePhysicalInput('${inp.id}', 'Long Press')">Sim Long</button>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          ` : `
+            <div class="table-wrap">
+              <table class="lumen-table">
+                <thead>
+                  <tr><th>Controller</th><th>Role</th><th>Transport</th><th>IP / Link</th><th>Status</th></tr>
+                </thead>
+                <tbody>
+                  ${state.controllers.map(c => `
+                    <tr>
+                      <td style="font-weight:600">${escapeHtml(c.name)}</td>
+                      <td><span class="badge badge-primary">${escapeHtml(c.role)}</span></td>
+                      <td>${escapeHtml(c.transport)}</td>
+                      <td class="font-mono" style="font-size:12px">${escapeHtml(c.ip)} • ${escapeHtml(c.rssi)}</td>
+                      <td><span class="badge badge-success">● Online (${escapeHtml(c.lastSeen)})</span></td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          `}
+        </div>
+      `;
+    }
+
+    function simulatePhysicalInput(inputId, eventType) {
+      const inp = state.digitalInputs.find(x => x.id === inputId);
+      if (!inp) return;
+      inp.state = true;
+      inp.lastEvent = `${eventType} (Just now)`;
+      showToast(`Input event: ${inp.name}`, 'default', `${eventType} pushed via WebSocket`);
+      if (inputId === 'in_01' && eventType === 'Single Press') {
+        testRunAutomation('kitchen_evening');
+      } else if (inputId === 'in_17' && eventType === 'Long Press') {
+        testRunAutomation('all_off_wall_long');
+      }
+      render();
+      setTimeout(() => { inp.state = false; render(); }, 900);
+    }
+
+    function openAddLightModal() {
+      state.modal = `
+        <div class="modal-backdrop" onclick="if(event.target===this)closeModal()">
+          <div class="modal-panel">
+            <h2 style="margin:0 0 8px;font-size:18px">Add Logical Lighting Channel</h2>
+            <form onsubmit="handleAddLight(event)" style="display:flex;flex-direction:column;gap:12px">
+              <div>
+                <label class="label">Channel Name</label>
+                <input id="al-name" class="input" placeholder="e.g., Hallway Sconces" required />
+              </div>
+              <div class="grid-2">
+                <div>
+                  <label class="label">Logical Type (SPEC 8.2)</label>
+                  <select id="al-type" class="select">
+                    <option value="dimmer">dimmer</option>
+                    <option value="switch">switch</option>
+                    <option value="rgb">rgb</option>
+                    <option value="rgbw">rgbw</option>
+                    <option value="cct">cct</option>
+                    <option value="addressable_rgb">addressable_rgb</option>
+                    <option value="addressable_rgbw">addressable_rgbw</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="label">Room</label>
+                  <select id="al-room" class="select">
+                    ${state.rooms.map(r => `<option value="${r.id}">${escapeHtml(r.name)}</option>`).join('')}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label class="label">HAL Output Driver</label>
+                <select id="al-driver" class="select">
+                  <option value="pca9685_0 ch 14">pca9685_0 ch 14 (12-bit PWM)</option>
+                  <option value="pca9685_0 ch 15">pca9685_0 ch 15 (12-bit PWM)</option>
+                  <option value="relay2 (GPIO 2)">relay2 (GPIO 2)</option>
+                  <option value="ledc_ch0 (GPIO 26)">ledc_ch0 (GPIO 26 Native PWM)</option>
+                </select>
+              </div>
+              <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px">
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Add Channel</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      `;
+      render();
+    }
+
+    function handleAddLight(e) {
+      e.preventDefault();
+      const name = document.getElementById('al-name').value.trim();
+      const type = document.getElementById('al-type').value;
+      const room_id = document.getElementById('al-room').value;
+      const driver = document.getElementById('al-driver').value;
+      if (!name) return;
+      state.lights.push({
+        id: 'light_' + Date.now(),
+        name,
+        room_id,
+        type,
+        driver,
+        power: false,
+        brightness: 75,
+        ...(type.includes('rgb') ? { color: '#ffd68a' } : {}),
+        ...(type.includes('rgbw') ? { white: 50 } : {}),
+        ...(type === 'cct' ? { cct: 3200 } : {}),
+        ...(type.startsWith('addressable') ? { effect: 'Solid', effectSpeed: 50 } : {}),
+        expanded: false
+      });
+      closeModal();
+      showToast(`Added light "${name}"`, 'success');
+    }
+
+    // ==========================================================================
+    // SCREEN 8: HARDWARE (Section 7.8 — Board, Pin Mapping, Peripherals, etc.)
+    // ==========================================================================
+    function renderHardware() {
+      const activeBoard = state.boardProfiles.find(b => b.id === state.activeBoardId) || state.boardProfiles[0];
+      const conflicts = state.gpioPins.filter(p => p.conflict);
+
+      return `
+        <div style="display:flex;flex-direction:column;gap:20px">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+            <div>
+              <h1 style="margin:0;font-size:24px;font-weight:700">Hardware Abstraction Layer</h1>
+              <p style="margin:4px 0 0;font-size:14px;color:var(--muted-foreground)">
+                Board profiles, MCU GPIO validation, I2C peripherals, and real-time diagnostics
+              </p>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="openApplyBoardConfirm()">Validate &amp; Apply Profile</button>
+          </div>
+
+          <!-- 6 Hardware Sub-Tabs (Section 7.8) -->
+          <div class="tabs-list">
+            ${[
+              ['board', 'Board'],
+              ['pinmap', 'Pin Mapping'],
+              ['peripherals', 'Peripherals'],
+              ['outputs', 'Outputs'],
+              ['inputs', 'Inputs'],
+              ['diagnostics', 'Diagnostics']
+            ].map(([key, label]) => `
+              <button class="tab-trigger ${state.hardwareTab === key ? 'active' : ''}" onclick="state.hardwareTab='${key}';render()">${label}</button>
+            `).join('')}
+          </div>
+
+          ${state.hardwareTab === 'board' ? `
+            <div class="card" style="border-color:var(--primary)">
+              <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+                <div>
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <span class="badge badge-success">Active Profile</span>
+                    <span class="badge font-mono">${activeBoard.mcu.toUpperCase()}</span>
+                    ${activeBoard.builtIn ? `<span class="badge">${Icons.lock} Built-in Locked</span>` : `<span class="badge badge-primary">Custom Editable</span>`}
+                  </div>
+                  <h2 style="margin:8px 0 4px;font-size:20px">${escapeHtml(activeBoard.name)}</h2>
+                  <p style="margin:0;font-size:14px;color:var(--muted-foreground)">${escapeHtml(activeBoard.desc)}</p>
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <button class="btn btn-secondary btn-sm" onclick="duplicateActiveBoard()">Duplicate</button>
+                  <button class="btn btn-secondary btn-sm" onclick="exportBoardJson()">Export JSON</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="grid-2">
+              ${state.boardProfiles.map(bp => `
+                <div class="card card-compact" style="display:flex;flex-direction:column;justify-content:space-between;gap:12px">
+                  <div>
+                    <div style="display:flex;align-items:center;justify-content:space-between">
+                      <strong>${escapeHtml(bp.name)}</strong>
+                      <span class="badge font-mono">${bp.mcu}</span>
+                    </div>
+                    <p style="margin:6px 0 0;font-size:13px;color:var(--muted-foreground)">${escapeHtml(bp.desc)}</p>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;align-items:center">
+                    <span style="font-size:12px;color:var(--muted-foreground)">${bp.builtIn ? 'Factory Built-in' : 'User Custom'}</span>
+                    <button class="btn ${bp.id === state.activeBoardId ? 'btn-secondary' : 'btn-primary'} btn-sm" onclick="selectBoardCandidate('${bp.id}')">
+                      ${bp.id === state.activeBoardId ? 'Selected' : 'Load Candidate'}
+                    </button>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          ` : state.hardwareTab === 'pinmap' ? `
+            ${conflicts.length > 0 ? `
+              <div class="card card-compact" style="border-left:4px solid var(--destructive);background:color-mix(in oklch, var(--destructive) 10%, var(--card))">
+                <strong>PinValidator Error:</strong> Duplicate or reserved GPIO assignment detected on ${conflicts.map(c => 'GPIO ' + c.gpio).join(', ')}.
+              </div>
+            ` : ''}
+            <div class="card">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+                <div>
+                  <h3 style="margin:0;font-size:16px">ESP32 GPIO Resource Map (${escapeHtml(activeBoard.name)})</h3>
+                  <div style="font-size:12px;color:var(--muted-foreground)">Click any pin chip to inspect or reassign role. Strapping &amp; input-only pins are marked.</div>
+                </div>
+                <button class="btn btn-secondary btn-sm" onclick="runPinValidation()">Run POST /boards/validate</button>
+              </div>
+              <div class="gpio-grid">
+                ${state.gpioPins.map(pin => `
+                  <button type="button" class="pin-chip ${pin.conflict ? 'conflict' : ''}" onclick="openPinAssignModal(${pin.gpio})">
+                    <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
+                      <span class="pin-chip-num">GPIO ${pin.gpio}</span>
+                      ${pin.strapping ? `<span class="badge badge-warning" style="font-size:10px;padding:0 5px">Strap</span>` : ''}
+                      ${pin.dir === 'input-only' ? `<span class="badge" style="font-size:10px;padding:0 5px">In-Only</span>` : ''}
+                    </div>
+                    <div style="font-size:13px;font-weight:500;color:${pin.dir === 'free' ? 'var(--muted-foreground)' : 'var(--foreground)'}">${escapeHtml(pin.role)}</div>
+                    <div style="font-size:11px;color:var(--muted-foreground)">${escapeHtml(pin.dir)}</div>
+                  </button>
+                `).join('')}
+              </div>
+            </div>
+          ` : state.hardwareTab === 'peripherals' ? `
+            <div class="card card-compact" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+              <div>
+                <strong>I2C Bus 0 (SDA: GPIO 4, SCL: GPIO 16)</strong>
+                <div style="font-size:13px;color:var(--muted-foreground)">Scan bus to verify PCA9685 and PCF8574 hardware addresses (SPEC 6.3).</div>
+              </div>
+              <button class="btn btn-primary btn-sm" onclick="runI2cBusScan()" ${state.i2cScanning ? 'disabled' : ''}>
+                ${state.i2cScanning ? 'Scanning I2C Bus…' : 'Run GET /hardware/i2c/scan'}
+              </button>
+            </div>
+
+            ${state.i2cScanResults ? `
+              <div class="card card-compact" style="border-left:4px solid var(--warning)">
+                <div style="font-weight:600;margin-bottom:6px">I2C Scan Discovered 3 Devices:</div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+                  <span class="badge badge-success font-mono">0x21 — PCF8574 #2 (Inputs 9-16)</span>
+                  <span class="badge badge-success font-mono">0x22 — PCF8574 #1 (Inputs 1-8)</span>
+                  <span class="badge badge-warning font-mono">0x40 — PCA9685 PWM (Profile had 0x00!)</span>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+                  <span style="font-size:13px;color:var(--muted-foreground)">SPEC 6.3 requires user confirmation before switching PCA9685 from <code>0x00</code> to <code>0x40</code>.</span>
+                  ${!state.pca9685AddressConfirmed ? `
+                    <button class="btn btn-primary btn-sm" onclick="confirmPca9685Address()">Confirm 0x40 &amp; Clear Alert</button>
+                  ` : `<span class="badge badge-success">✓ Address 0x40 Confirmed</span>`}
+                </div>
+              </div>
+            ` : ''}
+
+            <div class="table-wrap">
+              <table class="lumen-table">
+                <thead><tr><th>Peripheral ID</th><th>Driver</th><th>Bus / Address</th><th>Channels</th><th>Status</th></tr></thead>
+                <tbody>
+                  <tr><td class="font-mono">pca9685_0</td><td>PCA9685 12-bit PWM</td><td class="font-mono">i2c0 @ ${state.pca9685AddressConfirmed ? '0x40' : '0x00 (unverified)'}</td><td>16 ch (1000 Hz)</td><td><span class="badge ${state.pca9685AddressConfirmed ? 'badge-success' : 'badge-warning'}">${state.pca9685AddressConfirmed ? 'Verified' : 'Verify Addr'}</span></td></tr>
+                  <tr><td class="font-mono">pcf8574_1</td><td>PCF8574 I/O Expander</td><td class="font-mono">i2c0 @ 0x22</td><td>8 inputs (inverted)</td><td><span class="badge badge-success">Healthy</span></td></tr>
+                  <tr><td class="font-mono">pcf8574_2</td><td>PCF8574 I/O Expander</td><td class="font-mono">i2c0 @ 0x21</td><td>8 inputs (inverted)</td><td><span class="badge badge-success">Healthy</span></td></tr>
+                  <tr><td class="font-mono">ethernet0</td><td>LAN8720 RMII PHY</td><td class="font-mono">MDC:23 MDIO:18 CLK:17</td><td>100Mbps Full</td><td><span class="badge badge-success">Link Up</span></td></tr>
+                  <tr><td class="font-mono">rs485_0</td><td>UART RS485 Transceiver</td><td class="font-mono">RX:33 TX:14</td><td>9600 8N1</td><td><span class="badge">Ready</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          ` : state.hardwareTab === 'outputs' ? `
+            <div class="card">
+              <h3 style="margin:0 0 12px;font-size:16px">Hardware Outputs Direct Test (PCA9685 &amp; Relays)</h3>
+              <div class="grid-4">
+                ${state.pca9685Channels.slice(0, 8).map((pct, idx) => `
+                  <div class="card card-compact">
+                    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+                      <span class="font-mono" style="font-weight:600">PWM CH ${idx}</span>
+                      <span class="tabular-nums">${Math.round(pct * 40.95)} / 4095</span>
+                    </div>
+                    <input type="range" min="0" max="100" value="${pct}" class="lumen-slider" oninput="state.pca9685Channels[${idx}]=Number(this.value);render()" />
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          ` : state.hardwareTab === 'inputs' ? `
+            <div class="card">
+              <h3 style="margin:0 0 12px;font-size:16px">Raw Hardware Digital Inputs (PCF8574 &amp; Native GPIO)</h3>
+              <div class="grid-4">
+                ${state.digitalInputs.map(inp => `
+                  <div class="card card-compact" style="display:flex;align-items:center;justify-content:space-between">
+                    <div>
+                      <div class="font-mono" style="font-weight:600;font-size:13px">${escapeHtml(inp.id.toUpperCase())}</div>
+                      <div style="font-size:11px;color:var(--muted-foreground)">${escapeHtml(inp.source)}</div>
+                    </div>
+                    <span class="badge ${inp.state ? 'badge-primary' : ''}">${inp.state ? '1' : '0'}</span>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          ` : `
+            <!-- Diagnostics Tab (Section 7.8 — Recharts-style SVG charts & structured logs) -->
+            <div class="grid-2">
+              <div class="card">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                  <h3 style="margin:0;font-size:16px">ESP32 Free Heap Memory</h3>
+                  <span class="badge badge-success tabular-nums">184.2 KB Free</span>
+                </div>
+                <svg viewBox="0 0 400 130" width="100%" height="130" style="display:block">
+                  <defs>
+                    <linearGradient id="heapGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color="var(--chart-1)" stop-opacity="0.35" />
+                      <stop offset="100%" stop-color="var(--chart-1)" stop-opacity="0.02" />
+                    </linearGradient>
+                  </defs>
+                  <path d="M 0 45 L 50 42 L 100 48 L 150 40 L 200 38 L 250 44 L 300 39 L 350 37 L 400 38 L 400 130 L 0 130 Z" fill="url(#heapGrad)" />
+                  <polyline points="0,45 50,42 100,48 150,40 200,38 250,44 300,39 350,37 400,38" fill="none" stroke="var(--chart-1)" stroke-width="2.5" />
+                </svg>
+                <div style="font-size:12px;color:var(--muted-foreground);margin-top:6px">Minimum free heap since boot: 171.8 KB • Zero fragmentation warnings</div>
+              </div>
+
+              <div class="card">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                  <h3 style="margin:0;font-size:16px">FreeRTOS Task CPU Load</h3>
+                  <span class="badge tabular-nums">Core 0: 14% • Core 1: 9%</span>
+                </div>
+                <svg viewBox="0 0 400 130" width="100%" height="130" style="display:block">
+                  <polyline points="0,95 50,88 100,92 150,80 200,85 250,78 300,84 350,82 400,80" fill="none" stroke="var(--chart-2)" stroke-width="2.5" />
+                  <polyline points="0,110 50,108 100,105 150,102 200,106 250,100 300,104 350,101 400,103" fill="none" stroke="var(--chart-3)" stroke-width="2.5" />
+                </svg>
+                <div style="font-size:12px;color:var(--muted-foreground);margin-top:6px">Lighting Engine Task: 30 Hz transition tick • I2C Bus Errors: 0</div>
+              </div>
+            </div>
+
+            <div class="card card-compact">
+              <h3 style="margin:0 0 10px;font-size:16px">Structured Controller Logs (SPEC Section 21)</h3>
+              <div class="font-mono" style="font-size:12px;background:var(--muted);padding:12px;border-radius:var(--radius-md);display:flex;flex-direction:column;gap:4px;overflow-x:auto">
+                <div>[18:42:11.042] <span style="color:var(--chart-3)">[AUTOMATION]</span> Rule 'kitchen_evening' matched trigger input_01</div>
+                <div>[18:42:11.045] <span style="color:var(--chart-1)">[LIGHTING]</span> Channel 'kitchen_main' transition 0% -> 80% (500ms)</div>
+                <div>[18:40:02.819] <span style="color:var(--chart-2)">[ESP_NOW]</span> Heartbeat ACK from peer ctrl_02 (RSSI -54 dBm, seq 1042)</div>
+                <div>[18:35:00.110] <span style="color:var(--warning)">[HARDWARE]</span> PCA9685 address 0x00 marked unverified in board profile</div>
+              </div>
+            </div>
+          `}
+        </div>
+      `;
+    }
+
+    function selectBoardCandidate(id) {
+      state.activeBoardId = id;
+      showToast('Candidate board profile loaded', 'default', 'Click "Validate & Apply Profile" to commit.');
+      render();
+    }
+
+    function duplicateActiveBoard() {
+      const bp = state.boardProfiles.find(b => b.id === state.activeBoardId);
+      if (!bp) return;
+      const copy = { ...bp, id: 'custom_' + Date.now(), name: bp.name + ' (Custom)', builtIn: false };
+      state.boardProfiles.push(copy);
+      state.activeBoardId = copy.id;
+      showToast(`Created editable profile "${copy.name}"`, 'success');
+      render();
+    }
+
+    function exportBoardJson() {
+      const bp = state.boardProfiles.find(b => b.id === state.activeBoardId);
+      state.modal = `
+        <div class="modal-backdrop" onclick="if(event.target===this)closeModal()">
+          <div class="modal-panel">
+            <h2 style="margin:0 0 8px;font-size:18px">Board Profile JSON (${escapeHtml(bp.id)})</h2>
+            <textarea class="textarea font-mono" style="min-height:240px;font-size:12px" readonly>${escapeHtml(JSON.stringify({ schema_version: 1, ...bp, resources: state.gpioPins }, null, 2))}</textarea>
+            <div style="display:flex;justify-content:flex-end;margin-top:12px">
+              <button class="btn btn-primary" onclick="closeModal()">Close</button>
+            </div>
+          </div>
+        </div>
+      `;
+      render();
+    }
+
+    function openPinAssignModal(gpio) {
+      const pin = state.gpioPins.find(p => p.gpio === gpio);
+      if (!pin) return;
+      state.modal = `
+        <div class="modal-backdrop" onclick="if(event.target===this)closeModal()">
+          <div class="modal-panel">
+            <h2 style="margin:0 0 6px;font-size:18px">Configure GPIO ${pin.gpio}</h2>
+            <p style="margin:0 0 14px;font-size:13px;color:var(--muted-foreground)">
+              ${pin.dir === 'input-only' ? 'Hardware restriction: GPIO 34-39 on ESP32 are input-only without internal pull-ups.' : pin.strapping ? 'Warning: Boot strapping pin — ensure safe idle polarity.' : 'General purpose digital/peripheral GPIO.'}
+            </p>
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div>
+                <label class="label">Assigned Function</label>
+                <select id="pin-role-sel" class="select">
+                  <option value="${escapeHtml(pin.role)}">${escapeHtml(pin.role)} (Current)</option>
+                  <option value="LEDC Native PWM">LEDC Native PWM</option>
+                  <option value="RMT Addressable LED">RMT Addressable LED</option>
+                  <option value="Digital Input">Digital Input</option>
+                  <option value="I2C0 SDA">I2C0 SDA (Conflict Test)</option>
+                  <option value="Unassigned">Unassigned</option>
+                </select>
+              </div>
+              <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px">
+                <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="savePinAssignment(${pin.gpio})">Update Pin</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+      render();
+    }
+
+    function savePinAssignment(gpio) {
+      const pin = state.gpioPins.find(p => p.gpio === gpio);
+      const nextRole = document.getElementById('pin-role-sel').value;
+      if (pin) {
+        pin.role = nextRole;
+        pin.dir = nextRole === 'Unassigned' ? 'free' : nextRole.includes('Input') ? 'input' : 'output';
+        pin.conflict = (nextRole === 'I2C0 SDA' && gpio !== 4) || (pin.dir === 'input-only' && nextRole.includes('PWM'));
+      }
+      closeModal();
+      runPinValidation();
+    }
+
+    function runPinValidation() {
+      const conflicts = state.gpioPins.filter(p => p.conflict);
+      if (conflicts.length) {
+        showToast('Pin validation failed', 'error', `Conflict on GPIO ${conflicts.map(c => c.gpio).join(', ')}`);
+      } else {
+        showToast('POST /boards/validate passed', 'success', 'Zero GPIO, strapping, or peripheral conflicts.');
+      }
+      render();
+    }
+
+    function runI2cBusScan() {
+      state.i2cScanning = true;
+      render();
+      setTimeout(() => {
+        state.i2cScanning = false;
+        state.i2cScanResults = ['0x21', '0x22', '0x40'];
+        showToast('I2C Bus Scan Complete', 'default', 'Found 3 devices at 0x21, 0x22, 0x40.');
+        render();
+      }, 650);
+    }
+
+    function confirmPca9685Address() {
+      state.pca9685AddressConfirmed = true;
+      state.alerts = state.alerts.filter(a => a.id !== 'pca_addr');
+      showToast('PCA9685 address 0x40 confirmed', 'success', 'Hardware driver initialized.');
+      render();
+    }
+
+    function openApplyBoardConfirm() {
+      state.modal = `
+        <div class="modal-backdrop" onclick="if(event.target===this)closeModal()">
+          <div class="modal-panel">
+            <h2 style="margin:0 0 8px;font-size:18px;color:var(--destructive)">Apply Hardware Profile?</h2>
+            <p style="margin:0 0 16px;font-size:14px;color:var(--muted-foreground)">
+              All physical outputs (relays and PWM channels) will briefly transition to configured safe states during transactional HAL re-initialization (SPEC 5.4). Automatic rollback is active if peripheral diagnostics fail.
+            </p>
+            <div style="display:flex;justify-content:flex-end;gap:8px">
+              <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+              <button class="btn btn-primary" onclick="closeModal();showToast('Hardware profile applied & committed','success','All peripheral diagnostics passed.')">Confirm &amp; Apply</button>
+            </div>
+          </div>
+        </div>
+      `;
+      render();
+    }
+
+    // ==========================================================================
+    // SCREEN 9: INTEGRATIONS (Section 7.9 — Write-only secrets)
+    // ==========================================================================
+    function renderIntegrations() {
+      const { mqtt, ha, espnow, tcp, udp } = state.integrations;
+      return `
+        <div style="display:flex;flex-direction:column;gap:20px">
+          <div>
+            <h1 style="margin:0;font-size:24px;font-weight:700">Integrations</h1>
+            <p style="margin:4px 0 0;font-size:14px;color:var(--muted-foreground)">
+              Local protocols and multi-controller synchronization (secrets are write-only in NVS)
+            </p>
+          </div>
+
+          <div class="grid-2">
+            <!-- MQTT -->
+            <div class="card" style="display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;align-items:center;justify-content:space-between">
+                <h3 style="margin:0;font-size:17px">MQTT Broker</h3>
+                <button class="switch" role="switch" aria-checked="${mqtt.enabled}" onclick="state.integrations.mqtt.enabled=!state.integrations.mqtt.enabled;render()"><span class="switch-thumb"></span></button>
+              </div>
+              <div class="grid-2">
+                <div><label class="label">Broker URI</label><input class="input font-mono" value="${escapeHtml(mqtt.broker)}" /></div>
+                <div><label class="label">Port</label><input type="number" class="input tabular-nums" value="${mqtt.port}" /></div>
+              </div>
+              <div class="grid-2">
+                <div><label class="label">Username</label><input class="input" value="${escapeHtml(mqtt.username)}" /></div>
+                <div>
+                  <label class="label">Password (Write-Only)</label>
+                  <div style="display:flex;gap:6px">
+                    <input class="input" value="•••••• (set)" disabled />
+                    <button class="btn btn-secondary btn-sm" onclick="showToast('Enter new MQTT secret to overwrite NVS key')">Replace</button>
+                  </div>
+                </div>
+              </div>
+              <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px">
+                <button class="btn btn-secondary btn-sm" onclick="showToast('MQTT connection test succeeded (18ms)','success','Subscribed to lighting/kc868_main/#')">Test Connection</button>
+                <button class="btn btn-primary btn-sm" onclick="showToast('MQTT settings saved','success')">Save</button>
+              </div>
+            </div>
+
+            <!-- Home Assistant Discovery -->
+            <div class="card" style="display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;align-items:center;justify-content:space-between">
+                <h3 style="margin:0;font-size:17px">Home Assistant MQTT Discovery</h3>
+                <button class="switch" role="switch" aria-checked="${ha.enabled}" onclick="state.integrations.ha.enabled=!state.integrations.ha.enabled;render()"><span class="switch-thumb"></span></button>
+              </div>
+              <div>
+                <label class="label">Discovery Topic Prefix</label>
+                <input class="input font-mono" value="${escapeHtml(ha.discoveryPrefix)}" />
+              </div>
+              <div style="font-size:13px;color:var(--muted-foreground)">
+                Publishes retained JSON discovery payloads for ${ha.entityCount} lights, groups, and controller availability.
+              </div>
+              <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:auto">
+                <button class="btn btn-secondary btn-sm" onclick="showToast('Republished 14 HA Discovery configs','success')">Republish Entities</button>
+              </div>
+            </div>
+
+            <!-- ESP-NOW -->
+            <div class="card" style="display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;align-items:center;justify-content:space-between">
+                <h3 style="margin:0;font-size:17px">ESP-NOW Multi-Controller Sync</h3>
+                <button class="switch" role="switch" aria-checked="${espnow.enabled}" onclick="state.integrations.espnow.enabled=!state.integrations.espnow.enabled;render()"><span class="switch-thumb"></span></button>
+              </div>
+              <div class="grid-2">
+                <div><label class="label">Wi-Fi Radio Channel</label><input type="number" class="input tabular-nums" value="${espnow.channel}" min="1" max="13" /></div>
+                <div><label class="label">Active Mesh Peers</label><input class="input tabular-nums" value="${espnow.peers} / 20 max" disabled /></div>
+              </div>
+              <div style="font-size:13px;color:var(--muted-foreground)">
+                Low-latency local wireless state &amp; scene synchronization with replay protection and sequence IDs.
+              </div>
+            </div>
+
+            <!-- TCP & UDP -->
+            <div class="card" style="display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;align-items:center;justify-content:space-between">
+                <h3 style="margin:0;font-size:17px">TCP &amp; UDP Local API</h3>
+                <span class="badge badge-success">Authenticated</span>
+              </div>
+              <div class="grid-2">
+                <div>
+                  <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+                    <span class="label" style="margin:0">TCP JSON Server</span>
+                    <input type="checkbox" ${tcp.enabled ? 'checked' : ''} onchange="state.integrations.tcp.enabled=this.checked;render()" />
+                  </div>
+                  <input type="number" class="input tabular-nums" value="${tcp.port}" />
+                </div>
+                <div>
+                  <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+                    <span class="label" style="margin:0">UDP Discovery/Control</span>
+                    <input type="checkbox" ${udp.enabled ? 'checked' : ''} onchange="state.integrations.udp.enabled=this.checked;render()" />
+                  </div>
+                  <input type="number" class="input tabular-nums" value="${udp.port}" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // ==========================================================================
+    // SCREEN 10: NETWORK (Section 7.10 — Wi-Fi Station, AP Fallback, Ethernet)
+    // ==========================================================================
+    function renderNetwork() {
+      const net = state.network;
+      return `
+        <div style="display:flex;flex-direction:column;gap:20px">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+            <div>
+              <h1 style="margin:0;font-size:24px;font-weight:700">Network</h1>
+              <p style="margin:4px 0 0;font-size:14px;color:var(--muted-foreground)">
+                Ethernet LAN8720, Wi-Fi Station, and provisioning Access Point
+              </p>
+            </div>
+            <div class="tabs-list">
+              <button class="tab-trigger ${state.networkTab === 'wifi' ? 'active' : ''}" onclick="state.networkTab='wifi';render()">Wi-Fi Station</button>
+              <button class="tab-trigger ${state.networkTab === 'ap' ? 'active' : ''}" onclick="state.networkTab='ap';render()">Access Point</button>
+              <button class="tab-trigger ${state.networkTab === 'ethernet' ? 'active' : ''}" onclick="state.networkTab='ethernet';render()">Ethernet</button>
+            </div>
+          </div>
+
+          ${state.networkTab === 'wifi' ? `
+            <div class="grid-2">
+              <div class="card" style="display:flex;flex-direction:column;gap:12px">
+                <div style="display:flex;align-items:center;justify-content:space-between">
+                  <h3 style="margin:0;font-size:17px">Wi-Fi Station Configuration</h3>
+                  <button class="switch" role="switch" aria-checked="${net.wifiEnabled}" onclick="net.wifiEnabled=!net.wifiEnabled;render()"><span class="switch-thumb"></span></button>
+                </div>
+                <div><label class="label">SSID</label><input id="wifi-ssid-input" class="input" value="${escapeHtml(net.ssid)}" /></div>
+                <div><label class="label">Wi-Fi Password</label><input type="password" class="input" placeholder="•••••• (unchanged)" /></div>
+                <div class="grid-2">
+                  <div>
+                    <label class="label">IP Assignment</label>
+                    <select class="select" onchange="net.dhcp=(this.value==='dhcp');render()">
+                      <option value="dhcp" ${net.dhcp ? 'selected' : ''}>DHCP Automatic</option>
+                      <option value="static" ${!net.dhcp ? 'selected' : ''}>Static IPv4</option>
+                    </select>
+                  </div>
+                  <div><label class="label">Assigned IPv4</label><input class="input font-mono" value="${escapeHtml(net.ip)}" ${net.dhcp ? 'disabled' : ''} /></div>
+                </div>
+                <div style="display:flex;justify-content:flex-end;margin-top:6px">
+                  <button class="btn btn-primary btn-sm" onclick="confirmNetworkSave()">Save &amp; Apply</button>
+                </div>
+              </div>
+
+              <div class="card" style="display:flex;flex-direction:column;gap:12px">
+                <div style="display:flex;align-items:center;justify-content:space-between">
+                  <h3 style="margin:0;font-size:17px">Nearby Access Points</h3>
+                  <button class="btn btn-secondary btn-sm" onclick="showToast('Wi-Fi scan refreshed','success')">Scan</button>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:8px">
+                  ${net.scannedNetworks.map(ap => `
+                    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px;border:1px solid var(--border);border-radius:var(--radius-md)">
+                      <div>
+                        <div style="font-weight:600;font-size:14px">${escapeHtml(ap.ssid)}</div>
+                        <div style="font-size:12px;color:var(--muted-foreground)">WPA2-PSK • Signal ${ap.rssi} dBm</div>
+                      </div>
+                      <button class="btn btn-secondary btn-sm" onclick="state.network.ssid='${escapeHtml(ap.ssid)}';render()">Select</button>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            </div>
+          ` : state.networkTab === 'ap' ? `
+            <div class="card" style="max-width:560px;display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;align-items:center;justify-content:space-between">
+                <h3 style="margin:0;font-size:17px">Fallback Provisioning AP</h3>
+                <button class="switch" role="switch" aria-checked="${net.apFallback}" onclick="net.apFallback=!net.apFallback;render()"><span class="switch-thumb"></span></button>
+              </div>
+              <p style="margin:0;font-size:13px;color:var(--muted-foreground)">Automatically enables WPA2-protected management AP if station and Ethernet uplinks are unreachable.</p>
+              <div><label class="label">AP SSID</label><input class="input font-mono" value="${escapeHtml(net.apSsid)}" /></div>
+              <div><label class="label">AP Passphrase (Write-Only)</label><input type="password" class="input" placeholder="•••••• (set)" /></div>
+            </div>
+          ` : `
+            <div class="card" style="max-width:560px;display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;align-items:center;justify-content:space-between">
+                <h3 style="margin:0;font-size:17px">Wired Ethernet (LAN8720 PHY)</h3>
+                <span class="badge badge-success">${escapeHtml(net.ethLink)}</span>
+              </div>
+              <div class="grid-2">
+                <div><label class="label">IPv4 Address</label><input class="input font-mono" value="${escapeHtml(net.ip)}" disabled /></div>
+                <div><label class="label">MAC Address</label><input class="input font-mono" value="${escapeHtml(net.ethMac)}" disabled /></div>
+              </div>
+              <div style="font-size:12px;color:var(--muted-foreground)">PHY Address 0 • RMII Clock GPIO 17 OUT (KC868-AP profile)</div>
+            </div>
+          `}
+        </div>
+      `;
+    }
+
+    function confirmNetworkSave() {
+      state.modal = `
+        <div class="modal-backdrop" onclick="if(event.target===this)closeModal()">
+          <div class="modal-panel">
+            <h2 style="margin:0 0 8px;font-size:18px">Apply Network Settings?</h2>
+            <p style="margin:0 0 16px;font-size:14px;color:var(--muted-foreground)">
+              Updating Wi-Fi or IP parameters may temporarily drop your active WebSocket/HTTP session. Reconnect via <code>http://lumen.local</code> or your fallback AP if unreachable.
+            </p>
+            <div style="display:flex;justify-content:flex-end;gap:8px">
+              <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+              <button class="btn btn-primary" onclick="closeModal();showToast('Network configuration saved','success')">Apply Settings</button>
+            </div>
+          </div>
+        </div>
+      `;
+      render();
+    }
+
+    // ==========================================================================
+    // SCREEN 11: SETTINGS (Section 7.11 — Account, Theme, Backup, OTA, System)
+    // ==========================================================================
+    function renderSettings() {
+      return `
+        <div style="display:flex;flex-direction:column;gap:20px">
+          <div>
+            <h1 style="margin:0;font-size:24px;font-weight:700">Settings</h1>
+            <p style="margin:4px 0 0;font-size:14px;color:var(--muted-foreground)">
+              Appearance, controller backup/restore, dual-partition OTA firmware updates, and system lifecycle
+            </p>
+          </div>
+
+          <div class="grid-2">
+            <!-- Appearance -->
+            <div class="card" style="display:flex;flex-direction:column;gap:12px">
+              <h3 style="margin:0;font-size:17px">Appearance</h3>
+              <p style="margin:0;font-size:13px;color:var(--muted-foreground)">Select light, dark, or system-synchronized OKLCH theme tokens.</p>
+              <div class="tabs-list">
+                <button class="tab-trigger ${state.theme === 'light' ? 'active' : ''}" onclick="applyTheme('light')">Light</button>
+                <button class="tab-trigger ${state.theme === 'dark' ? 'active' : ''}" onclick="applyTheme('dark')">Dark</button>
+                <button class="tab-trigger ${state.theme === 'system' ? 'active' : ''}" onclick="applyTheme('system')">System</button>
+              </div>
+            </div>
+
+            <!-- Account Security -->
+            <div class="card" style="display:flex;flex-direction:column;gap:12px">
+              <h3 style="margin:0;font-size:17px">Account &amp; Session</h3>
+              <p style="margin:0;font-size:13px;color:var(--muted-foreground)">Single-user administrator session (HTTP-only cookie + CSRF token).</p>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="btn btn-secondary btn-sm" onclick="navigate('setup-password')">Change Password</button>
+                <button class="btn btn-secondary btn-sm" onclick="navigate('login')">Sign Out</button>
+              </div>
+            </div>
+
+            <!-- OTA Firmware Update (SPEC Section 20) -->
+            <div class="card" style="display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;align-items:center;justify-content:space-between">
+                <h3 style="margin:0;font-size:17px">OTA Firmware Update</h3>
+                <span class="badge badge-info">v1.2.0 Available</span>
+              </div>
+              <p style="margin:0;font-size:13px;color:var(--muted-foreground)">Dual OTA application partitions with signature &amp; rollback protection.</p>
+              <div id="ota-progress-wrap" style="display:none">
+                <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+                  <span id="ota-status-text">Uploading firmware image…</span>
+                  <span id="ota-pct-text" class="tabular-nums">0%</span>
+                </div>
+                <div style="height:8px;background:var(--secondary);border-radius:999px;overflow:hidden">
+                  <div id="ota-bar" style="height:100%;width:0%;background:var(--primary);transition:width 150ms"></div>
+                </div>
+              </div>
+              <div>
+                <button class="btn btn-primary btn-sm" onclick="simulateOtaUpload()">Install Firmware v1.2.0</button>
+              </div>
+            </div>
+
+            <!-- Backup & Restore -->
+            <div class="card" style="display:flex;flex-direction:column;gap:12px">
+              <h3 style="margin:0;font-size:17px">Backup &amp; Restore</h3>
+              <p style="margin:0;font-size:13px;color:var(--muted-foreground)">Export versioned LittleFS configuration JSON (excludes NVS secrets by default).</p>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="btn btn-secondary btn-sm" onclick="showToast('Downloaded lumen-backup-v1.json','success','Excluded NVS credentials')">Download Backup</button>
+                <button class="btn btn-secondary btn-sm" onclick="showToast('Schema validation ready','default','Select a backup JSON archive to validate')">Restore JSON</button>
+              </div>
+            </div>
+
+            <!-- System & Factory Reset (Section 7.11 typed confirmation) -->
+            <div class="card" style="display:flex;flex-direction:column;gap:12px">
+              <h3 style="margin:0;font-size:17px">System Lifecycle</h3>
+              <p style="margin:0;font-size:13px;color:var(--muted-foreground)">Reboot controller or erase LittleFS/NVS back to factory defaults.</p>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="btn btn-secondary btn-sm" onclick="showToast('Controller restart scheduled','default','Reconnecting in ~4s')">Restart Controller</button>
+                <button class="btn btn-destructive btn-sm" onclick="openFactoryResetModal()">Factory Reset</button>
+              </div>
+            </div>
+
+            <!-- About & Flash Partition Budget (Section 14.1) -->
+            <div class="card" style="display:flex;flex-direction:column;gap:8px">
+              <h3 style="margin:0;font-size:17px">About Lumen</h3>
+              <div style="font-size:13px;display:flex;flex-direction:column;gap:4px">
+                <div style="display:flex;justify-content:space-between"><span style="color:var(--muted-foreground)">Firmware</span><span class="font-mono">v1.0.0 (ESP-IDF v5.3)</span></div>
+                <div style="display:flex;justify-content:space-between"><span style="color:var(--muted-foreground)">Reference Board</span><span class="font-mono">KinCony KC868-AP</span></div>
+                <div style="display:flex;justify-content:space-between"><span style="color:var(--muted-foreground)">LittleFS WebUI Budget</span><span class="tabular-nums">412 KB / 1.0 MB (Gzipped)</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function simulateOtaUpload() {
+      const wrap = document.getElementById('ota-progress-wrap');
+      const bar = document.getElementById('ota-bar');
+      const pct = document.getElementById('ota-pct-text');
+      const txt = document.getElementById('ota-status-text');
+      if (!wrap) return;
+      wrap.style.display = 'block';
+      let p = 0;
+      const timer = setInterval(() => {
+        p += 20;
+        if (bar) bar.style.width = `${p}%`;
+        if (pct) pct.textContent = `${p}%`;
+        if (p === 80 && txt) txt.textContent = 'Verifying image signature & partition…';
+        if (p >= 100) {
+          clearInterval(timer);
+          if (txt) txt.textContent = 'OTA validated — ready to boot slot ota_1';
+          state.alerts = state.alerts.filter(a => a.id !== 'ota_avail');
+          showToast('OTA v1.2.0 verified & staged', 'success', 'Configuration preserved across upgrade.');
+        }
+      }, 280);
+    }
+
+    function openFactoryResetModal() {
+      state.modal = `
+        <div class="modal-backdrop" onclick="if(event.target===this)closeModal()">
+          <div class="modal-panel">
+            <h2 style="margin:0 0 8px;font-size:18px;color:var(--destructive)">Confirm Factory Reset</h2>
+            <p style="margin:0 0 12px;font-size:14px;color:var(--muted-foreground)">
+              This permanently erases all rooms, scenes, automations, floor plans, and credentials. Type <strong>RESET</strong> to confirm.
+            </p>
+            <input id="reset-confirm-input" class="input font-mono" placeholder="Type RESET" />
+            <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
+              <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+              <button class="btn btn-destructive" onclick="executeFactoryReset()">Erase &amp; Reset</button>
+            </div>
+          </div>
+        </div>
+      `;
+      render();
+    }
+
+    function executeFactoryReset() {
+      const val = document.getElementById('reset-confirm-input')?.value.trim();
+      if (val !== 'RESET') {
+        showToast('Confirmation required', 'error', 'Please type RESET in all caps.');
+        return;
+      }
+      closeModal();
+      showToast('Factory reset initiated', 'default', 'Restoring default admin credentials.');
+      navigate('login');
+    }
+
+    function closeModal() {
+      state.modal = null;
+      render();
+    }
+
+    // ==========================================================================
+    // APP SHELL RENDERER (TopBar, Sidebar, Mobile Drawer, BottomNav, Main)
+    // ==========================================================================
+    const NAV_CONTROL = [
+      { id: 'overview', label: 'Overview', icon: Icons.home },
+      { id: 'rooms', label: 'Rooms', icon: Icons.rooms },
+      { id: 'floorplans', label: 'Floor Plans', icon: Icons.map },
+      { id: 'scenes', label: 'Scenes', icon: Icons.sparkles },
+      { id: 'automations', label: 'Automations', icon: Icons.workflow },
+      { id: 'devices', label: 'Devices', icon: Icons.lightbulb }
+    ];
+
+    const NAV_CONFIGURE = [
+      { id: 'hardware', label: 'Hardware', icon: Icons.cpu },
+      { id: 'integrations', label: 'Integrations', icon: Icons.share },
+      { id: 'network', label: 'Network', icon: Icons.wifi },
+      { id: 'settings', label: 'Settings', icon: Icons.settings }
+    ];
+
+    function renderNavButtons(items) {
+      return items.map(item => `
+        <button
+          class="nav-item ${state.route === item.id ? 'active' : ''}"
+          onclick="navigate('${item.id}')"
+          aria-current="${state.route === item.id ? 'page' : 'false'}">
+          ${item.icon}
+          <span class="nav-label">${item.label}</span>
+        </button>
+      `).join('');
+    }
+
+    function render() {
+      const root = document.getElementById('app');
+      if (!root) return;
+
+      // Full-screen Auth & First-Run Setup Routes (Section 7.1)
+      if (state.route === 'login') {
+        root.innerHTML = renderAuthScreen(false);
+        return;
+      }
+      if (state.route === 'setup-password') {
+        root.innerHTML = renderAuthScreen(true);
+        return;
+      }
+
+      let screenHtml = '';
+      switch (state.route) {
+        case 'overview': screenHtml = renderOverview(); break;
+        case 'rooms': screenHtml = renderRooms(); break;
+        case 'floorplans': screenHtml = renderFloorPlans(); break;
+        case 'scenes': screenHtml = renderScenes(); break;
+        case 'automations': screenHtml = renderAutomations(); break;
+        case 'devices': screenHtml = renderDevices(); break;
+        case 'hardware': screenHtml = renderHardware(); break;
+        case 'integrations': screenHtml = renderIntegrations(); break;
+        case 'network': screenHtml = renderNetwork(); break;
+        case 'settings': screenHtml = renderSettings(); break;
+        default: screenHtml = renderOverview();
+      }
+
+      root.innerHTML = `
+        <div class="app-shell">
+          <!-- TopBar (Section 6.1) -->
+          <header class="topbar">
+            <div class="topbar-left">
+              <button class="btn btn-ghost btn-icon" onclick="handleMenuButton()" aria-label="Toggle navigation menu">
+                ${Icons.menu}
+              </button>
+              <a class="brand-logo" onclick="navigate('overview')" tabindex="0">
+                <span class="brand-sun">${Icons.sun}</span>
+                <span>Lumen</span>
+              </a>
+              <div class="controller-pill">
+                <span>${escapeHtml(state.controllerName)}</span>
+              </div>
+            </div>
+
+            <div class="topbar-right">
+              <!-- Connectivity StatusDot (Click to simulate WebSocket offline/online) -->
+              <button
+                class="status-dot ${state.wsConnected ? 'online' : 'offline'}"
+                onclick="toggleWsSimulation()"
+                title="Click to simulate WebSocket disconnect/reconnect"
+                aria-label="Controller connectivity status: ${state.wsConnected ? 'Online' : 'Offline'}">
+                <span class="dot-indicator"></span>
+                <span>${state.wsConnected ? `Online (${state.wsLatencyMs}ms)` : 'Offline'}</span>
+              </button>
+
+              <!-- Quick Theme Toggle -->
+              <button
+                class="btn btn-ghost btn-icon"
+                onclick="applyTheme(document.documentElement.classList.contains('dark') ? 'light' : 'dark')"
+                aria-label="Toggle light or dark theme">
+                ${document.documentElement.classList.contains('dark') ? Icons.sun : Icons.moon}
+              </button>
+
+              <!-- Profile Dropdown (Includes Auth Screen Preview Triggers) -->
+              <div class="dropdown-wrap">
+                <button
+                  class="btn btn-secondary btn-sm"
+                  onclick="state.profileDropdownOpen=!state.profileDropdownOpen;render()"
+                  aria-expanded="${state.profileDropdownOpen}"
+                  aria-label="Administrator profile menu">
+                  ${Icons.user}
+                  <span style="display:none" class="sm-inline">admin</span>
+                  ${Icons.chevronDown}
+                </button>
+                ${state.profileDropdownOpen ? `
+                  <div class="dropdown-menu" role="menu">
+                    <div style="padding:8px 12px;border-bottom:1px solid var(--border);margin-bottom:4px">
+                      <div style="font-weight:600;font-size:13px">admin</div>
+                      <div style="font-size:11px;color:var(--muted-foreground)">Single-User Session</div>
+                    </div>
+                    <button class="dropdown-item" onclick="navigate('login')">${Icons.lock} Preview Login Screen</button>
+                    <button class="dropdown-item" onclick="navigate('setup-password')">${Icons.lock} Preview First-Run Password</button>
+                    <button class="dropdown-item" onclick="navigate('settings')">${Icons.settings} Controller Settings</button>
+                  </div>
+                ` : ''}
+              </div>
+            </div>
+          </header>
+
+          <!-- Non-blocking Offline ConnectionBanner (Section 5.2 & 15) -->
+          ${!state.wsConnected ? `
+            <div class="connection-banner" role="alert">
+              <div style="display:flex;align-items:center;gap:8px">
+                ${Icons.alert}
+                <span><strong>WebSocket Disconnected:</strong> Lighting controls are read-only until connection to <code>/api/v1/ws</code> resumes.</span>
+              </div>
+              <button class="btn btn-secondary btn-sm" onclick="toggleWsSimulation()">Reconnect Now</button>
+            </div>
+          ` : ''}
+
+          <div class="shell-body">
+            <!-- Desktop & Tablet Rail Sidebar (Section 6.1) -->
+            <aside class="sidebar ${state.sidebarCollapsed ? 'collapsed' : ''}" aria-label="Main navigation">
+              <div class="nav-group-title">Control</div>
+              ${renderNavButtons(NAV_CONTROL)}
+              <div class="nav-divider"></div>
+              <div class="nav-group-title">Configure</div>
+              ${renderNavButtons(NAV_CONFIGURE)}
+            </aside>
+
+            <!-- Main Content -->
+            <main class="main-content">
+              ${screenHtml}
+            </main>
+          </div>
+
+          <!-- Mobile Bottom Navigation: 4 primary destinations (Section 6.1) -->
+          <nav class="bottom-nav" aria-label="Mobile navigation">
+            ${[
+              { id: 'overview', label: 'Overview', icon: Icons.home },
+              { id: 'rooms', label: 'Rooms', icon: Icons.rooms },
+              { id: 'scenes', label: 'Scenes', icon: Icons.sparkles },
+              { id: 'floorplans', label: 'Floor Plans', icon: Icons.map }
+            ].map(item => `
+              <button class="bottom-nav-btn ${state.route === item.id ? 'active' : ''}" onclick="navigate('${item.id}')">
+                ${item.icon}
+                <span>${item.label}</span>
+              </button>
+            `).join('')}
+          </nav>
+
+          <!-- Mobile Slide-Out Drawer Sheet -->
+          ${state.mobileDrawerOpen ? `
+            <div class="drawer-backdrop" onclick="if(event.target===this){state.mobileDrawerOpen=false;render()}">
+              <div class="drawer-panel">
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 8px 14px">
+                  <div class="brand-logo"><span class="brand-sun">${Icons.sun}</span><span>Lumen</span></div>
+                  <button class="btn btn-ghost btn-sm" onclick="state.mobileDrawerOpen=false;render()">✕</button>
+                </div>
+                <div class="nav-group-title">Control</div>
+                ${renderNavButtons(NAV_CONTROL)}
+                <div class="nav-divider"></div>
+                <div class="nav-group-title">Configure</div>
+                ${renderNavButtons(NAV_CONFIGURE)}
+              </div>
+            </div>
+          ` : ''}
+
+          <!-- Active Modal Portal -->
+          ${state.modal || ''}
+        </div>
+      `;
+    }
+
+    function handleMenuButton() {
+      if (window.innerWidth < 640) {
+        state.mobileDrawerOpen = !state.mobileDrawerOpen;
+      } else {
+        state.sidebarCollapsed = !state.sidebarCollapsed;
+      }
+      render();
+    }
+
+    function toggleWsSimulation() {
+      state.wsConnected = !state.wsConnected;
+      if (state.wsConnected) {
+        showToast('WebSocket reconnected', 'success', 'Reconciled state with controller.');
+      } else {
+        showToast('Simulated WebSocket disconnect', 'error', 'Controls disabled while offline.');
+      }
+      render();
+    }
+
+    // Close profile dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      if (state.profileDropdownOpen && !e.target.closest('.dropdown-wrap')) {
+        state.profileDropdownOpen = false;
+        render();
+      }
+    });
+
+    // Subtle simulated live WebSocket telemetry heartbeat
+    setInterval(() => {
+      if (state.wsConnected && state.route !== 'login' && state.route !== 'setup-password') {
+        state.wsLatencyMs = 11 + Math.floor(Math.random() * 7);
+      }
+    }, 4000);
+
+    // Boot application on load
+    window.addEventListener('DOMContentLoaded', () => {
+      render();
+    });
+  </script>
+</body>
+</html>

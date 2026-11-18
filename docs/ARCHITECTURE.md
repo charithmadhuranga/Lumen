@@ -115,7 +115,52 @@ declared order, bounded startup, stop puts outputs into safe states).
 SECURITY), secret redaction helpers, and a diagnostics snapshot API (uptime,
 free heap, min free heap, reset reason) consumed later by REST.
 
-## 7. Boot order (Phase 0/1)
+## 7. Hardware Abstraction Layer (implemented in Phase 2)
+
+`src/hardware/hal/` (interfaces) and `src/hardware/drivers/` (ESP-IDF
+implementations, host-excluded via build filter with mocks in
+`test/unit/mocks/`):
+
+HAL interfaces (all return `esp_err_t`, no board knowledge):
+- `IOutputDriver` / `IDigitalInputDriver` — digital in/out, inversion, safe state
+- `IPwmDriver` — native LEDC: duty, frequency, resolution, inversion
+- `II2CBus` — single owner of I2C bus(es); write/read/write-then-read/probe/scan/reset
+- `IUartDriver` — RS485 / generic serial, configurable baud/format/flow control
+- `IEthernetDriver` — PHY addr/MDC/MDIO/clock from board profile (never hardcoded)
+- `IAddressableLedDriver` — RMT WS2812/SK6812, global brightness, color order
+- `IRelayDriver` — on/off with polarity and safe state
+- `IPeripheralDriver` — catch-all ioctl for sensors/expanders
+
+P0 drivers (SPEC §7.1): `gpio_driver`, `relay_driver`, `ledc_driver`,
+`i2c_manager`, `pca9685_driver`, `pcf8574_driver`. The PCA9685 driver batches
+pending channel updates into minimal I2C transactions (AGENTS.md §6); lighting
+channels never touch I2C directly. The PCF8574 driver debounces inputs and
+generates change events.
+
+PCA9685 batching and PCF8574 debounce/change detection are proven by host
+tests against a mock I2C bus simulator with error injection.
+
+## 8. Board profiles and PinValidator (implemented in Phase 2)
+
+Board profiles are versioned JSON in `boards/`, validated against
+`schemas/board-profile.schema.json` plus semantic PinValidator checks
+(SPEC §5.3):
+
+- GPIO existence per MCU, input-only rules, strapping pins, flash/PSRAM
+  reserved pins, board-reserved pins
+- Duplicate GPIO assignments, peripheral bus references resolve
+- UART / I2C / Ethernet conflicts
+- PWM channel / timer limits, RMT limits
+
+MCU capability tables are per-MCU data (`include/lumen/hardware/mcu_capabilities.h`),
+not `#ifdef` soup. Validation returns a structured `ValidationReport` with
+stable reason codes for inline UI rendering (Phase 7). Built-in profiles:
+`kincony_kc868_ap`, `generic_esp32`, `generic_esp32s3`,
+`generic_esp32_pca9685`, `generic_esp32_pcf8574`, `generic_esp32_pwm`.
+All KC868-AP addresses/polarities are marked `unverified` until Phase 3
+measures them.
+
+## 9. Boot order (Phase 0/1)
 
 1. 2nd stage bootloader → partition table check (dual OTA + LittleFS).
 2. `app_main`: chip/flash/heap banner via structured logs (`tag: lumen`).

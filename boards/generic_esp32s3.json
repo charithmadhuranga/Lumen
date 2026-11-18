@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "id": "generic_esp32s3",
+  "name": "Generic ESP32-S3 DevKit",
+  "manufacturer": "Generic",
+  "mcu": "esp32s3",
+  "description": "Generic ESP32-S3 development board with native PWM, GPIO and digital inputs.",
+  "resources": [
+    {"id": "gpio_builtin_led", "type": "gpio", "gpio": 6, "direction": "output", "safe_state": false},
+    {"id": "gpio_input0", "type": "gpio", "gpio": 34, "direction": "input"},
+    {"id": "ledc_pwm0", "type": "pwm", "gpio": 7, "direction": "output"},
+    {"id": "ledc_pwm1", "type": "pwm", "gpio": 8, "direction": "output"},
+    {"id": "ledc_pwm2", "type": "pwm", "gpio": 9, "direction": "output"},
+    {"id": "uart0", "type": "uart", "gpio": 20, "direction": "output"},
+    {"id": "i2c0", "type": "i2c"}
+  ],
+  "peripherals": [],
+  "capabilities": {
+    "native_pwm": true,
+    "i2c": true,
+    "uart": true,
+    "ethernet": true,
+    "esp_now": true,
+    "rmt": true,
+    "relay": false,
+    "digital_input": true,
+    "external_pwm": false,
+    "addressable_led": true
+  },
+  "unverified": false
+}

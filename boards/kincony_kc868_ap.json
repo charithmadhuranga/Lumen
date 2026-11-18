@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "id": "kincony_kc868_ap",
+  "name": "KinCony KC868-AP",
+  "manufacturer": "KinCony",
+  "mcu": "esp32",
+  "description": "KinCony KC868-AP reference board. All peripheral addresses and polarities below are taken from the vendor controller-presets pinmap.txt and are UNVERIFIED until measured on physical hardware (Phase 3).",
+  "resources": [
+    {"id": "i2c0", "type": "i2c"},
+    {"id": "gpio_relay1", "type": "gpio", "gpio": 13, "direction": "output", "safe_state": false},
+    {"id": "gpio_relay2", "type": "gpio", "gpio": 2, "direction": "output", "safe_state": false},
+    {"id": "gpio_btn_download", "type": "gpio", "gpio": 0, "direction": "input", "pull": "up"},
+    {"id": "gpio_di17", "type": "gpio", "gpio": 34, "direction": "input"},
+    {"id": "gpio_di18", "type": "gpio", "gpio": 35, "direction": "input"},
+    {"id": "gpio_eth_mdc", "type": "gpio", "gpio": 23, "direction": "output"},
+    {"id": "gpio_eth_mdio", "type": "gpio", "gpio": 18, "direction": "bidirectional"},
+    {"id": "gpio_eth_clk", "type": "gpio", "gpio": 17, "direction": "output"},
+    {"id": "gpio_rs485_rx", "type": "gpio", "gpio": 33, "direction": "input"},
+    {"id": "gpio_rs485_tx", "type": "gpio", "gpio": 14, "direction": "output"},
+    {"id": "gpio_ext_serial1", "type": "gpio", "gpio": 5, "direction": "output"},
+    {"id": "gpio_ext_serial2", "type": "gpio", "gpio": 32, "direction": "output"},
+    {"id": "ledc_pwm0", "type": "pwm", "gpio": 15, "direction": "output"},
+    {"id": "ledc_pwm1", "type": "pwm", "gpio": 16, "direction": "output"}
+  ],
+  "peripherals": [
+    {"id": "pcf8574_di1_8", "type": "pcf8574", "bus": "i2c0", "address": 34, "channels": 8, "unverified": true, "address_verification_required": true, "unverified_note": "Vendor pinmap suggests 0x22; ESPHome examples use 0x3A/0x21. Scan I2C bus in Phase 3 to confirm."},
+    {"id": "pcf8574_di9_16", "type": "pcf8574", "bus": "i2c0", "address": 33, "channels": 8, "unverified": true, "address_verification_required": true, "unverified_note": "Vendor pinmap suggests 0x21; confirm by I2C scan in Phase 3."},
+    {"id": "pca9685_0", "type": "pca9685", "bus": "i2c0", "address": 0, "channels": 16, "frequency": 1000, "unverified": true, "address_verification_required": true, "unverified_note": "Vendor pinmap suggests 0x00; vendor examples use 0x40. Scan I2C bus in Phase 3 to confirm. Do not silently rewrite to 0x40."},
+    {"id": "relay1", "type": "relay", "bus": "gpio_relay1", "channels": 1, "unverified": true, "unverified_note": "Relay polarity (active-high vs active-low) unverified on hardware."},
+    {"id": "relay2", "type": "relay", "bus": "gpio_relay2", "channels": 1, "unverified": true, "unverified_note": "Relay polarity (active-high vs active-low) unverified on hardware."},
+    {"id": "eth0", "type": "ethernet", "bus": "gpio_eth_mdc", "channels": 1, "unverified": true, "unverified_note": "ETH clock mode (GPIO17_OUT) and PHY address (0) unverified; LAN8720 clock input may require external oscillator on some board revisions."},
+    {"id": "rs485_0", "type": "rs485", "bus": "gpio_rs485_tx", "channels": 1, "unverified": true, "unverified_note": "RS485 DE/RE direction pin unverified on hardware."}
+  ],
+  "capabilities": {
+    "native_pwm": true,
+    "i2c": true,
+    "uart": true,
+    "ethernet": true,
+    "esp_now": true,
+    "rmt": true,
+    "relay": true,
+    "digital_input": true,
+    "external_pwm": true,
+    "addressable_led": false
+  },
+  "unverified": true
+}

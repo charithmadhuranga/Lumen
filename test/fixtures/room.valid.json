@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "id": "living_room",
+  "name": "Living Room",
+  "floor": "Ground",
+  "icon": "sofa",
+  "light_ids": ["living_room_main", "living_room_ambient"],
+  "group_ids": ["movie_group"],
+  "sensor_ids": [],
+  "floorplan_id": "ground_floor"
+}

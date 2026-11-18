@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Room",
+  "description": "Room grouping document (SPEC 9.1).",
+  "type": "object",
+  "required": ["schema_version", "id", "name"],
+  "properties": {
+    "schema_version": {"type": "integer", "minimum": 1},
+    "id": {"type": "string", "pattern": "^[a-z0-9_-]+$"},
+    "name": {"type": "string", "minLength": 1, "maxLength": 80},
+    "floor": {"type": "string", "maxLength": 40},
+    "icon": {"type": "string", "maxLength": 40},
+    "light_ids": {
+      "type": "array",
+      "items": {"type": "string", "pattern": "^[a-z0-9_-]+$"},
+      "uniqueItems": true
+    },
+    "group_ids": {
+      "type": "array",
+      "items": {"type": "string", "pattern": "^[a-z0-9_-]+$"},
+      "uniqueItems": true
+    },
+    "sensor_ids": {
+      "type": "array",
+      "items": {"type": "string", "pattern": "^[a-z0-9_-]+$"},
+      "uniqueItems": true
+    },
+    "floorplan_id": {"type": "string", "pattern": "^[a-z0-9_-]+$"}
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "id": "fixture_board",
+  "name": "Fixture Board",
+  "manufacturer": "Fixture",
+  "mcu": "esp32",
+  "resources": [
+    {"id": "led0", "type": "gpio", "gpio": 2, "direction": "output", "safe_state": false},
+    {"id": "i2c0", "type": "i2c"},
+    {"id": "pwm0", "type": "pwm", "gpio": 16, "direction": "output", "pull": "down"}
+  ],
+  "peripherals": [
+    {"id": "pca9685_0", "type": "pca9685", "bus": "i2c0", "address": 64, "channels": 16, "frequency": 1200},
+    {"id": "relays", "type": "relay", "channels": 4}
+  ],
+  "capabilities": {}
+}

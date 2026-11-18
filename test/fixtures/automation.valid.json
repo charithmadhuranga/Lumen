@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "id": "kitchen_evening",
+  "name": "Kitchen Evening Lighting",
+  "enabled": true,
+  "trigger": {"type": "input_state", "input_id": "input_01", "state": true},
+  "conditions": {
+    "operator": "AND",
+    "items": [
+      {"type": "time_range", "start": "18:00", "end": "23:00"}
+    ]
+  },
+  "actions": [
+    {"type": "light_power", "light_id": "kitchen_main", "power": true},
+    {"type": "light_brightness", "light_id": "kitchen_main", "brightness": 80, "transition_ms": 500}
+  ],
+  "execution": {"cooldown_ms": 1000, "max_executions_per_hour": 100, "allow_parallel": false}
+}

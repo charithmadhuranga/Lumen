@@ -1,0 +1,16 @@
+# Name,   Type, SubType, Offset,   Size,     Flags
+# Lumen initial partition table — 4 MB flash, dual OTA + LittleFS config/web.
+# Layout (AGENTS.md §15: ask before changing):
+#   0x009000 nvs        24 KB   credentials + critical settings
+#   0x00F000 otadata     8 KB   OTA selection
+#   0x011000 phy_init    4 KB   RF calibration
+#   0x020000 ota_0    1375 KB   application slot A
+#   0x180000 ota_1    1375 KB   application slot B
+#   0x2E0000 storage 1125 KB   LittleFS: /config JSON + gzipped web assets
+#                              (web budget: <= 1.0 MB, DESIGN.md §14.1)
+nvs,      data, nvs,     0x9000,   0x6000,
+otadata,  data, ota,     0xf000,   0x2000,
+phy_init, data, phy,     0x11000,  0x1000,
+ota_0,    app,  ota_0,   0x20000,  0x160000,
+ota_1,    app,  ota_1,   0x180000, 0x160000,
+storage,  data, spiffs,  0x2E0000, 0x120000,

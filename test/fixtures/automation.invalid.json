@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "id": "bad_automation",
+  "name": "Unknown trigger and no actions",
+  "enabled": true,
+  "trigger": {"type": "execute_javascript"},
+  "actions": []
+}

@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Light",
+  "description": "Logical lighting channel (SPEC 8.1). Type-aware validation of state properties is a firmware concern (SPEC 8.3).",
+  "type": "object",
+  "required": ["schema_version", "id", "name", "type"],
+  "properties": {
+    "schema_version": {"type": "integer", "minimum": 1},
+    "id": {"type": "string", "pattern": "^[a-z0-9_-]+$"},
+    "name": {"type": "string", "minLength": 1, "maxLength": 80},
+    "type": {
+      "type": "string",
+      "enum": [
+        "switch",
+        "dimmer",
+        "rgb",
+        "rgbw",
+        "cct",
+        "addressable_rgb",
+        "addressable_rgbw"
+      ]
+    },
+    "room_id": {"type": "string", "pattern": "^[a-z0-9_-]+$"},
+    "driver": {
+      "type": "object",
+      "required": ["type", "channel"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["pca9685", "pcf8574", "gpio", "ledc", "rmt", "relay"]
+        },
+        "device_id": {"type": "string"},
+        "channel": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "state": {
+      "type": "object",
+      "properties": {
+        "power": {"type": "boolean"},
+        "brightness": {"type": "integer", "minimum": 0, "maximum": 100},
+        "red": {"type": "integer", "minimum": 0, "maximum": 255},
+        "green": {"type": "integer", "minimum": 0, "maximum": 255},
+        "blue": {"type": "integer", "minimum": 0, "maximum": 255},
+        "white": {"type": "integer", "minimum": 0, "maximum": 255},
+        "color_temperature": {"type": "integer", "minimum": 1000, "maximum": 20000}
+      },
+      "additionalProperties": false
+    },
+    "limits": {
+      "type": "object",
+      "properties": {
+        "minimum": {"type": "integer", "minimum": 0, "maximum": 100},
+        "maximum": {"type": "integer", "minimum": 0, "maximum": 100}
+      },
+      "additionalProperties": false
+    },
+    "transition_ms": {"type": "integer", "minimum": 0, "maximum": 60000},
+    "startup_behavior": {"type": "string", "enum": ["restore", "on", "off"]}
+  }
+}

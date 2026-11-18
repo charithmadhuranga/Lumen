@@ -1,0 +1,14 @@
+{
+  "name": "lumen",
+  "version": "0.1.0-dev",
+  "private": true,
+  "description": "Lumen — universal ESP32 smart lighting controller (repo-root tooling)",
+  "type": "module",
+  "scripts": {
+    "validate:schemas": "node scripts/validate_schemas.mjs"
+  },
+  "devDependencies": {
+    "ajv": "8.17.1",
+    "ajv-formats": "3.0.1"
+  }
+}

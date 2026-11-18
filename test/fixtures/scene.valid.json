@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "id": "movie_night",
+  "name": "Movie Night",
+  "transition_ms": 1500,
+  "states": [
+    {"light_id": "living_room_main", "power": true, "brightness": 10},
+    {"light_id": "living_room_ambient", "power": true, "brightness": 30, "rgb": {"r": 120, "g": 70, "b": 220}},
+    {"light_id": "kitchen_main", "power": false}
+  ]
+}

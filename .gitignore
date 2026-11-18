@@ -1,0 +1,33 @@
+# Lumen repository ignores.
+
+# PlatformIO / ESP-IDF build artifacts
+.pio/
+.sdkconfig*
+!sdkconfig.defaults
+!sdkconfig.defaults.*
+managed_components/
+dependencies.lock
+
+# Generated LittleFS / web build output
+.lfs-tmp/
+webui/dist/
+**/littlefs.bin
+**/spiffs.bin
+
+# Node
+node_modules/
+coverage/
+playwright-report/
+test-results/
+.vite/
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Python (schema tooling)
+__pycache__/
+*.pyc
+.venv/

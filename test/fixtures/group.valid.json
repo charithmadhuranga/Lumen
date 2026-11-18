@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "id": "movie_group",
+  "name": "Movie Group",
+  "room_id": "living_room",
+  "light_ids": ["living_room_main", "living_room_ambient", "kitchen_main"],
+  "aggregation_policy": "average"
+}

@@ -1,0 +1,16 @@
+# Lumen firmware formatting — C/C++ (AGENTS.md §5: C++17, ESP-IDF style).
+# Function bodies open on the next line; attached elsewhere; 100 cols, 4 spaces.
+BasedOnStyle: LLVM
+Language: Cpp
+Standard: c++17
+IndentWidth: 4
+ColumnLimit: 100
+BreakBeforeBraces: Linux
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLoopsOnASingleLine: true
+AllowShortFunctionsOnASingleLine: Inline
+IndentCaseLabels: false
+PointerAlignment: Left
+SortIncludes: true
+IncludeBlocks: Preserve
+SpaceBeforeParens: ControlStatements

@@ -1,0 +1,8 @@
+# Lumen sdkconfig defaults — pinned ESP-IDF 6.1.0 (platform espressif32@8.0.0).
+# Partition table (see partitions.csv, 4 MB flash, dual OTA + LittleFS).
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+
+# Structured logging: INFO by default (SPEC §21 categories land in Phase 1).
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y

@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Automation",
+  "description": "Trigger-condition-action automation (SPEC 11.5). Executes locally; no remote code.",
+  "type": "object",
+  "required": ["schema_version", "id", "name", "enabled", "trigger", "actions"],
+  "properties": {
+    "schema_version": {"type": "integer", "minimum": 1},
+    "id": {"type": "string", "pattern": "^[a-z0-9_-]+$"},
+    "name": {"type": "string", "minLength": 1, "maxLength": 80},
+    "enabled": {"type": "boolean"},
+    "trigger": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "light_state",
+            "brightness_change",
+            "color_change",
+            "input_state",
+            "button_press",
+            "double_press",
+            "long_press",
+            "time_schedule",
+            "sunrise",
+            "sunset",
+            "sensor_threshold",
+            "mqtt_event",
+            "esp_now_event",
+            "scene_activated",
+            "group_state_changed",
+            "controller_startup",
+            "timer_expired"
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "conditions": {
+      "type": "object",
+      "required": ["operator", "items"],
+      "properties": {
+        "operator": {"type": "string", "enum": ["AND", "OR", "NOT"]},
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["type"],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "equal",
+                  "not_equal",
+                  "greater_than",
+                  "less_than",
+                  "greater_than_equal",
+                  "less_than_equal",
+                  "and",
+                  "or",
+                  "not",
+                  "time_range",
+                  "day_of_week",
+                  "state_comparison"
+                ]
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "actions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["type"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "light_power",
+              "light_on",
+              "light_off",
+              "light_brightness",
+              "light_color",
+              "light_cct",
+              "scene_activate",
+              "group_control",
+              "relay_toggle",
+              "effect_run",
+              "effect_stop",
+              "delay",
+              "mqtt_publish",
+              "udp_send",
+              "tcp_send",
+              "execute_automation",
+              "set_variable"
+            ]
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "execution": {
+      "type": "object",
+      "properties": {
+        "cooldown_ms": {"type": "integer", "minimum": 0},
+        "max_executions_per_hour": {"type": "integer", "minimum": 1},
+        "allow_parallel": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    }
+  }
+}

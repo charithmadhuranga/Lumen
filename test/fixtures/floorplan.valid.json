@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "id": "ground_floor",
+  "name": "Ground Floor",
+  "svg_file": "ground-floor.svg",
+  "view_box": "0 0 1200 800",
+  "rooms": [
+    {
+      "id": "living_room",
+      "name": "Living Room",
+      "lights": [
+        {
+          "light_id": "living_room_main",
+          "x": 400,
+          "y": 250,
+          "icon": "ceiling-light",
+          "glow_radius": 65,
+          "glow_color": "#FFD68A"
+        }
+      ]
+    }
+  ]
+}

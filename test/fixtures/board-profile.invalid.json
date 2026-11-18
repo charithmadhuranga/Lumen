@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "id": "Bad Board",
+  "name": "Missing peripherals and invalid MCU",
+  "mcu": "avr",
+  "resources": [],
+  "peripherals": "not-an-array"
+}

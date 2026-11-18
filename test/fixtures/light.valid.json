@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "id": "fixture_light",
+  "name": "Fixture Dimmer",
+  "type": "dimmer",
+  "room_id": "living_room",
+  "driver": {"type": "pca9685", "device_id": "pca9685_0", "channel": 0},
+  "state": {"power": true, "brightness": 75},
+  "limits": {"minimum": 0, "maximum": 100},
+  "transition_ms": 500,
+  "startup_behavior": "restore"
+}

@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Floor Plan",
+  "description": "Floor-plan document with overlay positions in SVG viewBox coordinates (SPEC 10.4). The uploaded SVG is never modified to store data.",
+  "type": "object",
+  "required": ["schema_version", "id", "name", "svg_file", "view_box", "rooms"],
+  "properties": {
+    "schema_version": {"type": "integer", "minimum": 1},
+    "id": {"type": "string", "pattern": "^[a-z0-9_-]+$"},
+    "name": {"type": "string", "minLength": 1, "maxLength": 80},
+    "svg_file": {"type": "string", "minLength": 1, "maxLength": 200},
+    "view_box": {
+      "type": "string",
+      "pattern": "^\\s*-?\\d+(\\.\\d+)?(\\s+-?\\d+(\\.\\d+)?){3}\\s*$"
+    },
+    "rooms": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "lights"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z0-9_-]+$"},
+          "name": {"type": "string", "minLength": 1, "maxLength": 80},
+          "lights": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["light_id", "x", "y"],
+              "properties": {
+                "light_id": {"type": "string", "pattern": "^[a-z0-9_-]+$"},
+                "x": {"type": "number"},
+                "y": {"type": "number"},
+                "icon": {"type": "string", "maxLength": 60},
+                "glow_radius": {"type": "number", "minimum": 0, "maximum": 500},
+                "glow_color": {"type": "string", "pattern": "^#[0-9a-fA-F]{6}$"}
+              },
+              "additionalProperties": false
+            }
+          },
+          "polygon": {
+            "type": "array",
+            "items": {"type": "number"}
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "sensors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["sensor_id", "x", "y"],
+        "properties": {
+          "sensor_id": {"type": "string", "pattern": "^[a-z0-9_-]+$"},
+          "x": {"type": "number"},
+          "y": {"type": "number"},
+          "icon": {"type": "string", "maxLength": 60}
+        },
+        "additionalProperties": false
+      }
+    }
+  }
+}

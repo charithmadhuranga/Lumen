@@ -1,0 +1,33 @@
+IIC SDA:GPIO4
+IIC SCL:GPIO16
+
+PCF8574:U14 (DI1-8):  0x22
+PCF8574:U31 (DI9-16): 0x21
+
+PCA9685 IIC address: 0x00
+
+DI17: GPIO34
+DI18: GPIO35
+
+Relay1: GPIO13
+Relay2: GPIO2
+
+Button_Download: GPIO0
+
+Ethernet (LAN8720) I/O define:
+
+#define ETH_ADDR        0
+#define ETH_POWER_PIN  -1
+#define ETH_MDC_PIN    23
+#define ETH_MDIO_PIN  18
+#define ETH_TYPE      ETH_PHY_LAN8720
+#define ETH_CLK_MODE  ETH_CLOCK_GPIO17_OUT
+
+--------------------
+RS485:
+RXD:GPIO33
+TXD:GPIO14
+
+Extend serial:
+GPIO5
+GPIO32

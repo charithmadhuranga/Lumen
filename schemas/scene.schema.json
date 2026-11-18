@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Scene",
+  "description": "Saved light states (SPEC 9.3).",
+  "type": "object",
+  "required": ["schema_version", "id", "name", "states"],
+  "properties": {
+    "schema_version": {"type": "integer", "minimum": 1},
+    "id": {"type": "string", "pattern": "^[a-z0-9_-]+$"},
+    "name": {"type": "string", "minLength": 1, "maxLength": 80},
+    "transition_ms": {"type": "integer", "minimum": 0, "maximum": 60000},
+    "icon": {"type": "string", "maxLength": 40},
+    "states": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["light_id"],
+        "properties": {
+          "light_id": {"type": "string", "pattern": "^[a-z0-9_-]+$"},
+          "power": {"type": "boolean"},
+          "brightness": {"type": "integer", "minimum": 0, "maximum": 100},
+          "rgb": {
+            "type": "object",
+            "required": ["r", "g", "b"],
+            "properties": {
+              "r": {"type": "integer", "minimum": 0, "maximum": 255},
+              "g": {"type": "integer", "minimum": 0, "maximum": 255},
+              "b": {"type": "integer", "minimum": 0, "maximum": 255}
+            },
+            "additionalProperties": false
+          },
+          "color_temperature": {"type": "integer", "minimum": 1000, "maximum": 20000},
+          "transition_ms": {"type": "integer", "minimum": 0, "maximum": 60000}
+        },
+        "additionalProperties": false
+      }
+    }
+  }
+}

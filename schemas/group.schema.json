@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Group",
+  "description": "Cross-room light group with an aggregation policy for mixed light types (SPEC 9.2).",
+  "type": "object",
+  "required": ["schema_version", "id", "name", "light_ids"],
+  "properties": {
+    "schema_version": {"type": "integer", "minimum": 1},
+    "id": {"type": "string", "pattern": "^[a-z0-9_-]+$"},
+    "name": {"type": "string", "minLength": 1, "maxLength": 80},
+    "room_id": {"type": "string", "pattern": "^[a-z0-9_-]+$"},
+    "light_ids": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "pattern": "^[a-z0-9_-]+$"},
+      "uniqueItems": true
+    },
+    "aggregation_policy": {"type": "string", "minLength": 1},
+    "icon": {"type": "string", "maxLength": 40}
+  }
+}

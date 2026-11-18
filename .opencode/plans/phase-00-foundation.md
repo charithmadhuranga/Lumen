@@ -75,8 +75,8 @@ None. This phase starts the project.
       Bundle-size check is a **real initial-budget check**
       (`webui/scripts/check_bundle_budget.mjs`, DESIGN §14.1 initial JS/CSS);
       per-chunk budgets are added in Phase 6 with code splitting.
-      Workflow created — first green run on GitHub pending push to a remote
-      (gate item 5; all jobs verified locally).
+      Workflow created and **green on `main`** (run 44293596397, all 5
+      jobs); action pins bumped off the deprecated Node 20 runtime.
 - [x] `.gitignore` covering `.pio/`, `node_modules/`, `dist/`, generated
       LittleFS data.
 
@@ -112,8 +112,8 @@ None. This phase starts the project.
 3. `cd webui && npm ci && npm run build` succeeds; `lint` and `typecheck`
    pass. ✅
 4. `npm run validate:schemas` passes. ✅ (7 schemas, 9 fixtures)
-5. CI green on the default branch. ⏳ workflow written; all jobs verified
-   locally — needs the first push to a GitHub remote.
+5. CI green on the default branch. ✅ (private repo
+   `charithmadhuranga/Lumen`, run 44293596397 — all 5 jobs green)
 6. Project structure documented in `README.md` and `docs/ARCHITECTURE.md`;
    `AGENTS.md` §3 command table matches reality. ✅
 7. `docs/IMPLEMENTATION_STATUS.md` exists and Phase 0 boxes are checked. ✅
@@ -129,8 +129,9 @@ banner + partition table + 5 s heartbeat observed over serial — logged in
 
 ## Risks / open questions
 
-- Partition table and flash size need confirmation (ask before changing).
-  Current 4 MB layout: dual OTA 1375 KB ×2 + LittleFS 1125 KB.
+- Partition table: **confirmed by user 2026-11-18** — keep the initial 4 MB
+  layout (dual OTA 1375 KB ×2 + LittleFS 1125 KB). Any later change is a
+  fresh AGENTS.md §15 ask.
 - ESP-IDF/PlatformIO version pinning: pinned `espressif32@8.0.0`
   (ESP-IDF 6.1.0), PlatformIO 6.2.0 in CI — changing them later is an
   explicit, user-approved task.

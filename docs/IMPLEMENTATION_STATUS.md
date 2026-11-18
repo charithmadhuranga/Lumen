@@ -20,7 +20,9 @@ Legend: `[x]` done · `[ ]` not done · **HW** = verified on physical hardware.
 - [x] `schemas/` — 7 JSON schemas (2020-12) + fixtures (valid + invalid)
 - [x] `npm run validate:schemas` (ajv) passes — 7 schemas, 9 fixtures
 - [x] Host tests: `pio test -e native` — 10/10 pass (smoke + partition validation)
-- [x] CI workflow created (`.github/workflows/ci.yml`); first green run pending push to GitHub remote
+- [x] CI workflow created (`.github/workflows/ci.yml`) — **green on
+      `main`**: Schema validation, Web UI, Firmware (esp32), Firmware
+      (esp32s3), Host unit tests all passing (run 44293596397)
 - [x] `.gitignore`, bundle-budget check script (DESIGN §14.1 initial budgets)
 - [x] Docs skeleton: README, ARCHITECTURE, API, HARDWARE_PROFILES, AUTOMATION, ESP_NOW_PROTOCOL, UI_UX
 - [x] `boards/` placeholder

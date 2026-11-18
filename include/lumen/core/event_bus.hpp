@@ -3,12 +3,13 @@
 // Design contract:
 // - Producers NEVER block: post() takes a short critical section only.
 // - Each subscription owns a fixed slice of caller-provided pool storage;
-//   the bus performs no heap allocation at all.
+//   the bus performs no heap allocation at all (routing table is a fixed
+//   member array of kMaxSubscriptions entries).
 // - Drop policy is explicit and observable via EventBusStats:
 //     * Critical  : never silently dropped — evicts the OLDEST event of
 //                   lower priority; if the queue holds only critical events
 //                   the drop is counted (dropped[Critical]) and reported.
-//     * Normal     : dropped when full → counted.
+//     * Normal    : dropped when full → counted.
 //     * Telemetry : coalesces with an already-queued event of the same id;
 //                   dropped when full → counted.
 // - Delivery happens when the owner polls its subscription, so handlers run
@@ -20,6 +21,7 @@
 // lumen/core/ports.hpp), so the whole bus is host-testable.
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 
@@ -43,29 +45,30 @@ struct SubscribeOptions {
 };
 
 struct EventBusStats {
-    uint32_t posted = 0;                 // accepted into ≥ 1 queue
-    uint32_t poll_delivered = 0;         // events dispatched to handlers
-    uint32_t dropped[3] = {};            // indexed by EventPriority
-    uint32_t evicted_by_critical = 0;    // lower-priority events displaced
-    uint32_t coalesced = 0;              // telemetry merges
-    uint32_t post_rejected_no_route = 0; // no matching subscription
+    uint32_t posted = 0;                  // accepted into ≥ 1 queue
+    uint32_t poll_delivered = 0;          // events dispatched to handlers
+    uint32_t dropped[3] = {};             // indexed by EventPriority
+    uint32_t evicted_by_critical = 0;     // lower-priority events displaced
+    uint32_t coalesced = 0;               // telemetry merges
+    uint32_t post_rejected_no_route = 0;  // no matching subscription
 };
 
 class EventBus
 {
   public:
+    static constexpr std::size_t kMaxSubscriptions = 16;
+
     // `pool` is caller-owned storage split into per-subscription slices;
-    // `pool_events` bounds total buffered events; `max_subscriptions`
-    // bounds routing table growth. All allocation happens in subscribe().
-    EventBus(ILock &lock, IClock &clock, Event *pool, std::size_t pool_events,
-             std::size_t max_subscriptions);
+    // `pool_events` bounds total buffered events. All slice allocation
+    // happens in subscribe(); nothing is ever allocated on the heap.
+    EventBus(ILock &lock, IClock &clock, Event *pool, std::size_t pool_events);
 
     // Registers a subscription; returns kInvalidSubscription when the
     // routing table or pool is exhausted (never grows unbounded).
     SubscriptionId subscribe(const SubscribeOptions &options);
 
-    // Drops pending events and releases the slice. Returns false if the id
-    // is unknown.
+    // Drops pending events, releases the slice (compacting the pool so the
+    // storage is reusable) and frees the routing slot.
     bool unsubscribe(SubscriptionId id);
 
     // Routes an event to every matching subscription without blocking.
@@ -96,7 +99,7 @@ class EventBus
         Event *events = nullptr; // slice into pool
         std::size_t capacity = 0;
         std::size_t head = 0; // pop index
-        std::size_t count = 0;
+        std::size_t count = 0; // queued
         EventId id = EventId::Any;
         EventPriority min_priority = EventPriority::Telemetry;
         EventHandler handler = nullptr;
@@ -104,9 +107,12 @@ class EventBus
         bool active = false;
     };
 
-    // All three run with the lock HELD.
-    bool route_locked(const Event &event);
+    // All run with the lock HELD.
+    // `matched`: a subscription wants this id/priority.
+    // `accepted`: at least one queue took it.
+    void route_locked(const Event &event, bool &matched, bool &accepted);
     bool push_locked(Subscription &sub, const Event &event);
+    void compact_locked();
     void stats_drop_locked(EventPriority priority)
     {
         stats_.dropped[static_cast<std::size_t>(priority)]++;
@@ -117,9 +123,7 @@ class EventBus
     Event *pool_;
     std::size_t pool_events_;
     std::size_t pool_used_;
-    Subscription *subs_;
-    std::size_t max_subs_;
-    std::size_t sub_count_;
+    std::array<Subscription, kMaxSubscriptions> subs_{};
     uint32_t sequence_;
     EventBusStats stats_;
 };

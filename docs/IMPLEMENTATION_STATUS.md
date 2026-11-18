@@ -30,13 +30,28 @@ Legend: `[x]` done · `[ ]` not done · **HW** = verified on physical hardware.
 
 ## Phase 1 — Core firmware
 
-- [ ] System manager
-- [ ] Event bus
-- [ ] Config manager
-- [ ] Storage manager (NVS + LittleFS, transactional)
-- [ ] Schema versioning / migrations
-- [ ] Structured logging + diagnostics
-- [ ] Service lifecycle + task registry
+- [x] System manager (`src/core/system_manager.*`) — declarative service
+      registry (init/start/stop in declared order, bounded startup, safe
+      states on stop).
+- [x] Event bus (`src/core/event_bus.*`) — typed, bounded pub/sub with
+      explicit drop policy (coalescing, critical eviction, counted drops).
+- [x] Config manager (`src/core/config_manager.*`) — document registry
+      (SPEC §19.2), load → schema-version check → migrate → validate,
+      `config_changed` event, secrets never in JSON.
+- [x] Storage manager (`src/core/storage_manager.*`) — transactional write
+      with one-generation backup, corrupt/missing fallback to defaults.
+- [x] Schema versioning / migrations pipeline (additive, non-destructive).
+- [x] Structured logging + diagnostics (log categories, redaction helper,
+      snapshot API).
+- [x] Service lifecycle wired into `main.cpp` boot (replaces Phase 0
+      heartbeat loop).
+- [x] Host unit tests: event bus (ordering, bounds, drop counters),
+      transactional writes, migration pipeline, corrupted-config recovery
+      (53 tests across 5 suites, all passing).
+- [x] Task registry documented in `docs/ARCHITECTURE.md` (no new FreeRTOS
+      tasks created in Phase 1).
+- [x] Device boots to stable idle; banner + SystemManager init/start
+      observed on KC868-AP (**HW**).
 
 ## Phase 2 — Hardware abstraction
 

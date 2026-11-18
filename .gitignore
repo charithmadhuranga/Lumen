@@ -21,6 +21,10 @@ playwright-report/
 test-results/
 .vite/
 
+# Host unit test temp directories (created/cleaned by test setUp/tearDown;
+# a crashed run can leave them behind).
+.test_*_tmp/
+
 # Editors / OS
 .vscode/
 .idea/

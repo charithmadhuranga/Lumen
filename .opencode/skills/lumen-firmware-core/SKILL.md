@@ -3,7 +3,7 @@ name: lumen-firmware-core
 description: Core firmware work for Lumen — system manager, typed event bus, transactional config/storage (NVS + LittleFS), schema versioning and migration, structured logging, diagnostics, FreeRTOS service lifecycle and task registry. Use when implementing or changing anything under src/core/, boot order, persistence, config documents, or system-wide services. Triggers: "event bus", "config manager", "storage manager", "system manager", "services lifecycle", "diagnostics", "phase 1".
 ---
 
-# ESP Lighting — Core Firmware
+# Lumen — Core Firmware
 
 **Plan:** `.opencode/plans/phase-01-core-firmware.md` (also Phase 0 scaffold).
 **Spec:** SPEC §4 (architecture), §19 (storage), §21 (logging), §23 (tasks).

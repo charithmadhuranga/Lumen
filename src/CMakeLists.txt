@@ -4,7 +4,15 @@
 # registers only what it uses.
 
 idf_component_register(
-    SRCS "main.cpp"
+    SRCS
+        "main.cpp"
+        "core/event_bus.cpp"
+        "core/storage_manager.cpp"
+        "core/json_adapter.cpp"
+        "core/config_manager.cpp"
+        "core/system_manager.cpp"
+        "core/diagnostics.cpp"
+        "core/cJSON.c"
     INCLUDE_DIRS "." "../include"
 )
 

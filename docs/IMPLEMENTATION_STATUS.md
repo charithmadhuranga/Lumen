@@ -52,6 +52,9 @@ Legend: `[x]` done · `[ ]` not done · **HW** = verified on physical hardware.
       tasks created in Phase 1).
 - [x] Device boots to stable idle; banner + SystemManager init/start
       observed on KC868-AP (**HW**).
+- [x] CI green on Phase 1 commit 42b0d62 (run 44310909218): schema
+      validation, firmware esp32, host unit tests (53), web UI, firmware
+      esp32s3 — all success.
 
 ## Phase 2 — Hardware abstraction
 

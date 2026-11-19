@@ -15,9 +15,6 @@ import { Loader2, Lock, AlertCircle } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
 
-/* ================================================================
-   Validation Schema
-   ================================================================ */
 const passwordSchema = z
   .object({
     currentPassword: z.string().min(1, "Current password is required"),
@@ -35,9 +32,6 @@ const passwordSchema = z
 
 type PasswordForm = z.infer<typeof passwordSchema>;
 
-/* ================================================================
-   Password Strength Helper
-   ================================================================ */
 function getPasswordStrength(password: string): { score: number; label: string; color: string } {
   let score = 0;
   if (password.length >= 10) score++;
@@ -52,9 +46,6 @@ function getPasswordStrength(password: string): { score: number; label: string; 
   return { score, label: "Strong", color: "text-success" };
 }
 
-/* ================================================================
-   Setup Password Screen
-   ================================================================ */
 export function SetupPassword() {
   const navigate = useNavigate();
   const { changePassword, loading: authLoading } = useAuth();
@@ -69,7 +60,7 @@ export function SetupPassword() {
     mode: "onChange",
   });
 
-  // Watch new password for strength indicator
+  // eslint-disable-next-line react-hooks/incompatible-library
   const newPassword = form.watch("newPassword");
   React.useEffect(() => {
     setStrength(getPasswordStrength(newPassword));
@@ -81,8 +72,8 @@ export function SetupPassword() {
     try {
       await changePassword(data.currentPassword, data.newPassword);
       navigate("/");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Password change failed");
+    } catch {
+      setError("Password change failed");
     } finally {
       setLocalLoading(false);
     }

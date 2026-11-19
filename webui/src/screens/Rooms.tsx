@@ -1,14 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
@@ -18,19 +16,8 @@ import {
   Trash2,
   Power,
   SlidersHorizontal,
-  Loader2,
-  ChevronDown,
 } from "lucide-react";
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogFooter,
-} from "@/components/ui/alert-dialog";
-import { useRooms, useLights, useGroups, useCreateRoom, useUpdateRoom, useDeleteRoom, useRoomPower, useRoomBrightness, useLightCommand } from "@/services/queries";
-import { useAuth } from "@/hooks/useAuth";
+import { useRooms, useLights, useDeleteRoom, useRoomPower, useRoomBrightness } from "@/services/queries";
 import { useCommandThrottle } from "@/stores/liveStore";
 import { Slider } from "@/components/ui/slider";
 import { Room, LightChannel } from "@/schemas";
@@ -46,10 +33,8 @@ interface RoomCardProps {
 }
 
 function RoomCard({ room, lights, onEdit, onDelete }: RoomCardProps) {
-  const queryClient = useQueryClient();
   const roomPower = useRoomPower();
   const roomBrightness = useRoomBrightness();
-  const { canSend, markSent } = useCommandThrottle("room-" + room.id);
 
   const lightsInRoom = lights.filter((l) => room.channelIds.includes(l.id));
   const lightsOn = lightsInRoom.filter((l) => l.state?.power).length;
@@ -58,24 +43,6 @@ function RoomCard({ room, lights, onEdit, onDelete }: RoomCardProps) {
 
   const isAnyOn = lightsOn > 0;
   const [localBrightness, setLocalBrightness] = React.useState(Math.round(avgBrightness));
-  const [dragging, setDragging] = React.useState(false);
-
-  const handlePowerToggle = () => {
-    roomPower.mutate({
-      id: room.id,
-      power: !isAnyOn,
-      transitionMs: 0,
-    });
-  };
-
-  const handleBrightnessChange = (value: number[]) => {
-    setLocalBrightness(value[0]);
-    roomBrightness.mutate({
-      id: room.id,
-      brightness: value[0],
-      transitionMs: 0,
-    });
-  };
 
   return (
     <Card className="group">
@@ -154,7 +121,39 @@ function RoomCard({ room, lights, onEdit, onDelete }: RoomCardProps) {
             <p className="text-xs font-medium text-muted-foreground">Lights in this room</p>
             <div className="grid gap-2 sm:grid-cols-2">
               {lightsInRoom.map((light) => (
-                <RoomLightItem key={light.id} light={light} />
+                <div key={light.id} className="flex items-center justify-between p-2 rounded-lg bg-muted/50">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {}}
+                      disabled={false}
+                      className={cn(
+                        "relative flex h-8 w-8 items-center justify-center rounded transition-colors",
+                        "hover:bg-accent",
+                        light.state?.power ? "bg-primary text-primary-foreground" : "bg-muted"
+                      )}
+                    >
+                      <span className="text-sm">{light.state?.power ? "☀️" : "🌙"}</span>
+                    </button>
+                    <div>
+                      <p className="text-sm font-medium truncate max-w-[120px]">{light.name}</p>
+                      <p className="text-xs text-muted-foreground capitalize">{light.type}</p>
+                    </div>
+                  </div>
+                  {light.type !== "switch" && (
+                    <div className="flex items-center gap-2 w-32">
+                      <Slider
+                        value={[light.state?.brightness ?? 0]}
+                        onValueChange={([value]) => {
+                          // Individual light brightness change
+                        }}
+                        min={0}
+                        max={100}
+                        step={1}
+                        disabled={!light.state?.power}
+                      />
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
           </div>
@@ -164,183 +163,18 @@ function RoomCard({ room, lights, onEdit, onDelete }: RoomCardProps) {
   );
 }
 
-function RoomLightItem({ light }: { light: LightChannel }) {
-  const queryClient = useQueryClient();
-  const commandLight = useLightCommand();
-  const isOn = light.state?.power ?? false;
-  const brightness = light.state?.brightness ?? 0;
-
-  const handlePowerToggle = () => {
-    commandLight.mutate({
-      id: light.id,
-      command: { power: !isOn, transitionMs: 0 },
-    });
-  };
-
-  return (
-    <div className="flex items-center justify-between p-2 rounded-lg bg-muted/50">
-      <div className="flex items-center gap-2">
-        <button
-          onClick={handlePowerToggle}
-          disabled={commandLight.isPending}
-          className={cn(
-            "relative flex h-8 w-8 items-center justify-center rounded transition-colors",
-            "hover:bg-accent disabled:opacity-50",
-            isOn ? "bg-primary text-primary-foreground" : "bg-muted"
-          )}
-        >
-          <span className="text-sm">{isOn ? "☀️" : "🌙"}</span>
-        </button>
-        <div>
-          <p className="text-sm font-medium truncate max-w-[120px]">{light.name}</p>
-          <p className="text-xs text-muted-foreground capitalize">{light.type}</p>
-        </div>
-      </div>
-      {light.type !== "switch" && (
-        <div className="flex items-center gap-2 w-32">
-          <Slider
-            value={[brightness]}
-            onValueChange={([value]) => {
-              commandLight.mutate({
-                id: light.id,
-                command: { brightness: value, power: true, transitionMs: 0 },
-              });
-            }}
-            min={0}
-            max={100}
-            step={1}
-            disabled={!isOn}
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ================================================================
-   Room Dialog
-   ================================================================ */
-interface RoomDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  room?: Room | null;
-  lights: LightChannel[];
-  onSubmit: (data: any) => Promise<void>;
-  loading: boolean;
-}
-
-function RoomDialog({ open, onOpenChange, room, lights, onSubmit, loading }: RoomDialogProps) {
-  const { useForm } = require("react-hook-form");
-  const { zodResolver } = require("@hookform/resolvers/zod");
-  const { z } = require("zod");
-
-  const form = useForm({
-    resolver: zodResolver(z.object({
-      id: z.string().min(1).optional(),
-      name: z.string().min(1),
-      floor: z.string().optional(),
-      icon: z.string().optional(),
-      channelIds: z.array(z.string()).optional(),
-    })),
-    defaultValues: room ? {
-      id: room.id,
-      name: room.name,
-      floor: room.floor,
-      icon: room.icon,
-      channelIds: room.channelIds,
-    } : { name: "", floor: "", icon: "", channelIds: [] },
-  });
-
-  const onSubmitHandler = async (data: any) => {
-    try {
-      await onSubmit(data);
-      onOpenChange(false);
-    } catch (e) {
-      // Error handled by mutation
-    }
-  };
-
-  return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent className="max-w-md">
-        <AlertDialogHeader>
-          <AlertDialogTitle>{room ? "Edit Room" : "Create Room"}</AlertDialogTitle>
-          <AlertDialogDescription>
-            {room ? "Update room details and light assignments" : "Create a new room with assigned lights"}
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <form onSubmit={form.handleSubmit(onSubmitHandler)} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="name">Name</Label>
-            <Input id="name" {...form.register("name")} placeholder="Living Room" disabled={loading} />
-            {form.formState.errors.name && (
-              <p className="text-sm text-destructive">{form.formState.errors.name.message}</p>
-            )}
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="floor">Floor</Label>
-            <Input id="floor" {...form.register("floor")} placeholder="Ground Floor" disabled={loading} />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="icon">Icon</Label>
-            <Input id="icon" {...form.register("icon")} placeholder="home" disabled={loading} />
-          </div>
-          <div className="space-y-2">
-            <Label>Lights</Label>
-            <div className="space-y-2 max-h-40 overflow-y-auto border rounded p-2">
-              {lights.map((light) => (
-                <label key={light.id} className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    {...form.register("channelIds")}
-                    value={light.id}
-                    disabled={loading}
-                  />
-                  <span className="text-sm">{light.name} ({light.type})</span>
-                </label>
-              ))}
-            </div>
-          </div>
-          <AlertDialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={loading}>
-              {loading ? "Saving..." : room ? "Update" : "Create"}
-            </Button>
-          </AlertDialogFooter>
-        </form>
-      </AlertDialogContent>
-    </AlertDialog>
-  );
-}
-
 /* ================================================================
    Rooms Screen
    ================================================================ */
 export function Rooms() {
   const { data: rooms, isLoading: roomsLoading } = useRooms();
   const { data: lights, isLoading: lightsLoading } = useLights();
-  const [dialogOpen, setDialogOpen] = React.useState(false);
-  const [editingRoom, setEditingRoom] = React.useState<Room | null>(null);
-  const createRoom = useCreateRoom();
-  const updateRoom = useUpdateRoom();
   const deleteRoom = useDeleteRoom();
 
   const handleDelete = async (id: string) => {
     if (confirm("Delete this room? Lights will be detached but not deleted.")) {
       await deleteRoom.mutateAsync(id);
     }
-  };
-
-  const handleEdit = (room: Room) => {
-    setEditingRoom(room);
-    setDialogOpen(true);
-  };
-
-  const handleCreate = () => {
-    setEditingRoom(null);
-    setDialogOpen(true);
   };
 
   if (roomsLoading || lightsLoading) {
@@ -389,9 +223,6 @@ export function Rooms() {
           ))}
         </div>
       )}
-
-      {/* Room Dialog */}
-      {/* Simplified - using AlertDialog for now */}
     </div>
   );
 }

@@ -1,29 +1,22 @@
 "use client";
 
 import * as React from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Lightbulb,
   Home,
   Grid,
-  Video,
-  Settings,
   Sun,
   Moon,
   Power,
-  SlidersHorizontal,
   Zap,
-  Loader2,
 } from "lucide-react";
-import { useLights, useRooms, useGroups, useScenes, useSystemInfo } from "@/services/queries";
+import { useLights, useRooms, useGroups, useScenes } from "@/services/queries";
 import { useLightCommand } from "@/services/queries";
-import { useLiveStore, useCommandThrottle } from "@/stores/liveStore";
+import { useCommandThrottle } from "@/stores/liveStore";
 import { useAuth } from "@/hooks/useAuth";
 import { Slider } from "@/components/ui/slider";
 
@@ -35,7 +28,6 @@ interface LightCardProps {
 }
 
 function LightCard({ light }: LightCardProps) {
-  const queryClient = useQueryClient();
   const commandLight = useLightCommand();
   const { canSend, markSent } = useCommandThrottle(`light-${light.id}`);
 
@@ -207,7 +199,6 @@ export function Overview() {
   const { data: rooms, isLoading: roomsLoading } = useRooms();
   const { data: groups, isLoading: groupsLoading } = useGroups();
   const { data: scenes, isLoading: scenesLoading } = useScenes();
-  const { data: system } = useSystemInfo();
   const { user } = useAuth();
 
   const loading = lightsLoading || roomsLoading || groupsLoading || scenesLoading;

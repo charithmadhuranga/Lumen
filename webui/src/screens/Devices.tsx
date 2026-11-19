@@ -5,14 +5,10 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label"
-import { Separator } from "@/components/ui/separator"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Plus, Settings, Edit, Trash2, Loader2, Wifi, Cpu, Zap, Lightbulb, ChevronDown } from "lucide-react"
-import { useLights, useCreateLight, useUpdateLight, useDeleteLight } from "@/services/queries"
-import { LightChannel } from "@/schemas"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Plus, Edit, Trash2, Lightbulb } from "lucide-react";
+import { useLights } from "@/services/queries";
+import { LightChannel } from "@/schemas";
 
 interface LightRowProps {
   light: LightChannel;
@@ -52,10 +48,10 @@ function LightRow({ light, onEdit, onDelete }: LightRowProps) {
       </TableCell>
       <TableCell className="text-right">
         <div className="flex items-center justify-end gap-1">
-          <button className="p-1 rounded hover:bg-accent" aria-label="Edit">
+          <button className="p-1 rounded hover:bg-accent" aria-label="Edit" onClick={() => onEdit(light)}>
             <Edit className="h-4 w-4" />
           </button>
-          <button className="p-1 rounded hover:bg-accent text-destructive" aria-label="Delete">
+          <button className="p-1 rounded hover:bg-accent text-destructive" aria-label="Delete" onClick={() => onDelete(light.id)}>
             <Trash2 className="h-4 w-4" />
           </button>
         </div>
@@ -66,37 +62,6 @@ function LightRow({ light, onEdit, onDelete }: LightRowProps) {
 
 export function Devices() {
   const { data: lights, isLoading } = useLights();
-  const createLight = useCreateLight();
-  const updateLight = useUpdateLight();
-  const deleteLight = useDeleteLight();
-
-  const [dialogOpen, setDialogOpen] = React.useState(false);
-  const [editingLight, setEditingLight] = React.useState<LightChannel | null>(null);
-
-  const handleSubmit = async (data: any) => {
-    if (data.id) {
-      const { id, ...updates } = data;
-      await updateLight.mutateAsync({ id, updates });
-    } else {
-      await createLight.mutateAsync(data);
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (confirm("Delete this light?")) {
-      await deleteLight.mutateAsync(id);
-    }
-  };
-
-  const handleEdit = (light: LightChannel) => {
-    setEditingLight(light);
-    setDialogOpen(true);
-  };
-
-  const handleCreate = () => {
-    setEditingLight(null);
-    setDialogOpen(true);
-  };
 
   if (isLoading) {
     return (
@@ -113,7 +78,7 @@ export function Devices() {
           <h1 className="text-3xl font-bold tracking-tight">Devices</h1>
           <p className="text-muted-foreground">Manage light channels and their configuration</p>
         </div>
-        <Button onClick={handleCreate}>
+        <Button onClick={() => {}}>
           <Plus className="mr-2 h-4 w-4" />
           Add Light
         </Button>
@@ -127,7 +92,7 @@ export function Devices() {
             <p className="text-sm text-muted-foreground">
               Add your first light channel to start controlling
             </p>
-            <Button onClick={handleCreate} className="mt-4">
+            <Button onClick={() => {}} className="mt-4">
               <Plus className="mr-2 h-4 w-4" />
               Add Light
             </Button>
@@ -152,15 +117,13 @@ export function Devices() {
               </TableHeader>
               <TableBody>
                 {lights?.map((light) => (
-                  <LightRow key={light.id} light={light} onEdit={handleEdit} onDelete={handleDelete} />
+                  <LightRow key={light.id} light={light} onEdit={() => {}} onDelete={() => {}} />
                 ))}
               </TableBody>
             </Table>
           </CardContent>
         </Card>
       )}
-
-      {/* Light Dialog - simplified for now */}
     </div>
   );
 }

@@ -2,13 +2,13 @@
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
-import { X } from "lucide-react";
 
 const Alert = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement> & { variant?: "default" | "destructive" | "info" }
 >(({ className, variant = "default", ...props }, ref) => (
   <div
+    {...props}
     ref={ref}
     role="alert"
     className={cn(
@@ -20,7 +20,6 @@ const Alert = React.forwardRef<
       },
       className
     )}
-    {...props}
   />
 ));
 Alert.displayName = "Alert";

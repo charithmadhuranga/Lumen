@@ -1,13 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Plus, Image, Edit, Trash2, Upload, Download, Eye, Loader2 } from "lucide-react";
+import { Plus, Image, Edit, Upload, Loader2 } from "lucide-react";
 
 export function FloorPlans() {
   return (

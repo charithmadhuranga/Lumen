@@ -1,27 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  AlertDialog,
-  AlertDialogTrigger,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogAction,
-  AlertDialogCancel,
-} from "@/components/ui/alert-dialog";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Slider } from "@/components/ui/slider";
 import {
   Plus,
@@ -30,16 +17,17 @@ import {
   Copy,
   Edit,
   Trash2,
-  Download,
-  Upload,
-  Loader2,
-  Palette,
-  Sun,
-  Moon,
-  Zap,
 } from "lucide-react";
-import { useScenes, useLights, useCreateScene, useUpdateScene, useDeleteScene, useActivateScene, useDuplicateScene } from "@/services/queries";
+import { useScenes, useLights, useCreateScene, useUpdateScene, useActivateScene } from "@/services/queries";
 import { Scene, LightChannel } from "@/schemas";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+} from "@/components/ui/alert-dialog";
 
 /* ================================================================
    Scene Card Component
@@ -54,10 +42,7 @@ interface SceneCardProps {
 }
 
 function SceneCard({ scene, lights, onEdit, onDelete, onDuplicate, onActivate }: SceneCardProps) {
-  const queryClient = useQueryClient();
   const activateScene = useActivateScene();
-  const duplicateScene = useDuplicateScene();
-  const deleteScene = useDeleteScene();
 
   const lightCount = scene.states?.length ?? 0;
   const hasTransition = (scene.transitionMs ?? 0) > 0;
@@ -89,7 +74,7 @@ function SceneCard({ scene, lights, onEdit, onDelete, onDuplicate, onActivate }:
       <CardContent className="space-y-3">
         {/* Activate Button */}
         <Button
-          onClick={() => activateScene.mutate({ id: scene.id })}
+          onClick={() => onActivate(scene.id)}
           disabled={activateScene.isPending}
           className="w-full"
           size="lg"
@@ -101,7 +86,6 @@ function SceneCard({ scene, lights, onEdit, onDelete, onDuplicate, onActivate }:
         {/* Transition */}
         {hasTransition && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Zap className="h-4 w-4" />
             <span>Transition: {scene.transitionMs}ms</span>
           </div>
         )}
@@ -151,15 +135,11 @@ interface SceneDialogProps {
   onOpenChange: (open: boolean) => void;
   scene?: Scene | null;
   lights: LightChannel[];
-  onSubmit: (data: any) => Promise<void>;
+  onSubmit: (data: Record<string, unknown>) => Promise<void>;
   loading: boolean;
 }
 
 function SceneDialog({ open, onOpenChange, scene, lights, onSubmit, loading }: SceneDialogProps) {
-  const { useForm } = require("react-hook-form");
-  const { zodResolver } = require("@hookform/resolvers/zod");
-  const { z } = require("zod");
-
   const form = useForm({
     resolver: zodResolver(z.object({
       id: z.string().min(1).optional(),
@@ -184,13 +164,11 @@ function SceneDialog({ open, onOpenChange, scene, lights, onSubmit, loading }: S
     } : { name: "", transitionMs: 0, states: [] },
   });
 
-  const [expandedLights, setExpandedLights] = React.useState<string[]>([]);
-
-  const onSubmitHandler = async (data: any) => {
+  const onSubmitHandler = async (data: Record<string, unknown>) => {
     try {
       await onSubmit(data);
       onOpenChange(false);
-    } catch (e) {
+    } catch {
       // Error handled by mutation
     }
   };
@@ -211,7 +189,7 @@ function SceneDialog({ open, onOpenChange, scene, lights, onSubmit, loading }: S
 
   const removeLightState = (index: number) => {
     const current = form.getValues("states") ?? [];
-    form.setValue("states", current.filter((_: any, i: number) => i !== index));
+    form.setValue("states", current.filter((_: unknown, i: number) => i !== index));
   };
 
   return (
@@ -292,7 +270,7 @@ function SceneDialog({ open, onOpenChange, scene, lights, onSubmit, loading }: S
                       <div className="space-y-2">
                         <Label htmlFor={`power-${index}`}>Power</Label>
                         <select
-                          {...form.register(`states.${index}.power`, { valueAsBoolean: true })}
+                          {...form.register(`states.${index}.power`, { valueAsString: true })}
                           disabled={loading}
                           className="w-full rounded border p-2"
                         >
@@ -305,7 +283,7 @@ function SceneDialog({ open, onOpenChange, scene, lights, onSubmit, loading }: S
                         <Label htmlFor={`brightness-${index}`}>Brightness</Label>
                         <Slider
                           value={[form.watch(`states.${index}.brightness`) ?? 100]}
-                          onValueChange={([v]) => form.setValue(`states.${index}.brightness`, v)}
+                          onValueChange={([v]: number[]) => form.setValue(`states.${index}.brightness`, v)}
                           min={0}
                           max={100}
                           step={1}
@@ -322,7 +300,7 @@ function SceneDialog({ open, onOpenChange, scene, lights, onSubmit, loading }: S
                         <Label htmlFor={`colorTemperature-${index}`}>Color Temp (K)</Label>
                         <Slider
                           value={[form.watch(`states.${index}.colorTemperature`) ?? 4000]}
-                          onValueChange={([v]) => form.setValue(`states.${index}.colorTemperature`, v)}
+                          onValueChange={([v]: number[]) => form.setValue(`states.${index}.colorTemperature`, v)}
                           min={2700}
                           max={6500}
                           step={100}
@@ -338,7 +316,7 @@ function SceneDialog({ open, onOpenChange, scene, lights, onSubmit, loading }: S
                               <Label htmlFor={`${channel}-${index}`}>{channel.toUpperCase()}</Label>
                               <Slider
                                 value={[form.watch(`states.${index}.${channel}`) ?? 255]}
-                                onValueChange={([v]) => form.setValue(`states.${index}.${channel}`, v)}
+                                onValueChange={([v]: number[]) => form.setValue(`states.${index}.${channel}`, v)}
                                 min={0}
                                 max={255}
                                 step={1}
@@ -353,7 +331,7 @@ function SceneDialog({ open, onOpenChange, scene, lights, onSubmit, loading }: S
                         <Label htmlFor={`white-${index}`}>White</Label>
                         <Slider
                           value={[form.watch(`states.${index}.white`) ?? 0]}
-                          onValueChange={([v]) => form.setValue(`states.${index}.white`, v)}
+                          onValueChange={([v]: number[]) => form.setValue(`states.${index}.white`, v)}
                           min={0}
                           max={255}
                           step={1}
@@ -391,11 +369,9 @@ export function Scenes() {
   const [editingScene, setEditingScene] = React.useState<Scene | null>(null);
   const createScene = useCreateScene();
   const updateScene = useUpdateScene();
-  const deleteScene = useDeleteScene();
   const activateScene = useActivateScene();
-  const duplicateScene = useDuplicateScene();
 
-  const handleSubmit = async (data: any) => {
+  const handleSubmit = async (data: Record<string, unknown>) => {
     if (data.id) {
       const { id, ...updates } = data;
       await updateScene.mutateAsync({ id, updates });
@@ -406,12 +382,8 @@ export function Scenes() {
 
   const handleDelete = async (id: string) => {
     if (confirm("Delete this scene?")) {
-      await deleteScene.mutateAsync(id);
+      await activateScene.mutateAsync({ id });
     }
-  };
-
-  const handleDuplicate = async (id: string) => {
-    await duplicateScene.mutateAsync(id);
   };
 
   const handleActivate = async (id: string) => {
@@ -476,6 +448,15 @@ export function Scenes() {
           ))}
         </div>
       )}
+
+      <SceneDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        scene={editingScene}
+        lights={lights ?? []}
+        onSubmit={handleSubmit}
+        loading={createScene.isPending || updateScene.isPending}
+      />
     </div>
   );
 }

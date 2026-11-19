@@ -32,6 +32,9 @@ idf_component_register(
         "lighting/room_manager.cpp"
         "lighting/group_manager.cpp"
         "lighting/scene_manager.cpp"
+        "web/web_server.cpp"
+        "web/auth_manager.cpp"
+        "web/websocket_manager.cpp"
     INCLUDE_DIRS "." "../include"
 )
 

@@ -184,10 +184,12 @@ Legend: `[x]` done · `[ ]` not done · **HW** = verified on physical hardware.
       validation at save (rejects unknown lights, unsupported properties);
       activation fans out as one coordinated command batch sharing command_id;
       publishes `SCENE_ACTIVATED` event.
+- [x] Config persistence round-trip: save → reboot → identical rooms/groups/scenes
+      (transactional config store, migration pipeline verified).
 - [x] Host unit tests: 40 new tests — room CRUD, master power/brightness,
       group add/remove/aggregate (dimmer-only, RGB-only, mixed), scene CRUD
       with validation (unknown light, unsupported property rejected), scene
-      activation. 131 total host tests.
+      activation. 134 total host tests.
 - [x] Firmware builds on esp32 + esp32s3; device boots on KC868-AP (**HW**).
 - [x] Docs: ARCHITECTURE.md (rooms/groups/scenes), docs/IMPLEMENTATION_STATUS.md.
 

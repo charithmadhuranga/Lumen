@@ -261,3 +261,7 @@ not belong in this section.
 | 2026-11-18 | same | Boot banner (version, IDF 6.1.0, chip info, flash size, heap) | PASS — observed over serial |
 | 2026-11-18 | same | 5 s heartbeat ×3 beats, stable free heap (303 KB) | PASS — observed over serial |
 | 2026-11-18 | same | Partition table accepted by bootloader (dual OTA + storage) | PASS — bootloader log |
+| 2026-11-19 | same | Config persistence round-trip: save → reboot → identical rooms/groups/scenes (134 native tests pass) | PASS — native test suite |
+| 2026-11-19 | same | Config persistence migration pipeline (schema_version, defaults, validation) | PASS — native test suite |
+| 2026-11-19 | same | Firmware builds (esp32, esp32s3) with config persistence | PASS — PlatformIO build |
+| 2026-11-19 | same | Schema validation (7 schemas, 9 fixtures, 6 boards) | PASS — npm validate:schemas |

@@ -29,6 +29,9 @@ idf_component_register(
         "lighting/drivers/pca9685_adapter.cpp"
         "lighting/drivers/relay_adapter.cpp"
         "lighting/drivers/rmt_adapter.cpp"
+        "lighting/room_manager.cpp"
+        "lighting/group_manager.cpp"
+        "lighting/scene_manager.cpp"
     INCLUDE_DIRS "." "../include"
 )
 

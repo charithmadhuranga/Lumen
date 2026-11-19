@@ -171,9 +171,25 @@ Legend: `[x]` done · `[ ]` not done · **HW** = verified on physical hardware.
 
 ## Phase 5 — Rooms, groups, scenes
 
-- [ ] Rooms
-- [ ] Groups + aggregation policies
-- [ ] Scenes
+- [x] Room manager (`src/lighting/room_manager.*`) — Room model with id, name,
+      floor, icon, channel IDs, group IDs, floorplan ID; CRUD persisted via
+      config manager; add/remove light from room; master power/brightness
+      fan-out through lighting task.
+- [x] Group manager (`src/lighting/group_manager.*`) — Groups span rooms;
+      aggregation policy (average/max/min); brightness change adjusts every
+      member preserving color; RGB/CCT applies only to supporting members;
+      on/off applies to all; aggregate state (on-count/mean brightness) for UI.
+- [x] Scene manager (`src/lighting/scene_manager.*`) — Scene documents with
+      `schema_version`, per-light states with transition_ms; CRUD with type
+      validation at save (rejects unknown lights, unsupported properties);
+      activation fans out as one coordinated command batch sharing command_id;
+      publishes `SCENE_ACTIVATED` event.
+- [x] Host unit tests: 40 new tests — room CRUD, master power/brightness,
+      group add/remove/aggregate (dimmer-only, RGB-only, mixed), scene CRUD
+      with validation (unknown light, unsupported property rejected), scene
+      activation. 131 total host tests.
+- [x] Firmware builds on esp32 + esp32s3; device boots on KC868-AP (**HW**).
+- [x] Docs: ARCHITECTURE.md (rooms/groups/scenes), docs/IMPLEMENTATION_STATUS.md.
 
 ## Phase 6 — WebUI foundation
 

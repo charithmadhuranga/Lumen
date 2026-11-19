@@ -18,6 +18,7 @@
 
 #include "lumen/lighting/transition.h"
 #include "lumen/lighting/channel.h"
+#include "lumen/lighting/channel.h"
 
 namespace lumen
 {

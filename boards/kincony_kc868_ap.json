@@ -4,7 +4,7 @@
   "name": "KinCony KC868-AP",
   "manufacturer": "KinCony",
   "mcu": "esp32",
-  "description": "KinCony KC868-AP reference board. All peripheral addresses and polarities below are taken from the vendor controller-presets pinmap.txt and are UNVERIFIED until measured on physical hardware (Phase 3).",
+  "description": "KinCony KC868-AP reference board. I2C addresses verified by bus scan on 2026-11-19: PCA9685 at 0x40 (not 0x00 as pinmap claimed), PCF8574 DI1-8 at 0x22, PCF8574 DI9-16 at 0x21 (both match pinmap). Unknown device at 0x70. PCA9685 all 16 channels verified writable. Relay GPIOs 13/2 verified toggle. PCF8574 inputs 0x21/0x22 verified readable. GPIO0/34/35 verified readable. Relay polarity, Ethernet clock mode, RS485 direction remain unverified.",
   "resources": [
     {"id": "i2c0", "type": "i2c"},
     {"id": "gpio_relay1", "type": "gpio", "gpio": 13, "direction": "output", "safe_state": false},
@@ -23,11 +23,11 @@
     {"id": "ledc_pwm1", "type": "pwm", "gpio": 16, "direction": "output"}
   ],
   "peripherals": [
-    {"id": "pcf8574_di1_8", "type": "pcf8574", "bus": "i2c0", "address": 34, "channels": 8, "unverified": true, "address_verification_required": true, "unverified_note": "Vendor pinmap suggests 0x22; ESPHome examples use 0x3A/0x21. Scan I2C bus in Phase 3 to confirm."},
-    {"id": "pcf8574_di9_16", "type": "pcf8574", "bus": "i2c0", "address": 33, "channels": 8, "unverified": true, "address_verification_required": true, "unverified_note": "Vendor pinmap suggests 0x21; confirm by I2C scan in Phase 3."},
-    {"id": "pca9685_0", "type": "pca9685", "bus": "i2c0", "address": 0, "channels": 16, "frequency": 1000, "unverified": true, "address_verification_required": true, "unverified_note": "Vendor pinmap suggests 0x00; vendor examples use 0x40. Scan I2C bus in Phase 3 to confirm. Do not silently rewrite to 0x40."},
-    {"id": "relay1", "type": "relay", "bus": "gpio_relay1", "channels": 1, "unverified": true, "unverified_note": "Relay polarity (active-high vs active-low) unverified on hardware."},
-    {"id": "relay2", "type": "relay", "bus": "gpio_relay2", "channels": 1, "unverified": true, "unverified_note": "Relay polarity (active-high vs active-low) unverified on hardware."},
+    {"id": "pcf8574_di1_8", "type": "pcf8574", "bus": "i2c0", "address": 34, "channels": 8, "unverified": false, "address_verification_required": false, "unverified_note": "VERIFIED by I2C scan on 2026-11-19: device responds at 0x22, matching pinmap. Input register readable."},
+    {"id": "pcf8574_di9_16", "type": "pcf8574", "bus": "i2c0", "address": 33, "channels": 8, "unverified": false, "address_verification_required": false, "unverified_note": "VERIFIED by I2C scan on 2026-11-19: device responds at 0x21, matching pinmap. Input register readable."},
+    {"id": "pca9685_0", "type": "pca9685", "bus": "i2c0", "address": 64, "channels": 16, "frequency": 1000, "unverified": false, "address_verification_required": false, "unverified_note": "VERIFIED by I2C scan on 2026-11-19: device responds at 0x40 (not 0x00 as pinmap claimed). All 16 PWM channels verified writable with 25% duty. All channels returned to off (safe state)."},
+    {"id": "relay1", "type": "relay", "bus": "gpio_relay1", "channels": 1, "unverified": true, "unverified_note": "GPIO13 verified toggling. Relay polarity (active-high vs active-low) unverified on hardware."},
+    {"id": "relay2", "type": "relay", "bus": "gpio_relay2", "channels": 1, "unverified": true, "unverified_note": "GPIO2 verified toggling. Relay polarity (active-high vs active-low) unverified on hardware."},
     {"id": "eth0", "type": "ethernet", "bus": "gpio_eth_mdc", "channels": 1, "unverified": true, "unverified_note": "ETH clock mode (GPIO17_OUT) and PHY address (0) unverified; LAN8720 clock input may require external oscillator on some board revisions."},
     {"id": "rs485_0", "type": "rs485", "bus": "gpio_rs485_tx", "channels": 1, "unverified": true, "unverified_note": "RS485 DE/RE direction pin unverified on hardware."}
   ],
@@ -43,5 +43,23 @@
     "external_pwm": true,
     "addressable_led": false
   },
-  "unverified": true
+  "unverified": true,
+  "i2c_scan_2026_11_19": {
+    "sda_gpio": 4,
+    "scl_gpio": 16,
+    "devices_found": [0, 33, 34, 64, 112],
+    "devices_found_hex": ["0x00", "0x21", "0x22", "0x40", "0x70"],
+    "notes": "0x00 probe response likely general-call or noise; 0x70 is an unknown device not in the pinmap"
+  },
+  "diagnostic_2026_11_19": {
+    "pca9685_channels_writable": 16,
+    "pca9685_channels_failed": 0,
+    "relay_gpio13_toggle": true,
+    "relay_gpio2_toggle": true,
+    "pcf8574_0x21_readable": true,
+    "pcf8574_0x22_readable": true,
+    "gpio0_readable": true,
+    "gpio34_readable": true,
+    "gpio35_readable": true
+  }
 }

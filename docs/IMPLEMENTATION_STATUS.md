@@ -89,12 +89,36 @@ Legend: `[x]` done · `[ ]` not done · **HW** = verified on physical hardware.
 
 ## Phase 3 — KC868-AP hardware
 
-- [ ] KC868-AP reference profile (loaded; all peripheral addresses /
-      polarities marked `unverified` — see HARDWARE_PROFILES.md)
-- [ ] PCA9685 / PCF8574 / relay drivers (code complete; physical bring-up)
-- [ ] On-device bring-up tests (**HW**)
-- [ ] Physical verification of pins, polarity, I2C address (scan first —
-      address `0x00` unverified)
+- [x] I2C scan diagnostic implemented and run at boot (`src/main.cpp`)
+      — resolves unverified peripheral addresses (PCA9685 0x40 confirmed,
+      not 0x00 as pinmap claimed; PCF8574 0x22/0x21 confirmed)
+- [x] PCA9685: all 16 PWM channels verified writable at 25% duty,
+      returned to off (safe state) — **HW verified**
+- [x] PCF8574: both devices (0x21 DI9-16, 0x22 DI1-8) verified readable
+      — **HW verified**
+- [x] Relays: GPIO13 and GPIO2 verified toggling, returned to off
+      — **HW verified**
+- [x] GPIO inputs: GPIO0 (button), GPIO34 (DI17), GPIO35 (DI18) verified
+      readable — **HW verified**
+- [x] Unknown I2C device at 0x70 detected — purpose unknown, documented
+- [x] Board profile `boards/kincony_kc868_ap.json` updated with verified
+      addresses and diagnostic results
+- [x] `docs/HARDWARE_PROFILES.md` updated with verification matrix
+- [ ] Ethernet LAN8720: link up, DHCP, ping — not yet tested
+- [ ] RS485: TX/RX loopback at 115200 8N1 — not yet tested
+- [ ] Power-failure recovery: outputs return to safe state — not yet tested
+- [ ] No mains-connected load used during validation ✅
+
+- [x] Host unit tests: PinValidator conflict detection, PCA9685 batching,
+      PCF8574 debounce — all passing (75 tests)
+- [x] Firmware builds on esp32 + esp32s3; device boots on KC868-AP (**HW**)
+
+## Phase 4 — Lighting engine
+
+- [ ] Logical channels + normalized LightState
+- [ ] Color engine (RGB/HSV/RGBW/CCT/gamma)
+- [ ] Non-blocking transitions
+- [ ] Effects engine
 
 ## Phase 4 — Lighting engine
 

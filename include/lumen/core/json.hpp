@@ -55,6 +55,7 @@ class IJson
     // Nested accessors.
     virtual JsonDoc *get_object(const JsonDoc *doc, const char *key) = 0;
     virtual int32_t get_array_size(const JsonDoc *doc, const char *key) = 0;
+    virtual JsonDoc *get_array_item(const JsonDoc *array, int index) = 0;
 
     // Mutators (used by migrations).
     virtual void set_int(JsonDoc *doc, const char *key, int32_t value) = 0;

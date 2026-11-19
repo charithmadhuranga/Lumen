@@ -159,6 +159,14 @@ class CjsonAdapter final : public IJson
         return cJSON_GetArraySize(obj);
     }
 
+    JsonDoc *get_array_item(const JsonDoc *array, int index) override
+    {
+        if (array == nullptr || !cJSON_IsArray(reinterpret_cast<const cJSON *>(array))) {
+            return nullptr;
+        }
+        return reinterpret_cast<JsonDoc *>(cJSON_GetArrayItem(reinterpret_cast<const cJSON *>(array), index));
+    }
+
     void set_int(JsonDoc *doc, const char *key, int32_t value) override
     {
         cJSON *item = cJSON_CreateNumber(static_cast<double>(value));
@@ -226,6 +234,10 @@ class CjsonAdapter final : public IJson
     {
         if (doc == nullptr || key == nullptr) {
             return nullptr;
+        }
+        // Empty key means "the node itself" — used for reading string array elements.
+        if (key[0] == '\0') {
+            return reinterpret_cast<const cJSON *>(doc);
         }
         return cJSON_GetObjectItemCaseSensitive(reinterpret_cast<const cJSON *>(doc), key);
     }

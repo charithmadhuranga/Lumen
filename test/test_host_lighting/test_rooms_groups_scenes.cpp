@@ -5,15 +5,21 @@
 
 #include <unity.h>
 
+#include "core/cJSON.h"
+
 #include "lumen/lighting/channel.h"
 #include "lumen/lighting/color_engine.h"
 #include "lumen/lighting/group_manager.h"
 #include "lumen/lighting/lighting_task.h"
 #include "lumen/lighting/room_manager.h"
 #include "lumen/lighting/scene_manager.h"
+#include "lumen/core/config_manager.hpp"
+#include "lumen/core/storage.hpp"
 
 using lumen::Channel;
 using lumen::ChannelManager;
+using lumen::ConfigManager;
+using lumen::DocConfig;
 using lumen::Group;
 using lumen::GroupManager;
 using lumen::GroupResult;
@@ -52,14 +58,81 @@ using lumen::rgb_to_kelvin;
 using lumen::rgb_to_rgbw;
 using lumen::rgbw_to_rgb;
 using lumen::validate_state_for_type;
+using lumen::create_posix_fs;
+using lumen::create_cjson_adapter;
+using lumen::IStorage;
+using lumen::IJson;
+using lumen::EventBus;
+using lumen::ILock;
+using lumen::IClock;
+using lumen::Event;
 
-namespace
+// Test ports
+struct NoopLock final : lumen::ILock {
+    void lock() override {}
+    void unlock() override {}
+};
+struct FakeClock final : lumen::IClock {
+    uint32_t now = 0;
+    uint32_t ms() override { return now; }
+};
+static NoopLock g_lock;
+static FakeClock g_clock;
+static Event g_pool[64];
+
+// Migration helper for test configs — add schema_version to v0 docs.
+static bool test_migrate_add_schema_version(std::string &doc, uint16_t from, uint16_t to, IJson &json)
 {
+    (void)from;
+    lumen::JsonDoc *d = json.parse(doc);
+    if (d == nullptr) {
+        return false;
+    }
+    json.set_int(d, "schema_version", static_cast<int32_t>(to));
+    doc = json.stringify(d);
+    json.free(d);
+    return !doc.empty();
+}
 
-extern "C" void setUp(void) {}
-extern "C" void tearDown(void) {}
+// Helper to create a ConfigManager backed by a temp directory with standard docs registered.
+// Uses a dedicated EventBus per test to avoid cross-test event queue saturation.
+// Returns a pointer to a heap-allocated ConfigManager to avoid reference lifetime issues.
+static ConfigManager* make_test_config(const std::string& test_name) {
+    static int counter = 0;
+    std::string tmp_path = "/tmp/lumen_test_" + test_name + "_" +
+                           std::to_string(++counter);
+    // Heap-allocate storage and json so they outlive the ConfigManager.
+    IStorage* storage = create_posix_fs(tmp_path);
+    IJson* json = create_cjson_adapter();
+    // Per-test event pool (larger capacity to avoid overflow from ConfigChanged posts).
+    static Event test_pool[256];
+    static EventBus test_bus(g_lock, g_clock, test_pool, 256);
+    ConfigManager* config = new ConfigManager(*storage, *json, test_bus);
 
-} // namespace
+    // Register standard config documents so managers can save/load.
+    DocConfig rooms_doc{};
+    rooms_doc.path = "rooms.json";
+    rooms_doc.latest_schema_version = 1;
+    rooms_doc.default_doc = []() { return std::string("{\"rooms\":[]}"); };
+    rooms_doc.migrate = test_migrate_add_schema_version;
+    config->register_document(rooms_doc);
+
+    DocConfig groups_doc{};
+    groups_doc.path = "groups.json";
+    groups_doc.latest_schema_version = 1;
+    groups_doc.default_doc = []() { return std::string("{\"groups\":[]}"); };
+    groups_doc.migrate = test_migrate_add_schema_version;
+    config->register_document(groups_doc);
+
+    DocConfig scenes_doc{};
+    scenes_doc.path = "scenes.json";
+    scenes_doc.latest_schema_version = 1;
+    scenes_doc.default_doc = []() { return std::string("{\"scenes\":[]}"); };
+    scenes_doc.migrate = test_migrate_add_schema_version;
+    config->register_document(scenes_doc);
+
+    return config;
+}
 
 // ========================================================================
 // Room manager tests
@@ -68,7 +141,25 @@ static void test_room_register_and_find(void)
 {
     ChannelManager cm;
     LightingTask lt;
-    RoomManager rm(cm, lt);
+    // Use dedicated event pool like make_test_config
+    static Event test_pool[256];
+    static EventBus bus(g_lock, g_clock, test_pool, 256);
+    // Clean up any leftover test directory
+    std::string test_dir = "/tmp/lumen_test_room_reg_find";
+    std::string cmd = "rm -rf \"" + test_dir + "\"";
+    std::system(cmd.c_str());
+    
+    ConfigManager config(*create_posix_fs(test_dir),
+                         *create_cjson_adapter(), bus);
+
+    DocConfig rooms_doc{};
+    rooms_doc.path = "rooms.json";
+    rooms_doc.latest_schema_version = 1;
+    rooms_doc.default_doc = []() { return std::string("{\"rooms\":[]}"); };
+    rooms_doc.migrate = test_migrate_add_schema_version;
+    config.register_document(rooms_doc);
+
+    RoomManager rm(cm, lt, config);
 
     Room r{};
     r.id = "r1";
@@ -87,7 +178,38 @@ static void test_room_duplicate_rejected(void)
 {
     ChannelManager cm;
     LightingTask lt;
-    RoomManager rm(cm, lt);
+    // Use dedicated event pool like make_test_config
+    static Event test_pool[256];
+    static EventBus bus(g_lock, g_clock, test_pool, 256);
+    // Clean up any leftover test directory
+    std::string test_dir = "/tmp/lumen_test_room_dup";
+    std::string cmd = "rm -rf \"" + test_dir + "\"";
+    std::system(cmd.c_str());
+    
+    ConfigManager config(*create_posix_fs(test_dir),
+                         *create_cjson_adapter(), bus);
+
+    DocConfig rooms_doc{};
+    rooms_doc.path = "rooms.json";
+    rooms_doc.latest_schema_version = 1;
+    rooms_doc.default_doc = []() { return std::string("{\"rooms\":[]}"); };
+    rooms_doc.migrate = test_migrate_add_schema_version;
+    config.register_document(rooms_doc);
+
+    DocConfig groups_doc{};
+    groups_doc.path = "groups.json";
+    groups_doc.latest_schema_version = 1;
+    groups_doc.default_doc = []() { return std::string("{\"groups\":[]}"); };
+    groups_doc.migrate = test_migrate_add_schema_version;
+    config.register_document(groups_doc);
+
+    DocConfig scenes_doc{};
+    scenes_doc.path = "scenes.json";
+    scenes_doc.latest_schema_version = 1;
+    scenes_doc.default_doc = []() { return std::string("{\"scenes\":[]}"); };
+    scenes_doc.migrate = test_migrate_add_schema_version;
+    config.register_document(scenes_doc);
+    RoomManager rm(cm, lt, config);
 
     Room r{};
     r.id = "r1";
@@ -100,7 +222,8 @@ static void test_room_add_remove_light(void)
 {
     ChannelManager cm;
     LightingTask lt;
-    RoomManager rm(cm, lt);
+    ConfigManager* config = make_test_config("room3");
+    RoomManager rm(cm, lt, *config);
 
     Channel c{};
     c.id = "light1";
@@ -126,7 +249,8 @@ static void test_room_remove_detaches_lights(void)
 {
     ChannelManager cm;
     LightingTask lt;
-    RoomManager rm(cm, lt);
+    ConfigManager* config = make_test_config("room4");
+    RoomManager rm(cm, lt, *config);
 
     Channel c{};
     c.id = "light1";
@@ -149,7 +273,8 @@ static void test_room_master_power(void)
 {
     ChannelManager cm;
     LightingTask lt;
-    RoomManager rm(cm, lt);
+    ConfigManager* config = make_test_config("room5");
+    RoomManager rm(cm, lt, *config);
 
     Channel c1{};
     c1.id = "light1";
@@ -177,7 +302,8 @@ static void test_room_master_brightness(void)
 {
     ChannelManager cm;
     LightingTask lt;
-    RoomManager rm(cm, lt);
+    ConfigManager* config = make_test_config("room6");
+    RoomManager rm(cm, lt, *config);
 
     Channel c1{};
     c1.id = "light1";
@@ -201,7 +327,38 @@ static void test_group_register_and_find(void)
 {
     ChannelManager cm;
     LightingTask lt;
-    GroupManager gm(cm, lt);
+    // Use dedicated event pool like make_test_config
+    static Event test_pool[256];
+    static EventBus bus(g_lock, g_clock, test_pool, 256);
+    // Clean up any leftover test directory
+    std::string test_dir = "/tmp/lumen_test_gm_reg";
+    std::string cmd = "rm -rf \"" + test_dir + "\"";
+    std::system(cmd.c_str());
+    
+    ConfigManager config(*create_posix_fs(test_dir),
+                         *create_cjson_adapter(), bus);
+
+    DocConfig rooms_doc{};
+    rooms_doc.path = "rooms.json";
+    rooms_doc.latest_schema_version = 1;
+    rooms_doc.default_doc = []() { return std::string("{\"rooms\":[]}"); };
+    rooms_doc.migrate = test_migrate_add_schema_version;
+    config.register_document(rooms_doc);
+
+    DocConfig groups_doc{};
+    groups_doc.path = "groups.json";
+    groups_doc.latest_schema_version = 1;
+    groups_doc.default_doc = []() { return std::string("{\"groups\":[]}"); };
+    groups_doc.migrate = test_migrate_add_schema_version;
+    config.register_document(groups_doc);
+
+    DocConfig scenes_doc{};
+    scenes_doc.path = "scenes.json";
+    scenes_doc.latest_schema_version = 1;
+    scenes_doc.default_doc = []() { return std::string("{\"scenes\":[]}"); };
+    scenes_doc.migrate = test_migrate_add_schema_version;
+    config.register_document(scenes_doc);
+    GroupManager gm(cm, lt, config);
 
     Group g{};
     g.id = "g1";
@@ -220,7 +377,8 @@ static void test_group_add_remove_light(void)
 {
     ChannelManager cm;
     LightingTask lt;
-    GroupManager gm(cm, lt);
+    ConfigManager* config = make_test_config("gm2");
+    GroupManager gm(cm, lt, *config);
 
     Channel c{};
     c.id = "light1";
@@ -245,7 +403,8 @@ static void test_group_remove_detaches_lights(void)
 {
     ChannelManager cm;
     LightingTask lt;
-    GroupManager gm(cm, lt);
+    ConfigManager* config = make_test_config("gm3");
+    GroupManager gm(cm, lt, *config);
 
     Channel c{};
     c.id = "light1";
@@ -268,7 +427,8 @@ static void test_group_set_power(void)
 {
     ChannelManager cm;
     LightingTask lt;
-    GroupManager gm(cm, lt);
+    ConfigManager* config = make_test_config("gm4");
+    GroupManager gm(cm, lt, *config);
 
     Channel c1{};
     c1.id = "light1";
@@ -299,7 +459,8 @@ static void test_group_aggregate_dimmer_only(void)
 {
     ChannelManager cm;
     LightingTask lt;
-    GroupManager gm(cm, lt);
+    ConfigManager* config = make_test_config("gm5");
+    GroupManager gm(cm, lt, *config);
 
     Channel c1{};
     c1.id = "light1";
@@ -339,7 +500,8 @@ static void test_group_aggregate_mixed_types(void)
 {
     ChannelManager cm;
     LightingTask lt;
-    GroupManager gm(cm, lt);
+    ConfigManager* config = make_test_config("gm6");
+    GroupManager gm(cm, lt, *config);
 
     Channel c1{};
     c1.id = "light1";
@@ -382,7 +544,38 @@ static void test_scene_register_and_find(void)
 {
     ChannelManager cm;
     LightingTask lt;
-    SceneManager sm(cm, lt);
+    // Use dedicated event pool like make_test_config
+    static Event test_pool[256];
+    static EventBus bus(g_lock, g_clock, test_pool, 256);
+    // Clean up any leftover test directory
+    std::string test_dir = "/tmp/lumen_test_sm_reg";
+    std::string cmd = "rm -rf \"" + test_dir + "\"";
+    std::system(cmd.c_str());
+    
+    ConfigManager config(*create_posix_fs(test_dir),
+                         *create_cjson_adapter(), bus);
+
+    DocConfig rooms_doc{};
+    rooms_doc.path = "rooms.json";
+    rooms_doc.latest_schema_version = 1;
+    rooms_doc.default_doc = []() { return std::string("{\"rooms\":[]}"); };
+    rooms_doc.migrate = test_migrate_add_schema_version;
+    config.register_document(rooms_doc);
+
+    DocConfig groups_doc{};
+    groups_doc.path = "groups.json";
+    groups_doc.latest_schema_version = 1;
+    groups_doc.default_doc = []() { return std::string("{\"groups\":[]}"); };
+    groups_doc.migrate = test_migrate_add_schema_version;
+    config.register_document(groups_doc);
+
+    DocConfig scenes_doc{};
+    scenes_doc.path = "scenes.json";
+    scenes_doc.latest_schema_version = 1;
+    scenes_doc.default_doc = []() { return std::string("{\"scenes\":[]}"); };
+    scenes_doc.migrate = test_migrate_add_schema_version;
+    config.register_document(scenes_doc);
+    SceneManager sm(cm, lt, config);
 
     Scene s{};
     s.id = "scene1";
@@ -401,7 +594,38 @@ static void test_scene_duplicate_rejected(void)
 {
     ChannelManager cm;
     LightingTask lt;
-    SceneManager sm(cm, lt);
+    // Use dedicated event pool like make_test_config
+    static Event test_pool[256];
+    static EventBus bus(g_lock, g_clock, test_pool, 256);
+    // Clean up any leftover test directory
+    std::string test_dir = "/tmp/lumen_test_sm_dup";
+    std::string cmd = "rm -rf \"" + test_dir + "\"";
+    std::system(cmd.c_str());
+    
+    ConfigManager config(*create_posix_fs(test_dir),
+                         *create_cjson_adapter(), bus);
+
+    DocConfig rooms_doc{};
+    rooms_doc.path = "rooms.json";
+    rooms_doc.latest_schema_version = 1;
+    rooms_doc.default_doc = []() { return std::string("{\"rooms\":[]}"); };
+    rooms_doc.migrate = test_migrate_add_schema_version;
+    config.register_document(rooms_doc);
+
+    DocConfig groups_doc{};
+    groups_doc.path = "groups.json";
+    groups_doc.latest_schema_version = 1;
+    groups_doc.default_doc = []() { return std::string("{\"groups\":[]}"); };
+    groups_doc.migrate = test_migrate_add_schema_version;
+    config.register_document(groups_doc);
+
+    DocConfig scenes_doc{};
+    scenes_doc.path = "scenes.json";
+    scenes_doc.latest_schema_version = 1;
+    scenes_doc.default_doc = []() { return std::string("{\"scenes\":[]}"); };
+    scenes_doc.migrate = test_migrate_add_schema_version;
+    config.register_document(scenes_doc);
+    SceneManager sm(cm, lt, config);
 
     Scene s{};
     s.id = "scene1";
@@ -414,7 +638,8 @@ static void test_scene_update_and_delete(void)
 {
     ChannelManager cm;
     LightingTask lt;
-    SceneManager sm(cm, lt);
+    ConfigManager* config = make_test_config("sm3");
+    SceneManager sm(cm, lt, *config);
 
     Channel c{};
     c.id = "light1";
@@ -448,7 +673,8 @@ static void test_scene_update_rejects_unknown_light(void)
 {
     ChannelManager cm;
     LightingTask lt;
-    SceneManager sm(cm, lt);
+    ConfigManager* config = make_test_config("sm4");
+    SceneManager sm(cm, lt, *config);
 
     Scene s{};
     s.id = "scene1";
@@ -465,7 +691,8 @@ static void test_scene_update_rejects_unsupported_property(void)
 {
     ChannelManager cm;
     LightingTask lt;
-    SceneManager sm(cm, lt);
+    ConfigManager* config = make_test_config("sm5");
+    SceneManager sm(cm, lt, *config);
 
     Channel c{};
     c.id = "light1";
@@ -488,7 +715,8 @@ static void test_scene_activate(void)
 {
     ChannelManager cm;
     LightingTask lt;
-    SceneManager sm(cm, lt);
+    ConfigManager* config = make_test_config("sm6");
+    SceneManager sm(cm, lt, *config);
 
     Channel c{};
     c.id = "light1";
@@ -505,6 +733,181 @@ static void test_scene_activate(void)
     TEST_ASSERT_EQUAL(SceneResult::kOk, sm.activate_scene("scene1", 0, "test", "cmd1"));
     TEST_ASSERT_EQUAL(SceneResult::kNotFound, sm.activate_scene("nope", 0, "test", "cmd2"));
 }
+
+// Persistence round-trip tests
+// ---------------------------------------------------------------------------
+static void test_room_persist_round_trip(void)
+{
+    ChannelManager cm;
+    LightingTask lt;
+    static EventBus bus(g_lock, g_clock, g_pool, 64);
+    ConfigManager config(*create_posix_fs("/tmp/lumen_test_config_1"),
+                         *create_cjson_adapter(), bus);
+
+    DocConfig rooms_doc{};
+    rooms_doc.path = "rooms.json";
+    rooms_doc.latest_schema_version = 1;
+    rooms_doc.default_doc = []() { return std::string("{\"rooms\":[]}"); };
+    rooms_doc.migrate = test_migrate_add_schema_version;
+    config.register_document(rooms_doc);
+
+    Channel c{};
+    c.id = "light1";
+    c.name = "Light 1";
+    c.type = lumen::LightType::kDimmer;
+    cm.register_channel(c);
+
+    RoomManager rm(cm, lt, config);
+
+    Room r{};
+    r.id = "kitchen";
+    r.name = "Kitchen";
+    rm.register_room(r);
+    rm.add_light("kitchen", "light1");
+
+    Room r2{};
+    r2.id = "bedroom";
+    r2.name = "Bedroom";
+    rm.register_room(r2);
+
+    // Reboot: new config manager reading same storage
+    static EventBus bus2(g_lock, g_clock, g_pool, 64);
+    ConfigManager config2(*create_posix_fs("/tmp/lumen_test_config_1"),
+                          *create_cjson_adapter(), bus2);
+    DocConfig rooms_doc2{};
+    rooms_doc2.path = "rooms.json";
+    rooms_doc2.latest_schema_version = 1;
+    rooms_doc2.default_doc = []() { return std::string("{\"rooms\":[]}"); };
+    rooms_doc2.migrate = test_migrate_add_schema_version;
+    config2.register_document(rooms_doc2);
+
+    ChannelManager cm2;
+    LightingTask lt2;
+    RoomManager rm2(cm2, lt2, config2);
+
+    TEST_ASSERT_NOT_NULL(rm2.find("kitchen"));
+    const Room *rk = rm2.find("kitchen");
+    TEST_ASSERT_EQUAL_STRING("Kitchen", rk->name.c_str());
+    TEST_ASSERT_EQUAL(1, rk->channel_ids.size());
+    TEST_ASSERT_EQUAL_STRING("light1", rk->channel_ids[0].c_str());
+
+    TEST_ASSERT_NOT_NULL(rm2.find("bedroom"));
+}
+
+static void test_group_persist_round_trip(void)
+{
+    ChannelManager cm;
+    LightingTask lt;
+    static EventBus bus(g_lock, g_clock, g_pool, 64);
+    ConfigManager config(*create_posix_fs("/tmp/lumen_test_config_2"),
+                         *create_cjson_adapter(), bus);
+
+    DocConfig groups_doc{};
+    groups_doc.path = "groups.json";
+    groups_doc.latest_schema_version = 1;
+    groups_doc.default_doc = []() { return std::string("{\"groups\":[]}"); };
+    groups_doc.migrate = test_migrate_add_schema_version;
+    config.register_document(groups_doc);
+
+    GroupManager gm(cm, lt, config);
+
+    // Register channel in ChannelManager first
+    Channel c{};
+    c.id = "light1";
+    c.name = "Light 1";
+    c.type = lumen::LightType::kDimmer;
+    cm.register_channel(c);
+
+    Group g{};
+    g.id = "g1";
+    g.name = "Downstairs";
+    gm.register_group(g);
+    gm.add_light("g1", "light1");
+
+    // Reboot: new config manager reading same storage
+    static EventBus bus2(g_lock, g_clock, g_pool, 64);
+    ConfigManager config2(*create_posix_fs("/tmp/lumen_test_config_2"),
+                          *create_cjson_adapter(), bus2);
+    DocConfig groups_doc2{};
+    groups_doc2.path = "groups.json";
+    groups_doc2.latest_schema_version = 1;
+    groups_doc2.default_doc = []() { return std::string("{\"groups\":[]}"); };
+    groups_doc2.migrate = test_migrate_add_schema_version;
+    config2.register_document(groups_doc2);
+
+    ChannelManager cm2;
+    LightingTask lt2;
+    GroupManager gm2(cm2, lt2, config2);
+
+    TEST_ASSERT_NOT_NULL(gm2.find("g1"));
+    const Group *g2 = gm2.find("g1");
+    TEST_ASSERT_EQUAL_STRING("Downstairs", g2->name.c_str());
+    TEST_ASSERT_EQUAL(1, g2->channel_ids.size());
+    TEST_ASSERT_EQUAL_STRING("light1", g2->channel_ids[0].c_str());
+}
+
+static void test_scene_persist_round_trip(void)
+{
+    ChannelManager cm;
+    LightingTask lt;
+    static EventBus bus(g_lock, g_clock, g_pool, 64);
+    ConfigManager config(*create_posix_fs("/tmp/lumen_test_config_3"),
+                         *create_cjson_adapter(), bus);
+
+    DocConfig scenes_doc{};
+    scenes_doc.path = "scenes.json";
+    scenes_doc.latest_schema_version = 1;
+    scenes_doc.default_doc = []() { return std::string("{\"scenes\":[]}"); };
+    scenes_doc.migrate = test_migrate_add_schema_version;
+    config.register_document(scenes_doc);
+
+    SceneManager sm(cm, lt, config);
+
+    // Register channel in ChannelManager first - use RGB type to support color
+    Channel c{};
+    c.id = "light1";
+    c.name = "Light 1";
+    c.type = lumen::LightType::kRgb;
+    cm.register_channel(c);
+
+    Scene s{};
+    s.id = "movie_night";
+    s.name = "Movie Night";
+    s.transition_ms = 1500;
+    // RGB type supports RGB but not CCT, so color_temperature must be 0
+    s.states.push_back({"light1", true, 30, 200, 100, 50, 0, 0});
+    sm.register_scene(s);
+
+    // Reboot: new config manager reading same storage
+    static EventBus bus2(g_lock, g_clock, g_pool, 64);
+    ConfigManager config2(*create_posix_fs("/tmp/lumen_test_config_3"),
+                          *create_cjson_adapter(), bus2);
+    DocConfig scenes_doc2{};
+    scenes_doc2.path = "scenes.json";
+    scenes_doc2.latest_schema_version = 1;
+    scenes_doc2.default_doc = []() { return std::string("{\"scenes\":[]}"); };
+    scenes_doc2.migrate = test_migrate_add_schema_version;
+    config2.register_document(scenes_doc2);
+
+    ChannelManager cm2;
+    LightingTask lt2;
+    SceneManager sm2(cm2, lt2, config2);
+
+    TEST_ASSERT_NOT_NULL(sm2.find("movie_night"));
+    const Scene *s2 = sm2.find("movie_night");
+    TEST_ASSERT_EQUAL_STRING("Movie Night", s2->name.c_str());
+    TEST_ASSERT_EQUAL(1500, s2->transition_ms);
+    TEST_ASSERT_EQUAL(1, s2->states.size());
+    TEST_ASSERT_EQUAL_STRING("light1", s2->states[0].light_id.c_str());
+    TEST_ASSERT_EQUAL(true, s2->states[0].power);
+    TEST_ASSERT_EQUAL(30, s2->states[0].brightness);
+    TEST_ASSERT_EQUAL(200, s2->states[0].red);
+    TEST_ASSERT_EQUAL(100, s2->states[0].green);
+    TEST_ASSERT_EQUAL(50, s2->states[0].blue);
+    TEST_ASSERT_EQUAL(0, s2->states[0].color_temperature);
+}
+
+// ========================================================================
 // ---------------------------------------------------------------------------
 // Forward declarations for color engine and transition tests
 static void test_gamma_table_bounds(void);
@@ -545,7 +948,6 @@ static void test_transition_power_interpolation(void);
 static void test_transition_cancel_on_new_command(void);
 static void test_apply_command_instant(void);
 static void test_apply_command_transition(void);
-
 int main(int argc, char **argv)
 {
     (void)argc;
@@ -572,6 +974,10 @@ int main(int argc, char **argv)
     RUN_TEST(test_scene_update_rejects_unknown_light);
     RUN_TEST(test_scene_update_rejects_unsupported_property);
     RUN_TEST(test_scene_activate);
+    // Persistence round-trip tests
+    RUN_TEST(test_room_persist_round_trip);
+    RUN_TEST(test_group_persist_round_trip);
+    RUN_TEST(test_scene_persist_round_trip);
     // Color engine tests
     RUN_TEST(test_gamma_table_bounds);
     RUN_TEST(test_apply_gamma);
@@ -614,6 +1020,7 @@ int main(int argc, char **argv)
     RUN_TEST(test_apply_command_transition);
     return UNITY_END();
 }
+
 // ========================================================================
 // Color engine tests
 // ---------------------------------------------------------------------------

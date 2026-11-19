@@ -1,14 +1,9 @@
 // Lumen — group manager (include/lumen/lighting/group_manager.h)
 //
 // Groups organize lights across rooms with an aggregation policy
-// (SPEC §9.2). Group operations fan out through the lighting engine with a
-// shared command_id for Phase 11 conflict dedup.
+// (SPEC §9.2). Group operations fan out through the lighting task.
 //
-// Aggregation policy:
-//   - brightness change → adjusts every member's brightness, preserving color
-//   - RGB/CCT set → applies only to members supporting it
-//   - on/off → applies to all
-//   - group state = aggregate (on-count / mean brightness) for the UI
+// Groups are persisted transactionally through the config manager.
 #pragma once
 
 #include <cstdint>
@@ -18,6 +13,7 @@
 
 #include "lumen/lighting/channel.h"
 #include "lumen/lighting/lighting_task.h"
+#include "lumen/core/config_manager.hpp"
 
 namespace lumen
 {
@@ -51,12 +47,14 @@ struct Group
 };
 
 // Group manager: CRUD + group commands fan-out through the lighting task.
+// All mutations are persisted transactionally via ConfigManager.
 class GroupManager
 {
   public:
     static constexpr std::size_t kMaxGroups = 32;
 
-    GroupManager(ChannelManager &channel_mgr, LightingTask &lighting_task);
+    GroupManager(ChannelManager &channel_mgr, LightingTask &lighting_task,
+                 ConfigManager &config);
 
     GroupResult register_group(const Group &group);
 
@@ -109,12 +107,18 @@ class GroupManager
   private:
     ChannelManager &channel_mgr_;
     LightingTask &lighting_task_;
+    ConfigManager &config_;
 
     Group groups_[kMaxGroups]{};
     std::size_t group_count_ = 0;
 
     std::size_t find_index(const std::string &id) const;
     bool channel_exists(const std::string &channel_id) const;
+
+    // Persist all groups to config as JSON.
+    ConfigStatus save_groups();
+    // Load all groups from config JSON.
+    ConfigStatus load_groups();
 };
 
 } // namespace lumen

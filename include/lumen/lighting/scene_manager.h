@@ -17,6 +17,7 @@
 
 #include "lumen/lighting/channel.h"
 #include "lumen/lighting/lighting_task.h"
+#include "lumen/core/config_manager.hpp"
 
 namespace lumen
 {
@@ -54,12 +55,14 @@ struct Scene
 };
 
 // Scene manager: CRUD + activation fan-out through the lighting task.
+// All mutations are persisted transactionally via ConfigManager.
 class SceneManager
 {
   public:
     static constexpr std::size_t kMaxScenes = 64;
 
-    SceneManager(ChannelManager &channel_mgr, LightingTask &lighting_task);
+    SceneManager(ChannelManager &channel_mgr, LightingTask &lighting_task,
+                 ConfigManager &config);
 
     SceneResult register_scene(const Scene &scene);
 
@@ -91,12 +94,18 @@ class SceneManager
   private:
     ChannelManager &channel_mgr_;
     LightingTask &lighting_task_;
+    ConfigManager &config_;
 
     Scene scenes_[kMaxScenes]{};
     std::size_t scene_count_ = 0;
 
     std::size_t find_index(const std::string &id) const;
     bool channel_exists(const std::string &channel_id) const;
+
+    // Persist all scenes to config as JSON.
+    ConfigStatus save_scenes();
+    // Load all scenes from config JSON.
+    ConfigStatus load_scenes();
 };
 
 } // namespace lumen

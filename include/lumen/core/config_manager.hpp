@@ -87,6 +87,11 @@ class ConfigManager
     EventBus &bus_;
     DocConfig docs_[kMaxDocuments]{};
     std::size_t doc_count_ = 0;
+
+  public:
+    // Expose JSON adapter for document serialization.
+    IJson &json() { return json_; }
+    const IJson &json() const { return json_; }
 };
 
 } // namespace lumen

@@ -15,6 +15,7 @@
 
 #include "lumen/lighting/channel.h"
 #include "lumen/lighting/lighting_task.h"
+#include "lumen/core/config_manager.hpp"
 
 namespace lumen
 {
@@ -42,14 +43,17 @@ struct Room
 };
 
 // Room manager: CRUD + master operations fan-out through the lighting task.
+// All mutations are persisted transactionally via ConfigManager.
 class RoomManager
 {
   public:
     static constexpr std::size_t kMaxRooms = 32;
 
-    RoomManager(ChannelManager &channel_mgr, LightingTask &lighting_task);
+    RoomManager(ChannelManager &channel_mgr, LightingTask &lighting_task,
+                ConfigManager &config);
 
     // Register a room. Returns kDuplicate if id exists, kCapacity if full.
+    // Persists to config.
     RoomResult register_room(const Room &room);
 
     // Look up a room by id.
@@ -58,7 +62,7 @@ class RoomManager
 
     std::size_t room_count() const { return room_count_; }
 
-    // Add a light channel to a room.
+    // Add a light channel to a room. Persists to config.
     RoomResult add_light(const std::string &room_id,
                          const std::string &channel_id);
 
@@ -87,12 +91,18 @@ class RoomManager
   private:
     ChannelManager &channel_mgr_;
     LightingTask &lighting_task_;
+    ConfigManager &config_;
 
     Room rooms_[kMaxRooms]{};
     std::size_t room_count_ = 0;
 
     std::size_t find_index(const std::string &id) const;
     bool channel_exists(const std::string &channel_id) const;
+
+    // Persist all rooms to config as JSON.
+    ConfigStatus save_rooms();
+    // Load all rooms from config JSON.
+    ConfigStatus load_rooms();
 };
 
 } // namespace lumen

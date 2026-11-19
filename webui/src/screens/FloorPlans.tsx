@@ -4,7 +4,7 @@ import * as React from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Plus, Image, Edit, Upload, Loader2 } from "lucide-react";
+import { Plus, Image, Edit, Upload, Loader2, Eye } from "lucide-react";
 
 export function FloorPlans() {
   return (

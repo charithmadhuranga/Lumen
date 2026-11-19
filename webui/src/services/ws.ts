@@ -90,11 +90,11 @@ export class WsClient extends EventEmitter {
       this.startPing();
     };
 
-    this.ws.onclose = () => {
+    this.ws.onclose = (_event) => {
       this.stopPing();
       if (this.status !== "failed") {
         this.setStatus("disconnected");
-        this.scheduleReconnect(event.code !== 1000); // Don't reconnect on clean close
+        this.scheduleReconnect(true); // Reconnect on close
       }
     };
 

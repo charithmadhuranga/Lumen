@@ -12,6 +12,7 @@ import {
   Sun,
   Moon,
   Power,
+  SlidersHorizontal,
   Zap,
 } from "lucide-react";
 import { useLights, useRooms, useGroups, useScenes } from "@/services/queries";

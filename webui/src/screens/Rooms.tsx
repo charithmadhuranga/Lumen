@@ -35,6 +35,7 @@ interface RoomCardProps {
 function RoomCard({ room, lights, onEdit, onDelete }: RoomCardProps) {
   const roomPower = useRoomPower();
   const roomBrightness = useRoomBrightness();
+  const { canSend, markSent } = useCommandThrottle("room-" + room.id);
 
   const lightsInRoom = lights.filter((l) => room.channelIds.includes(l.id));
   const lightsOn = lightsInRoom.filter((l) => l.state?.power).length;
@@ -43,6 +44,18 @@ function RoomCard({ room, lights, onEdit, onDelete }: RoomCardProps) {
 
   const isAnyOn = lightsOn > 0;
   const [localBrightness, setLocalBrightness] = React.useState(Math.round(avgBrightness));
+  const [dragging, setDragging] = React.useState(false);
+
+  const handleBrightnessChange = (value: number[]) => {
+    setLocalBrightness(value[0]);
+    if (!canSend) return;
+    markSent();
+    roomBrightness.mutate({
+      id: room.id,
+      brightness: value[0],
+      transitionMs: 0,
+    });
+  };
 
   return (
     <Card className="group">
@@ -170,6 +183,18 @@ export function Rooms() {
   const { data: rooms, isLoading: roomsLoading } = useRooms();
   const { data: lights, isLoading: lightsLoading } = useLights();
   const deleteRoom = useDeleteRoom();
+  const [dialogOpen, setDialogOpen] = React.useState(false);
+  const [editingRoom, setEditingRoom] = React.useState<Room | null>(null);
+
+  const handleCreate = () => {
+    setEditingRoom(null);
+    setDialogOpen(true);
+  };
+
+  const handleEdit = (room: Room) => {
+    setEditingRoom(room);
+    setDialogOpen(true);
+  };
 
   const handleDelete = async (id: string) => {
     if (confirm("Delete this room? Lights will be detached but not deleted.")) {

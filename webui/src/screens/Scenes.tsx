@@ -18,8 +18,8 @@ import {
   Edit,
   Trash2,
 } from "lucide-react";
-import { useScenes, useLights, useCreateScene, useUpdateScene, useActivateScene } from "@/services/queries";
-import { Scene, LightChannel } from "@/schemas";
+import { useScenes, useLights, useCreateScene, useUpdateScene, useDeleteScene, useActivateScene, useDuplicateScene } from "@/services/queries";
+import { Scene, LightChannel, SceneCreate } from "@/schemas";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -257,7 +257,7 @@ function SceneDialog({ open, onOpenChange, scene, lights, onSubmit, loading }: S
                       <div className="space-y-2">
                         <Label htmlFor={`lightId-${index}`}>Light</Label>
                         <select
-                          {...form.register(`states.${index}.lightId`, { valueAsString: true })}
+                          {...form.register(`states.${index}.lightId`)}
                           disabled={loading}
                           className="w-full rounded border p-2"
                         >
@@ -270,7 +270,7 @@ function SceneDialog({ open, onOpenChange, scene, lights, onSubmit, loading }: S
                       <div className="space-y-2">
                         <Label htmlFor={`power-${index}`}>Power</Label>
                         <select
-                          {...form.register(`states.${index}.power`, { valueAsString: true })}
+                          {...form.register(`states.${index}.power`)}
                           disabled={loading}
                           className="w-full rounded border p-2"
                         >
@@ -282,8 +282,8 @@ function SceneDialog({ open, onOpenChange, scene, lights, onSubmit, loading }: S
                       <div className="space-y-2">
                         <Label htmlFor={`brightness-${index}`}>Brightness</Label>
                         <Slider
-                          value={[form.watch(`states.${index}.brightness`) ?? 100]}
-                          onValueChange={([v]: number[]) => form.setValue(`states.${index}.brightness`, v)}
+                          value={[(form.watch as any)(`states.${index}.brightness`) ?? 100]}
+                          onValueChange={([v]: number[]) => form.setValue(`states.${index}.brightness`, v as any)}
                           min={0}
                           max={100}
                           step={1}
@@ -299,8 +299,8 @@ function SceneDialog({ open, onOpenChange, scene, lights, onSubmit, loading }: S
                       <div className="space-y-2">
                         <Label htmlFor={`colorTemperature-${index}`}>Color Temp (K)</Label>
                         <Slider
-                          value={[form.watch(`states.${index}.colorTemperature`) ?? 4000]}
-                          onValueChange={([v]: number[]) => form.setValue(`states.${index}.colorTemperature`, v)}
+                          value={[(form.watch as any)(`states.${index}.colorTemperature`) ?? 4000]}
+                          onValueChange={([v]: number[]) => form.setValue(`states.${index}.colorTemperature`, v as any)}
                           min={2700}
                           max={6500}
                           step={100}
@@ -315,8 +315,8 @@ function SceneDialog({ open, onOpenChange, scene, lights, onSubmit, loading }: S
                             <div key={channel} className="space-y-1">
                               <Label htmlFor={`${channel}-${index}`}>{channel.toUpperCase()}</Label>
                               <Slider
-                                value={[form.watch(`states.${index}.${channel}`) ?? 255]}
-                                onValueChange={([v]: number[]) => form.setValue(`states.${index}.${channel}`, v)}
+                                value={[(form.getValues() as any).states?.[index]?.[channel] ?? 255]}
+                                onValueChange={([v]: number[]) => (form.setValue as any)(`states.${index}.${channel}`, v)}
                                 min={0}
                                 max={255}
                                 step={1}
@@ -330,8 +330,8 @@ function SceneDialog({ open, onOpenChange, scene, lights, onSubmit, loading }: S
                       <div className="space-y-2">
                         <Label htmlFor={`white-${index}`}>White</Label>
                         <Slider
-                          value={[form.watch(`states.${index}.white`) ?? 0]}
-                          onValueChange={([v]: number[]) => form.setValue(`states.${index}.white`, v)}
+                          value={[(form.watch as any)(`states.${index}.white`) ?? 0]}
+                          onValueChange={([v]: number[]) => form.setValue(`states.${index}.white`, v as any)}
                           min={0}
                           max={255}
                           step={1}
@@ -369,25 +369,32 @@ export function Scenes() {
   const [editingScene, setEditingScene] = React.useState<Scene | null>(null);
   const createScene = useCreateScene();
   const updateScene = useUpdateScene();
+  const deleteScene = useDeleteScene();
   const activateScene = useActivateScene();
+  const duplicateScene = useDuplicateScene();
 
   const handleSubmit = async (data: Record<string, unknown>) => {
     if (data.id) {
-      const { id, ...updates } = data;
-      await updateScene.mutateAsync({ id, updates });
+      const { id, ...updates } = data as Record<string, unknown>;
+      const updatesTyped = updates as Partial<Scene>;
+      await updateScene.mutateAsync({ id: id as string, updates: updatesTyped as Record<string, unknown> });
     } else {
-      await createScene.mutateAsync(data);
+      await createScene.mutateAsync(data as unknown as SceneCreate);
     }
   };
 
   const handleDelete = async (id: string) => {
     if (confirm("Delete this scene?")) {
-      await activateScene.mutateAsync({ id });
+      await deleteScene.mutateAsync(id);
     }
   };
 
   const handleActivate = async (id: string) => {
     await activateScene.mutateAsync({ id });
+  };
+
+  const handleDuplicate = async (id: string) => {
+    await duplicateScene.mutateAsync(id);
   };
 
   const handleEdit = (scene: Scene) => {

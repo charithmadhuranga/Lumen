@@ -21,6 +21,14 @@ idf_component_register(
         "hardware/drivers/i2c_manager.cpp"
         "hardware/drivers/pca9685_driver.cpp"
         "hardware/drivers/pcf8574_driver.cpp"
+        "lighting/channel_manager.cpp"
+        "lighting/lighting_task.cpp"
+        "lighting/effects_engine.cpp"
+        "lighting/drivers/driver_adapter.cpp"
+        "lighting/drivers/ledc_adapter.cpp"
+        "lighting/drivers/pca9685_adapter.cpp"
+        "lighting/drivers/relay_adapter.cpp"
+        "lighting/drivers/rmt_adapter.cpp"
     INCLUDE_DIRS "." "../include"
 )
 

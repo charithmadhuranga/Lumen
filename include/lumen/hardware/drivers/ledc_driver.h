@@ -23,6 +23,7 @@ class LedcDriver final : public IPwmDriver
     esp_err_t shutdown() override;
     DriverState state() const override;
     const char *name() const override;
+    DriverType driver_type() const override { return DriverType::kPwm; }
 
     // IPwmDriver
     esp_err_t set_duty(PwmDuty duty) override;
@@ -33,6 +34,9 @@ class LedcDriver final : public IPwmDriver
     esp_err_t get_resolution(uint8_t &resolution_bits) override;
     esp_err_t set_inverted(bool inverted) override;
     esp_err_t get_inverted(bool &inverted) override;
+    virtual esp_err_t set_channel_duty(uint8_t channel, PwmDuty duty) = 0;
+
+    virtual esp_err_t flush() = 0;
 
     uint8_t channel() const { return channel_; }
     uint8_t timer_num() const { return timer_num_; }

@@ -129,6 +129,21 @@ const char *LedcDriver::name() const
     return "ledc";
 }
 
+esp_err_t LedcDriver::set_channel_duty(uint8_t channel, PwmDuty duty)
+{
+    // LEDC is single-channel per driver instance; channel parameter ignored.
+    if (channel_ != channel) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    return set_duty(duty);
+}
+
+esp_err_t LedcDriver::flush()
+{
+    // LEDC updates immediately; nothing to flush.
+    return ESP_OK;
+}
+
 esp_err_t LedcDriver::set_duty(PwmDuty duty)
 {
     if (state_ != DriverState::kInitialized) {

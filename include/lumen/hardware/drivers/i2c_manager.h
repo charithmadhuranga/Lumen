@@ -37,6 +37,7 @@ class I2cManager final : public II2CBus
     esp_err_t shutdown() override;
     DriverState state() const override;
     const char *name() const override;
+    DriverType driver_type() const override { return DriverType::kI2c; }
 
     // II2CBus
     esp_err_t write(uint8_t device_addr, const uint8_t *write_buf,

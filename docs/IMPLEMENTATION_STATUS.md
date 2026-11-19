@@ -115,17 +115,59 @@ Legend: `[x]` done · `[ ]` not done · **HW** = verified on physical hardware.
 
 ## Phase 4 — Lighting engine
 
-- [ ] Logical channels + normalized LightState
-- [ ] Color engine (RGB/HSV/RGBW/CCT/gamma)
-- [ ] Non-blocking transitions
-- [ ] Effects engine
+- [x] Color engine (`include/lumen/lighting/color_engine.h`) — header-only,
+      RGB↔HSV, RGBW, CCT (kelvin↔RGB), gamma, brightness compensation,
+      type-aware validation, normalization. Pure functions, host-tested.
+- [x] Channel manager (`src/lighting/channel_manager.cpp`) — logical channel
+      registry (64 max), state triple (requested/applied/actual),
+      type-aware validation, state→duty translation.
+- [x] Lighting task (`src/lighting/lighting_task.*`) — bounded command queue
+      (32 entries), transition processing, hardware write via driver adapters,
+      config_changed event publication.
+- [x] Transition engine (`include/lumen/lighting/transition.h`) — non-blocking
+      interpolation with linear/smooth-step/ease-in-out-cubic easing,
+      newer-command-replaces-active, cancellable.
+- [x] Effects engine (`include/lumen/lighting/effects.h`,
+      `src/lighting/effects_engine.cpp`) — 9 effects: breathing, pulse,
+      rainbow, color cycle, candlelight, sunrise, sunset, strobe, custom
+      sequence. Resource-managed (16 max), cancellable by direct command.
+- [x] Driver adapters (`src/lighting/drivers/`) — LEDC dimmer/switch,
+      PCA9685 RGB/RGBW/CCT groups, relay switch, RMT addressable LEDs.
+      All use `driver_type()` + `static_cast` (no RTTI, ESP-IDF compatible).
+- [x] Host unit tests: color engine golden values (gamma, RGB/HSV, RGBW,
+      CCT, brightness, calibration, validation, normalization), transition
+      engine (easing, interpolation, cancellation, instant vs transition).
+      38 new tests, 113 total.
+- [x] Firmware builds on esp32 + esp32s3; device boots on KC868-AP (**HW**).
+- [x] Docs: ARCHITECTURE.md (lighting engine + task).
 
 ## Phase 4 — Lighting engine
 
-- [ ] Logical channels + normalized LightState
-- [ ] Color engine (RGB/HSV/RGBW/CCT/gamma)
-- [ ] Non-blocking transitions
-- [ ] Effects engine
+- [x] Color engine (`include/lumen/lighting/color_engine.h`) — header-only,
+      RGB↔HSV, RGBW, CCT (kelvin↔RGB), gamma, brightness compensation,
+      type-aware validation, normalization. Pure functions, host-tested.
+- [x] Channel manager (`src/lighting/channel_manager.cpp`) — logical channel
+      registry (64 max), state triple (requested/applied/actual),
+      type-aware validation, state→duty translation.
+- [x] Lighting task (`src/lighting/lighting_task.*`) — bounded command queue
+      (32 entries), transition processing, hardware write via driver adapters,
+      config_changed event publication.
+- [x] Transition engine (`include/lumen/lighting/transition.h`) — non-blocking
+      interpolation with linear/smooth-step/ease-in-out-cubic easing,
+      newer-command-replaces-active, cancellable.
+- [x] Effects engine (`include/lumen/lighting/effects.h`,
+      `src/lighting/effects_engine.cpp`) — 9 effects: breathing, pulse,
+      rainbow, color cycle, candlelight, sunrise, sunset, strobe, custom
+      sequence. Resource-managed (16 max), cancellable by direct command.
+- [x] Driver adapters (`src/lighting/drivers/`) — LEDC dimmer/switch,
+      PCA9685 RGB/RGBW/CCT groups, relay switch, RMT addressable LEDs.
+      All use `driver_type()` + `static_cast` (no RTTI, ESP-IDF compatible).
+- [x] Host unit tests: color engine golden values (gamma, RGB/HSV, RGBW,
+      CCT, brightness, calibration, validation, normalization), transition
+      engine (easing, interpolation, cancellation, instant vs transition).
+      38 new tests, 113 total.
+- [x] Firmware builds on esp32 + esp32s3; device boots on KC868-AP (**HW**).
+- [x] Docs: ARCHITECTURE.md (lighting engine + task).
 
 ## Phase 5 — Rooms, groups, scenes
 

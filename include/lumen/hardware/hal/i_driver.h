@@ -21,6 +21,20 @@ enum class DriverState : uint8_t
     kFailed,
 };
 
+// Driver type for RTTI-free downcasting (ESP-IDF uses -fno-rtti).
+enum class DriverType : uint8_t
+{
+    kUnknown = 0,
+    kGpio,
+    kPwm,
+    kI2c,
+    kUart,
+    kEthernet,
+    kAddressableLed,
+    kRelay,
+    kPeripheral,
+};
+
 // Every HAL driver. init/shutdown return esp_err_t; all runtime methods
 // return esp_err_t so failures are never silently ignored.
 class IDriver
@@ -36,6 +50,9 @@ class IDriver
     virtual esp_err_t shutdown() = 0;
 
     virtual DriverState state() const = 0;
+
+    // Driver type for RTTI-free downcasting.
+    virtual DriverType driver_type() const = 0;
 
     // Human-readable driver name (for logs and diagnostics).
     virtual const char *name() const = 0;

@@ -18,60 +18,60 @@ the reference board.
 
 ### 4.1 Channel model (`src/lighting/channel_manager.*`)
 
-- [ ] Logical channel per SPEC §8.1 (id, name, type, room_id, driver
+- [x] Logical channel per SPEC §8.1 (id, name, type, room_id, driver
       reference `{type, device_id, channel}`, limits, transition_ms,
       startup_behavior).
-- [ ] Channels load from `/config/lights/channels.json`; a channel whose
+- [x] Channels load from `/config/lights/channels.json`; a channel whose
       driver target is missing/invalid is reported as `unavailable` — the
       rest keep working (SPEC §1.2 rule 6).
-- [ ] State triple kept separate: **requested** (user intent), **applied**
+- [x] State triple kept separate: **requested** (user intent), **applied**
       (what the engine last commanded), **actual** (read-back/feedback where
       available) — SPEC §8.3.
-- [ ] Type-aware validation layer: an unsupported property (e.g. color on a
+- [x] Type-aware validation layer: an unsupported property (e.g. color on a
       `dimmer`) is rejected before it reaches a driver.
 
 ### 4.2 Color engine (`src/lighting/color_engine.*`)
 
-- [ ] RGB↔HSV, RGBW handling, CCT (kelvin↔RGB mixing), gamma correction,
+- [x] RGB↔HSV, RGBW handling, CCT (kelvin↔RGB mixing), gamma correction,
       brightness compensation, per-channel calibration and limits
       (SPEC §8.4).
-- [ ] Pure functions, no I/O — fully host-tested.
-- [ ] One code path for brightness/color applied across LEDC, PCA9685 and
+- [x] Pure functions, no I/O — fully host-tested.
+- [x] One code path for brightness/color applied across LEDC, PCA9685 and
       RMT outputs.
 
 ### 4.3 Command path and lighting task
 
-- [ ] Bounded lighting command queue; producers (REST/WS/MQTT/inputs/
+- [x] Bounded lighting command queue; producers (REST/WS/MQTT/inputs/
       automation) enqueue only (AGENTS.md §4.7).
-- [ ] Lighting service processes commands in one task context; newer command
+- [x] Lighting service processes commands in one task context; newer command
       replaces an active transition/effect for the same channel (SPEC §8.5).
-- [ ] Skip redundant hardware writes (same duty → no I2C transaction).
-- [ ] Startup behavior: `restore` last applied state or `off`/configured
+- [x] Skip redundant hardware writes (same duty → no I2C transaction).
+- [x] Startup behavior: `restore` last applied state or `off`/configured
       safe value per channel.
 
 ### 4.4 Transition engine (`src/lighting/transition_engine.*`)
 
-- [ ] Non-blocking interpolation (brightness, RGB, CCT, scene-wide),
+- [x] Non-blocking interpolation (brightness, RGB, CCT, scene-wide),
       configurable duration, smooth easing, cancellation, replacement.
-- [ ] Timing driven by a tick/step schedule — **no delay loops in the
+- [x] Timing driven by a tick/step schedule — **no delay loops in the
       lighting task** (AGENTS.md §5). ≥30 updates/s where hardware permits
       (SPEC §24).
 
 ### 4.5 Effects engine (`src/lighting/effects_engine.*`)
 
-- [ ] Effects 1–9 from SPEC §8.6: breathing, pulse, rainbow, color cycle,
+- [x] Effects 1–9 from SPEC §8.6: breathing, pulse, rainbow, color cycle,
       candlelight, sunrise, sunset, strobe, custom sequence.
-- [ ] Resource-managed (bounded effect instances), cancellable by any direct
+- [x] Resource-managed (bounded effect instances), cancellable by any direct
       command or automation action, effect speed parameter.
-- [ ] Addressable LED strip support via RMT driver (SPEC §7.5): WS2812/
+- [x] Addressable LED strip support via RMT driver (SPEC §7.5): WS2812/
       WS2812B/SK6812, RGB/RGBW, LED count, color order, timing config —
       updates run independently of web/networking tasks.
 
 ### 4.6 Driver wiring
 
-- [ ] Channel → driver adapters: LEDC (dimmer/switch), PCA9685 (16-ch
+- [x] Channel → driver adapters: LEDC (dimmer/switch), PCA9685 (16-ch
       dimmer/RGB/RGBW/CCT groups), relay (switch), RMT (addressable).
-- [ ] Adapters resolve `device_id` through the hardware manager — no direct
+- [x] Adapters resolve `device_id` through the hardware manager — no direct
       GPIO anywhere in `src/lighting/` (AGENTS.md §4.1).
 
 ## Contracts & interfaces introduced
@@ -85,18 +85,18 @@ the reference board.
 
 ## Gate (acceptance criteria)
 
-1. All seven logical types respond correctly on hardware (or mock, clearly
+1. All seven logical types respond correctly on hardware (or mock, clearly ✅
    labeled) — dim, color, CCT, relay, addressable.
-2. Commands are hardware-independent: the same test suite runs against LEDC
+2. Commands are hardware-independent: the same test suite runs against LEDC ✅
    and PCA9685 mocks.
-3. Transitions are non-blocking: lighting task never blocks > a few ms; no
+3. Transitions are non-blocking: lighting task never blocks > a few ms; no ✅
    `vTaskDelay` inside a fade step loop (code review + timing test).
-4. A newer command cancels an in-flight transition or effect (test).
-5. Unsupported-property commands are rejected with a typed error (test).
-6. Redundant-write suppression proven (mock I2C transaction counter).
-7. Host tests: color conversion golden values, gamma/limits, transition
+4. A newer command cancels an in-flight transition or effect (test). ✅
+5. Unsupported-property commands are rejected with a typed error (test). ✅
+6. Redundant-write suppression proven (mock I2C transaction counter). ✅
+7. Host tests: color conversion golden values, gamma/limits, transition ✅
    interpolation, effect cancellation, requested vs applied state.
-8. Heap impact reviewed; no dynamic allocation per update in the hot path.
+8. Heap impact reviewed; no dynamic allocation per update in the hot path. ✅
 
 ## Docs to update
 

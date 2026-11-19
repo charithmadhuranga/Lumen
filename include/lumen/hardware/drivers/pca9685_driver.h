@@ -47,6 +47,7 @@ class Pca9685Driver final : public IPwmDriver
     esp_err_t shutdown() override;
     DriverState state() const override;
     const char *name() const override;
+    DriverType driver_type() const override { return DriverType::kPwm; }
 
     // IPwmDriver (channel-agnostic default channel 0).
     esp_err_t set_duty(PwmDuty duty) override;

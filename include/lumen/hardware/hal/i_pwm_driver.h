@@ -37,6 +37,12 @@ class IPwmDriver : public IDriver
     virtual esp_err_t set_inverted(bool inverted) = 0;
 
     virtual esp_err_t get_inverted(bool &inverted) = 0;
+
+    // Set duty for a specific channel (multi-channel PWM like PCA9685).
+    virtual esp_err_t set_channel_duty(uint8_t channel, PwmDuty duty) = 0;
+
+    // Flush all pending channel updates to hardware.
+    virtual esp_err_t flush() = 0;
 };
 
 } // namespace lumen

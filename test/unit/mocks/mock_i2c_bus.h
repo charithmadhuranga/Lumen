@@ -38,6 +38,7 @@ class MockI2cBus final : public II2CBus
     }
     DriverState state() const override { return state_; }
     const char *name() const override { return "mock_i2c"; }
+    DriverType driver_type() const override { return DriverType::kI2c; }
 
     // II2CBus
     esp_err_t write(uint8_t device_addr, const uint8_t *write_buf,

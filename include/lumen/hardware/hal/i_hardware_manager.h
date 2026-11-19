@@ -14,16 +14,10 @@
 #include <string>
 #include <vector>
 
-#include "hal/i_driver.h"
+#include "lumen/hardware/hal/i_driver.h"
 
 namespace lumen
 {
-
-struct DriverRef
-{
-    std::string id;          // e.g. "gpio_0", "ledc_0", "i2c_0"
-    IDriver *driver = nullptr;
-};
 
 // Result of validating + applying a candidate profile.
 enum class ApplyResult : uint8_t

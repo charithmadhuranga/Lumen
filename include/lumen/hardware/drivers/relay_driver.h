@@ -23,6 +23,7 @@ class RelayDriver final : public IRelayDriver
     esp_err_t shutdown() override;
     DriverState state() const override;
     const char *name() const override;
+    DriverType driver_type() const override { return DriverType::kRelay; }
 
     // IOutputDriver
     esp_err_t set_value(uint32_t value) override;

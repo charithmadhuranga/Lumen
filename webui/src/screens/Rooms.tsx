@@ -21,9 +21,17 @@ import {
   Loader2,
   ChevronDown,
 } from "lucide-react";
-import { useRooms, useLights, useGroups, useCreateRoom, useUpdateRoom, useDeleteRoom, useRoomPower, useRoomBrightness } from "@/services/queries";
-import { useRoomCommand } from "@/services/queries";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+} from "@/components/ui/alert-dialog";
+import { useRooms, useLights, useGroups, useCreateRoom, useUpdateRoom, useDeleteRoom, useRoomPower, useRoomBrightness, useLightCommand } from "@/services/queries";
 import { useAuth } from "@/hooks/useAuth";
+import { useCommandThrottle } from "@/stores/liveStore";
 import { Slider } from "@/components/ui/slider";
 import { Room, LightChannel } from "@/schemas";
 
@@ -39,8 +47,9 @@ interface RoomCardProps {
 
 function RoomCard({ room, lights, onEdit, onDelete }: RoomCardProps) {
   const queryClient = useQueryClient();
-  const commandRoom = useRoomCommand();
-  const { canSend, markSent } = React.useState(true); // Simplified
+  const roomPower = useRoomPower();
+  const roomBrightness = useRoomBrightness();
+  const { canSend, markSent } = useCommandThrottle("room-" + room.id);
 
   const lightsInRoom = lights.filter((l) => room.channelIds.includes(l.id));
   const lightsOn = lightsInRoom.filter((l) => l.state?.power).length;
@@ -52,7 +61,7 @@ function RoomCard({ room, lights, onEdit, onDelete }: RoomCardProps) {
   const [dragging, setDragging] = React.useState(false);
 
   const handlePowerToggle = () => {
-    commandRoom.mutate({
+    roomPower.mutate({
       id: room.id,
       power: !isAnyOn,
       transitionMs: 0,
@@ -61,8 +70,7 @@ function RoomCard({ room, lights, onEdit, onDelete }: RoomCardProps) {
 
   const handleBrightnessChange = (value: number[]) => {
     setLocalBrightness(value[0]);
-    // Throttling would be implemented here
-    commandRoom.mutate({
+    roomBrightness.mutate({
       id: room.id,
       brightness: value[0],
       transitionMs: 0,
@@ -96,8 +104,8 @@ function RoomCard({ room, lights, onEdit, onDelete }: RoomCardProps) {
         {/* Master Controls */}
         <div className="flex items-center gap-3">
           <button
-            onClick={() => commandRoom.mutate({ id: room.id, power: !isAnyOn, transitionMs: 0 })}
-            disabled={commandRoom.isPending}
+            onClick={() => roomPower.mutate({ id: room.id, power: !isAnyOn, transitionMs: 0 })}
+            disabled={roomPower.isPending}
             className={cn(
               "relative flex h-12 w-12 items-center justify-center rounded-lg transition-colors",
               "hover:bg-accent disabled:opacity-50",
@@ -123,14 +131,14 @@ function RoomCard({ room, lights, onEdit, onDelete }: RoomCardProps) {
               value={[localBrightness]}
               onValueChange={([value]) => {
                 setLocalBrightness(value);
-                commandRoom.mutate({ id: room.id, brightness: value, transitionMs: 0 });
+                roomBrightness.mutate({ id: room.id, brightness: value, transitionMs: 0 });
               }}
               onMouseDown={() => setDragging(true)}
               onMouseUp={() => setDragging(false)}
               min={0}
               max={100}
               step={1}
-              disabled={commandRoom.isPending || !isAnyOn}
+              disabled={roomBrightness.isPending || !isAnyOn}
             />
             <div className="flex justify-between text-xs text-muted-foreground">
               <span>0%</span>
@@ -318,15 +326,6 @@ export function Rooms() {
   const createRoom = useCreateRoom();
   const updateRoom = useUpdateRoom();
   const deleteRoom = useDeleteRoom();
-
-  const handleSubmit = async (data: any) => {
-    if (data.id) {
-      const { id, ...updates } = data;
-      await updateRoom.mutateAsync({ id, updates });
-    } else {
-      await createRoom.mutateAsync(data);
-    }
-  };
 
   const handleDelete = async (id: string) => {
     if (confirm("Delete this room? Lights will be detached but not deleted.")) {

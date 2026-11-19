@@ -88,10 +88,11 @@ function SetupPasswordGuard({ children }: { children: React.ReactNode }) {
    Main Layout
    ================================================================ */
 function MainLayout() {
+  const [mobileOpen, setMobileOpen] = React.useState(false);
   return (
     <div className="flex h-screen bg-background">
       <Sidebar />
-      <MobileDrawer />
+      <MobileDrawer open={mobileOpen} onOpenChange={setMobileOpen} />
       <div className="flex-1 flex flex-col overflow-hidden lg:pl-64">
         <TopBar />
         <ConnectionBanner />

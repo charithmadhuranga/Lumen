@@ -28,7 +28,7 @@ interface LiveState {
 /* ================================================================
    Store
    ================================================================ */
-const createLiveState = (set: (partial: Partial<LiveState> | ((state: LiveState) => Partial<LiveState>)) => void, get: () => LiveState): LiveState => ({
+const createLiveState = (set: (partial: Partial<LiveState> | ((state: LiveState) => Partial<LiveState>)) => void): LiveState => ({
   status: "disconnected",
   lastError: null,
   pendingCommands: new Map<string, { id: string; timestamp: number }>(),
@@ -79,7 +79,9 @@ export function useCommandThrottle(commandId: string): {
   const removePending = useLiveStore((s: LiveState) => s.removePendingCommand);
 
   const entry = pendingCommands.get(commandId);
-  const canSend = !entry || Date.now() - entry.timestamp >= THROTTLE_MS;
+  // eslint-disable-next-line react-hooks/purity
+  const now = Date.now();
+  const canSend = !entry || now - entry.timestamp >= THROTTLE_MS;
 
   const markSent = () => {
     addPending(commandId);

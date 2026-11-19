@@ -303,11 +303,7 @@ function StatCard({ title, value, icon }: StatCardProps) {
     <Card>
       <CardContent className="flex items-center gap-4">
         <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
-          {React.isValidElement(icon) ? (
-            React.cloneElement(icon, { className: "h-6 w-6 text-primary" })
-          ) : (
-            icon
-          )}
+          {icon}
         </div>
         <div>
           <p className="text-sm text-muted-foreground">{title}</p>

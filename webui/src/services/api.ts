@@ -280,7 +280,7 @@ export const roomsApi = {
 /* ================================================================
    Groups API
    ================================================================ */
-import { Group, GroupCreate, GroupUpdate, AggregationPolicy } from "@/schemas";
+import { Group, GroupCreate, GroupUpdate } from "@/schemas";
 
 export const groupsApi = {
   list() {

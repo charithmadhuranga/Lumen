@@ -36,20 +36,18 @@ const DropdownMenuItem = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.Item>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Item>
 >(
-  ({ className, inset, ...props }, ref) => (
+  ({ className, ...props }, ref) => (
     <DropdownMenuPrimitive.Item
       ref={ref}
       className={cn(
         "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
-        inset && "pl-8",
         className
       )}
       {...props}
-      ref={ref}
     >
       {React.Children.map(props.children, (child) => {
         if (React.isValidElement(child) && child.type === Check) {
-          return React.cloneElement(child, { className: "h-4 w-4" });
+          return <span className="h-4 w-4">{child}</span>;
         }
         return child;
       })}
@@ -71,7 +69,6 @@ const DropdownMenuCheckboxItem = React.forwardRef<
       )}
       checked={checked}
       {...props}
-      ref={ref}
     >
       <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
         <DropdownMenuPrimitive.ItemIndicator>
@@ -96,7 +93,6 @@ const DropdownMenuRadioItem = React.forwardRef<
         className
       )}
       {...props}
-      ref={ref}
     >
       <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
         <DropdownMenuPrimitive.ItemIndicator>
@@ -113,12 +109,11 @@ const DropdownMenuLabel = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.Label>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Label>
 >(
-  ({ className, inset, ...props }, ref) => (
+  ({ className, ...props }, ref) => (
     <DropdownMenuPrimitive.Label
       ref={ref}
       className={cn(
         "px-2 py-1.5 text-sm font-semibold",
-        inset && "pl-8",
         className
       )}
       {...props}

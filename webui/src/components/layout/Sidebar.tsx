@@ -67,8 +67,9 @@ export function Sidebar() {
             {navigation.map((item) => {
               const isActive = location.pathname === item.href ||
                 (item.href !== "/" && location.pathname.startsWith(item.href));
+              const showTooltip = collapsed && !isActive;
               return (
-                <Tooltip key={item.name} disabled={!collapsed}>
+                <Tooltip key={item.name} open={showTooltip} onOpenChange={() => {}}>
                   <TooltipTrigger asChild>
                     <NavLink
                       to={item.href}

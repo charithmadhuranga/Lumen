@@ -4,6 +4,7 @@
 import { EventEmitter } from "events";
 import { z } from "zod";
 
+import type { QueryClient } from "@tanstack/react-query";
 import type { LightStateChangedData, WsEventType } from "@/schemas";
 
 /* ================================================================
@@ -42,7 +43,7 @@ interface WsClientOptions {
   url: string;
   onStatusChange?: (status: ConnectionStatus) => void;
   onMessage?: (event: WsEventType, data: unknown) => void;
-  queryClient?: any; // TanStack QueryClient for cache patching
+  queryClient?: QueryClient; // TanStack QueryClient for cache patching
 }
 
 export class WsClient extends EventEmitter {
@@ -54,7 +55,7 @@ export class WsClient extends EventEmitter {
   private readonly url: string;
   private readonly onStatusChange?: (status: ConnectionStatus) => void;
   private readonly onMessage?: (event: WsEventType, data: unknown) => void;
-  private readonly queryClient?: any;
+  private readonly queryClient?: QueryClient;
 
   // Reconnect config
   private readonly baseDelay = 1000; // 1s
@@ -78,7 +79,7 @@ export class WsClient extends EventEmitter {
 
     try {
       this.ws = new WebSocket(this.url);
-    } catch (e) {
+    } catch {
       this.setStatus("failed");
       return;
     }
@@ -89,7 +90,7 @@ export class WsClient extends EventEmitter {
       this.startPing();
     };
 
-    this.ws.onclose = (event) => {
+    this.ws.onclose = () => {
       this.stopPing();
       if (this.status !== "failed") {
         this.setStatus("disconnected");
@@ -97,7 +98,7 @@ export class WsClient extends EventEmitter {
       }
     };
 
-    this.ws.onerror = (_event) => {
+    this.ws.onerror = () => {
       // Error event doesn't give details; onclose will fire after
     };
 
@@ -210,8 +211,8 @@ export class WsClient extends EventEmitter {
     switch (event) {
       case "light_state_changed": {
         const d = data as LightStateChangedData;
-        this.queryClient.setQueryData(["lights", d.channelId], (old: any) => {
-          if (!old) return old;
+        this.queryClient.setQueryData(["lights", d.channelId], (old: unknown) => {
+          if (!old || typeof old !== "object") return old;
           return {
             ...old,
             state: d.state,
@@ -219,10 +220,12 @@ export class WsClient extends EventEmitter {
           };
         });
         // Also update in lights list
-        this.queryClient.setQueryData(["lights"], (old: any[]) => {
+        this.queryClient.setQueryData(["lights"], (old: unknown) => {
           if (!Array.isArray(old)) return old;
           return old.map((light) =>
-            light.id === d.channelId ? { ...light, state: d.state, requested: d.state } : light
+            light && typeof light === "object" && light.id === d.channelId
+              ? { ...light, state: d.state, requested: d.state }
+              : light
           );
         });
         break;

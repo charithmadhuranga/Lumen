@@ -3,7 +3,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 
-import { api } from "@/services/api";
+import { authApi, ApiError } from "@/services/api";
 
 /* ================================================================
    Types
@@ -39,14 +39,14 @@ export const useAuth = create<AuthState>()(
       login: async (username: string, password: string) => {
         set({ loading: true, error: null });
         try {
-          const data = await api.authApi.login(username, password);
+          const data = await authApi.login(username, password);
           set({
             user: { username: data.username, forcePasswordChange: data.forcePasswordChange },
             loading: false,
             error: null,
           });
         } catch (e) {
-          const message = e instanceof api.ApiError ? e.message : "Login failed";
+          const message = e instanceof ApiError ? e.message : "Login failed";
           set({ loading: false, error: message, user: null });
           throw e;
         }
@@ -55,7 +55,7 @@ export const useAuth = create<AuthState>()(
       logout: async () => {
         set({ loading: true });
         try {
-          await api.authApi.logout();
+          await authApi.logout();
         } catch {
           // Ignore logout errors
         } finally {
@@ -66,7 +66,7 @@ export const useAuth = create<AuthState>()(
       checkSession: async () => {
         set({ loading: true });
         try {
-          const data = await api.authApi.session();
+          const data = await authApi.session();
           set({
             user: { username: data.username, forcePasswordChange: data.forcePasswordChange },
             loading: false,
@@ -79,7 +79,7 @@ export const useAuth = create<AuthState>()(
       changePassword: async (current: string, next: string) => {
         set({ loading: true, error: null });
         try {
-          await api.authApi.changePassword(current, next);
+          await authApi.changePassword(current, next);
           const user = get().user;
           if (user) {
             set({ user: { ...user, forcePasswordChange: false }, loading: false });
@@ -87,7 +87,7 @@ export const useAuth = create<AuthState>()(
             set({ loading: false });
           }
         } catch (e) {
-          const message = e instanceof api.ApiError ? e.message : "Password change failed";
+          const message = e instanceof ApiError ? e.message : "Password change failed";
           set({ loading: false, error: message });
           throw e;
         }

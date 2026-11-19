@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -80,7 +80,7 @@ function FeatureCard({ title, description, icon }: { title: string; description:
     <Card className="h-full">
       <CardContent className="pt-6">
         <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 mb-4">
-          {React.isValidElement(icon) ? React.cloneElement(icon, { className: "h-6 w-6 text-primary" }) : icon}
+          {icon}
         </div>
         <h4 className="font-medium">{title}</h4>
         <p className="text-sm text-muted-foreground mt-1">{description}</p>

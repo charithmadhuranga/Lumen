@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { useTheme } from "@/hooks/useTheme";
 import { useAuth } from "@/hooks/useAuth";
-import { Menu, X, User, LogOut, Sun, Moon, Monitor } from "lucide-react";
+import { Menu, X, User, LogOut, Sun, Moon, Monitor, Settings } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,

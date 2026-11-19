@@ -33,7 +33,6 @@ const AlertTitle = React.forwardRef<
     ref={ref}
     className={cn("mb-1 font-medium leading-none", className)}
     {...props}
-    ref={ref}
   />
 ));
 AlertTitle.displayName = "AlertTitle";
@@ -46,7 +45,6 @@ const AlertDescription = React.forwardRef<
     ref={ref}
     className={cn("text-sm [&_p]:leading-relaxed [&_p]:my-1", className)}
     {...props}
-    ref={ref}
   />
 ));
 AlertDescription.displayName = "AlertDescription";

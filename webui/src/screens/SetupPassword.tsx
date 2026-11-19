@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, Lock, AlertCircle, CheckCircle } from "lucide-react";
+import { Loader2, Lock, AlertCircle } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
 
@@ -57,7 +57,7 @@ function getPasswordStrength(password: string): { score: number; label: string; 
    ================================================================ */
 export function SetupPassword() {
   const navigate = useNavigate();
-  const { changePassword, user, loading: authLoading } = useAuth();
+  const { changePassword, loading: authLoading } = useAuth();
 
   const [localLoading, setLocalLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);

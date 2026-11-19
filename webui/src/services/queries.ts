@@ -11,7 +11,7 @@ import {
   ApiError,
 } from "@/services/api";
 
-import type { LightChannel, Room, Group, Scene, SystemInfo, SessionInfo, LightCommandResponse } from "@/schemas";
+import type { LightChannel, Room, Group, Scene, LightCommandResponse } from "@/schemas";
 
 /* ================================================================
    Query Keys (single source of truth)
@@ -119,6 +119,40 @@ export function useLightCommand() {
     onSuccess: (_data, variables) => {
       // Optimistic update via WS will handle; just invalidate
       queryClient.invalidateQueries({ queryKey: queryKeys.light(variables.id) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.lights() });
+    },
+  });
+}
+
+interface LightCreateVariables { id: string; name: string; type: LightChannel["type"] }
+interface LightUpdateVariables { id: string; updates: Partial<LightChannel> }
+
+export function useCreateLight() {
+  const queryClient = useQueryClient();
+  return useMutation<LightChannel, Error, LightCreateVariables>({
+    mutationFn: ({ id, name, type }) => lightsApi.create({ id, name, type }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.lights() });
+    },
+  });
+}
+
+export function useUpdateLight() {
+  const queryClient = useQueryClient();
+  return useMutation<LightChannel, Error, LightUpdateVariables>({
+    mutationFn: ({ id, updates }) => lightsApi.update(id, updates),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.light(variables.id) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.lights() });
+    },
+  });
+}
+
+export function useDeleteLight() {
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationFn: (id) => lightsApi.delete(id),
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.lights() });
     },
   });

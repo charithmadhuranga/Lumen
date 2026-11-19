@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,7 +10,6 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Save, Wifi, Cpu, Shield, Key, Monitor, Loader2, Download } from "lucide-react";
-import { useAuth } from "@/hooks/useAuth";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -28,7 +26,6 @@ const passwordSchema = z.object({
 type PasswordForm = z.infer<typeof passwordSchema>;
 
 export function Settings() {
-  const { user, logout } = useAuth();
   const [activeTab, setActiveTab] = React.useState("general");
   const [saving, setSaving] = React.useState(false);
 
@@ -37,12 +34,12 @@ export function Settings() {
     defaultValues: { currentPassword: "", newPassword: "", confirmPassword: "" },
   });
 
-  const handlePasswordSubmit = async (data: PasswordForm) => {
+  const handlePasswordSubmit = async () => {
     setSaving(true);
     try {
       // Call change password API
       setSaving(false);
-    } catch (e) {
+    } catch {
       setSaving(false);
     }
   };

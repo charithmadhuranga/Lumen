@@ -9,6 +9,7 @@ import {
   Grid,
   Video,
   Settings,
+  Cpu,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -22,6 +23,7 @@ const navigation = [
   { name: "Scenes", href: "/scenes", icon: Grid },
   { name: "Floor Plans", href: "/floorplans", icon: Video },
   { name: "Devices", href: "/devices", icon: Settings },
+  { name: "Hardware", href: "/hardware", icon: Cpu },
 ] as const;
 
 export function Sidebar() {

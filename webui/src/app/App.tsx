@@ -17,6 +17,7 @@ import { Scenes } from "@/screens/Scenes";
 import { FloorPlans } from "@/screens/FloorPlans";
 import { Devices } from "@/screens/Devices";
 import { Settings } from "@/screens/Settings";
+import { Hardware } from "@/screens/Hardware";
 import { ConnectionBanner } from "@/components/ui/ConnectionBanner";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffect } from "react";
@@ -144,6 +145,7 @@ export default function App() {
                 <Route path="/scenes" element={<Scenes />} />
                 <Route path="/floorplans" element={<FloorPlans />} />
                 <Route path="/devices" element={<Devices />} />
+                <Route path="/hardware" element={<Hardware />} />
                 <Route path="/settings" element={<Settings />} />
               </Route>
 

@@ -394,3 +394,95 @@ export const scenesApi = {
     });
   },
 };
+
+/* ================================================================
+   Boards API (Phase 7)
+   ================================================================ */
+import {
+  BoardProfile,
+  BoardCandidate,
+  ValidationReport,
+  ApplyBoardResult,
+} from "@/schemas";
+
+export const boardsApi = {
+  list() {
+    return fetchJson<BoardCandidate[]>("/api/v1/boards", {
+      schema: z.array(BoardCandidate),
+    });
+  },
+
+  active() {
+    return fetchJson<BoardProfile>("/api/v1/boards/active", {
+      schema: BoardProfile,
+    });
+  },
+
+  get(id: string) {
+    return fetchJson<BoardProfile>(`/api/v1/boards/${id}`, {
+      schema: BoardProfile,
+    });
+  },
+
+  validate(profile: BoardProfile) {
+    return fetchJson<ValidationReport>("/api/v1/boards/validate", {
+      method: "POST",
+      body: JSON.stringify(profile),
+      schema: ValidationReport,
+    });
+  },
+
+  create(profile: BoardProfile) {
+    return fetchJson<BoardProfile>("/api/v1/boards", {
+      method: "POST",
+      body: JSON.stringify(profile),
+      schema: BoardProfile,
+    });
+  },
+
+  update(id: string, profile: Partial<BoardProfile>) {
+    return fetchJson<BoardProfile>(`/api/v1/boards/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(profile),
+      schema: BoardProfile,
+    });
+  },
+
+  remove(id: string) {
+    return fetchJson<void>(`/api/v1/boards/${id}`, {
+      method: "DELETE",
+    });
+  },
+
+  apply(id: string) {
+    return fetchJson<ApplyBoardResult>(`/api/v1/boards/${id}/apply`, {
+      method: "POST",
+      schema: ApplyBoardResult,
+    });
+  },
+};
+
+/* ================================================================
+   Hardware API (Phase 7)
+   ================================================================ */
+import { HardwareStatus, HardwareInput, I2cScanResult } from "@/schemas";
+
+export const hardwareApi = {
+  status() {
+    return fetchJson<HardwareStatus>("/api/v1/hardware/status", {
+      schema: HardwareStatus,
+    });
+  },
+
+  inputs() {
+    return fetchJson<HardwareStatus["inputs"]>("/api/v1/hardware/inputs", {
+      schema: z.array(HardwareInput).optional(),
+    });
+  },
+
+  i2cScan() {
+    return fetchJson<I2cScanResult>("/api/v1/hardware/i2c/scan", {
+      schema: I2cScanResult,
+    });
+  },
+};

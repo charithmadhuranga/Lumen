@@ -8,10 +8,24 @@ import {
   roomsApi,
   groupsApi,
   scenesApi,
+  boardsApi,
+  hardwareApi,
   ApiError,
 } from "@/services/api";
 
-import type { LightChannel, Room, Group, Scene, LightCommandResponse } from "@/schemas";
+import type {
+  LightChannel,
+  Room,
+  Group,
+  Scene,
+  LightCommandResponse,
+  BoardProfile,
+  BoardCandidate,
+  ValidationReport,
+  ApplyBoardResult,
+  HardwareStatus,
+  I2cScanResult,
+} from "@/schemas";
 
 /* ================================================================
    Query Keys (single source of truth)
@@ -39,6 +53,16 @@ export const queryKeys = {
   // Scenes
   scenes: () => ["scenes"] as const,
   scene: (id: string) => ["scenes", id] as const,
+
+  // Boards
+  boards: () => ["boards"] as const,
+  board: (id: string) => ["boards", id] as const,
+  boardActive: () => ["boards", "active"] as const,
+
+  // Hardware
+  hardwareStatus: () => ["hardware", "status"] as const,
+  hardwareInputs: () => ["hardware", "inputs"] as const,
+  i2cScan: () => ["hardware", "i2c", "scan"] as const,
 } as const;
 
 /* ================================================================
@@ -395,5 +419,110 @@ export function useDuplicateScene() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.scenes() });
     },
+  });
+}
+/* ================================================================
+   Boards Hooks (Phase 7)
+   ================================================================ */
+export function useBoards() {
+  return useQuery({
+    queryKey: queryKeys.boards(),
+    queryFn: boardsApi.list,
+    staleTime: 60_000,
+  });
+}
+
+export function useBoard(id: string) {
+  return useQuery({
+    queryKey: queryKeys.board(id),
+    queryFn: () => boardsApi.get(id),
+    enabled: !!id,
+    staleTime: 30_000,
+  });
+}
+
+export function useActiveBoard() {
+  return useQuery({
+    queryKey: queryKeys.boardActive(),
+    queryFn: boardsApi.active,
+    staleTime: 30_000,
+  });
+}
+
+export function useValidateBoard() {
+  return useMutation<ValidationReport, Error, BoardProfile>({
+    mutationFn: (profile) => boardsApi.validate(profile),
+  });
+}
+
+export function useCreateBoard() {
+  const queryClient = useQueryClient();
+  return useMutation<BoardProfile, Error, BoardProfile>({
+    mutationFn: (profile) => boardsApi.create(profile),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.boards() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.boardActive() });
+    },
+  });
+}
+
+export function useUpdateBoard() {
+  const queryClient = useQueryClient();
+  return useMutation<BoardProfile, Error, { id: string; profile: Partial<BoardProfile> }>({
+    mutationFn: ({ id, profile }) => boardsApi.update(id, profile),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.board(variables.id) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.boards() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.boardActive() });
+    },
+  });
+}
+
+export function useDeleteBoard() {
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationFn: (id) => boardsApi.remove(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.boards() });
+    },
+  });
+}
+
+export function useApplyBoard() {
+  const queryClient = useQueryClient();
+  return useMutation<ApplyBoardResult, Error, string>({
+    mutationFn: (id) => boardsApi.apply(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.boardActive() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.boards() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.hardwareStatus() });
+    },
+  });
+}
+
+/* ================================================================
+   Hardware Hooks (Phase 7)
+   ================================================================ */
+export function useHardwareStatus() {
+  return useQuery({
+    queryKey: queryKeys.hardwareStatus(),
+    queryFn: hardwareApi.status,
+    staleTime: 5_000,
+    refetchInterval: 10_000,
+  });
+}
+
+export function useHardwareInputs() {
+  return useQuery({
+    queryKey: queryKeys.hardwareInputs(),
+    queryFn: hardwareApi.inputs,
+    staleTime: 5_000,
+    refetchInterval: 10_000,
+  });
+}
+
+export function useI2cScan() {
+  return useMutation<I2cScanResult, Error, void>({
+    mutationFn: () => hardwareApi.i2cScan(),
   });
 }

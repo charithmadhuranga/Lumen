@@ -257,6 +257,132 @@ export const LightStateChangedData = z.object({
 });
 
 /* ================================================================
+   Hardware / Board profiles (Phase 7 — mirrors mockup-ui §7.8)
+   ================================================================ */
+export const BoardResource = z.object({
+  id: z.string(),
+  type: z.enum(["gpio", "pwm", "i2c", "uart", "rmt", "ethernet"]),
+  gpio: z.number().int().min(-1),
+  direction: z.enum(["input", "output", "bidirectional"]),
+  inverted: z.boolean().optional(),
+  pull: z.enum(["none", "up", "down"]).optional(),
+  safe_state: z.boolean().optional(),
+});
+
+export const BoardPeripheral = z.object({
+  id: z.string(),
+  type: z.enum(["pca9685", "pcf8574", "relay", "ethernet", "rs485", "addressable_led"]),
+  bus: z.string().optional(),
+  address: z.number().int().min(-1).optional(),
+  channels: z.number().int().min(0).optional(),
+  frequency: z.number().int().min(0).optional(),
+  unverified: z.boolean().optional(),
+  address_verification_required: z.boolean().optional(),
+  unverified_note: z.string().optional(),
+});
+
+export const BoardProfile = z.object({
+  schema_version: z.number().int().optional(),
+  id: z.string(),
+  name: z.string(),
+  manufacturer: z.string().optional(),
+  mcu: z.string(),
+  description: z.string().optional(),
+  resources: z.array(BoardResource),
+  peripherals: z.array(BoardPeripheral),
+  unverified: z.boolean().optional(),
+});
+
+// A single GPIO pin as rendered in the Pin Mapping grid (mockup: gpioPins).
+export const BoardPin = z.object({
+  gpio: z.number().int(),
+  role: z.string(),
+  dir: z.enum(["input", "output", "bidirectional", "input-only", "free"]),
+  strapping: z.boolean(),
+  conflict: z.boolean(),
+  input_only: z.boolean().optional(),
+  reason: z.string().optional(),
+});
+
+// A candidate in the Board tab list (mockup: boardProfiles).
+export const BoardCandidate = z.object({
+  id: z.string(),
+  name: z.string(),
+  mcu: z.string(),
+  builtIn: z.boolean(),
+  desc: z.string().optional(),
+  active: z.boolean().optional(),
+});
+
+export const ValidationEntry = z.object({
+  code: z.string(),
+  id: z.string().optional(),
+  message: z.string(),
+  is_error: z.boolean(),
+});
+
+export const ValidationReport = z.object({
+  errors: z.array(ValidationEntry),
+  warnings: z.array(ValidationEntry),
+  has_errors: z.boolean().optional(),
+  error_count: z.number().int().optional(),
+  warning_count: z.number().int().optional(),
+});
+
+export const HardwareOutput = z.object({
+  id: z.string(),
+  name: z.string(),
+  driver: z.string(),
+  type: z.string(),
+  state: z.boolean(),
+  value: z.number().optional(),
+});
+
+export const HardwareInput = z.object({
+  id: z.string(),
+  name: z.string(),
+  source: z.string(),
+  state: z.boolean(),
+  last_event: z.string().optional(),
+});
+
+export const I2cDevice = z.object({
+  address: z.number().int(),
+  address_hex: z.string(),
+  known: z.boolean(),
+  label: z.string().optional(),
+  unexpected: z.boolean().optional(),
+});
+
+export const I2cScanResult = z.object({
+  bus: z.number().int().optional(),
+  sda_gpio: z.number().int().optional(),
+  scl_gpio: z.number().int().optional(),
+  devices: z.array(I2cDevice),
+});
+
+export const HardwareStatus = z.object({
+  active_board: z.string().optional(),
+  active_board_name: z.string().optional(),
+  mcu: z.string().optional(),
+  outputs: z.array(HardwareOutput).optional(),
+  inputs: z.array(HardwareInput).optional(),
+  pca9685_present: z.boolean().optional(),
+  pcf8574_health: z.record(z.string(), z.number()).optional(),
+  ethernet_link: z.boolean().optional(),
+  free_heap: z.number().int().optional(),
+  min_free_heap: z.number().int().optional(),
+});
+
+export const ApplyBoardResult = z.object({
+  applied: z.boolean(),
+  rolled_back: z.boolean(),
+  active_board: z.string().optional(),
+  message: z.string().optional(),
+  report: ValidationReport.optional(),
+});
+
+/* ================================================================
    Type exports (z.infer)
    ================================================================ */
 export type LoginRequest = z.infer<typeof LoginRequest>;
@@ -282,3 +408,16 @@ export type SceneLightState = z.infer<typeof SceneLightState>;
 export type WsEventType = z.infer<typeof WsEventType>;
 export type WsEnvelope = z.infer<typeof WsEnvelope>;
 export type LightStateChangedData = z.infer<typeof LightStateChangedData>;
+export type BoardResource = z.infer<typeof BoardResource>;
+export type BoardPeripheral = z.infer<typeof BoardPeripheral>;
+export type BoardProfile = z.infer<typeof BoardProfile>;
+export type BoardPin = z.infer<typeof BoardPin>;
+export type BoardCandidate = z.infer<typeof BoardCandidate>;
+export type ValidationEntry = z.infer<typeof ValidationEntry>;
+export type ValidationReport = z.infer<typeof ValidationReport>;
+export type HardwareOutput = z.infer<typeof HardwareOutput>;
+export type HardwareInput = z.infer<typeof HardwareInput>;
+export type I2cDevice = z.infer<typeof I2cDevice>;
+export type I2cScanResult = z.infer<typeof I2cScanResult>;
+export type HardwareStatus = z.infer<typeof HardwareStatus>;
+export type ApplyBoardResult = z.infer<typeof ApplyBoardResult>;

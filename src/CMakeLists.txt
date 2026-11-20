@@ -35,6 +35,8 @@ idf_component_register(
         "web/web_server.cpp"
         "web/auth_manager.cpp"
         "web/websocket_manager.cpp"
+        "web/board_json.cpp"
+        "web/api_routes.cpp"
     INCLUDE_DIRS "." "../include"
 )
 

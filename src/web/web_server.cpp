@@ -156,56 +156,90 @@ esp_err_t WebServer::stop()
     return err;
 }
 
+esp_err_t WebServer::api_dispatch(httpd_req_t *req)
+{
+    WebServer *self = static_cast<WebServer *>(req->user_ctx);
+    if (self == nullptr) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "no ctx");
+        return ESP_FAIL;
+    }
+
+    std::vector<HandlerEntry> *handlers = nullptr;
+    switch (req->method) {
+        case HTTP_GET: handlers = &self->get_handlers_; break;
+        case HTTP_POST: handlers = &self->post_handlers_; break;
+        case HTTP_PUT: handlers = &self->put_handlers_; break;
+        case HTTP_DELETE: handlers = &self->delete_handlers_; break;
+        default: break;
+    }
+    if (handlers != nullptr) {
+        for (const auto &entry : *handlers) {
+            if (entry.path == req->uri) {
+                return entry.handler(req);
+            }
+        }
+    }
+
+    httpd_resp_set_status(req, "404 Not Found");
+    return send_error_response(req, 404, "NOT_FOUND", "API endpoint not found");
+}
+
 esp_err_t WebServer::register_handler(const char *method, const char *path, HttpHandler handler)
 {
     if (!server_) {
         return ESP_ERR_INVALID_STATE;
     }
+
     // Build full path: api_prefix + path
     std::string full_path = config_.api_prefix;
     full_path += path;
 
     httpd_method_t http_method;
+    std::vector<HandlerEntry> *handlers = nullptr;
     if (std::strcmp(method, "GET") == 0) {
         http_method = HTTP_GET;
+        handlers = &get_handlers_;
     } else if (std::strcmp(method, "POST") == 0) {
         http_method = HTTP_POST;
+        handlers = &post_handlers_;
     } else if (std::strcmp(method, "PUT") == 0) {
         http_method = HTTP_PUT;
+        handlers = &put_handlers_;
     } else if (std::strcmp(method, "DELETE") == 0) {
         http_method = HTTP_DELETE;
+        handlers = &delete_handlers_;
     } else {
         return ESP_ERR_INVALID_ARG;
     }
 
-    // Store handler in a map (simplified: single handler per method+path)
-    // For production, use a proper routing tree.
-    struct HandlerEntry
-    {
-        std::string path;
-        HttpHandler handler;
-    };
-    static std::vector<HandlerEntry> get_handlers;
-    static std::vector<HandlerEntry> post_handlers;
-    static std::vector<HandlerEntry> put_handlers;
-    static std::vector<HandlerEntry> delete_handlers;
-
-    std::vector<HandlerEntry> *handlers = nullptr;
-    switch (http_method) {
-        case HTTP_GET: handlers = &get_handlers; break;
-        case HTTP_POST: handlers = &post_handlers; break;
-        case HTTP_PUT: handlers = &put_handlers; break;
-        case HTTP_DELETE: handlers = &delete_handlers; break;
-        default: return ESP_ERR_INVALID_ARG;
-    }
-
-    // Check if already registered
+    // Replace an existing handler for the same path.
     for (auto &entry : *handlers) {
         if (entry.path == full_path) {
             entry.handler = std::move(handler);
             return ESP_OK;
         }
     }
+
+    // Persist the URI string (httpd keeps the pointer) and register a real
+    // httpd handler that dispatches through the registry.
+    if (uri_storage_.capacity() < 64) {
+        uri_storage_.reserve(64);
+    }
+    uri_storage_.push_back(full_path);
+
+    httpd_uri_t uri = {};
+    uri.uri = uri_storage_.back().c_str();
+    uri.method = http_method;
+    uri.handler = api_dispatch;
+    uri.user_ctx = this;
+
+    esp_err_t err = httpd_register_uri_handler(server_, &uri);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "register %s %s failed: %s", method, full_path.c_str(),
+                 esp_err_to_name(err));
+        return err;
+    }
+
     handlers->push_back({full_path, std::move(handler)});
     return ESP_OK;
 }

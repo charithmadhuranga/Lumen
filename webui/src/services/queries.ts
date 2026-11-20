@@ -20,10 +20,8 @@ import type {
   Scene,
   LightCommandResponse,
   BoardProfile,
-  BoardCandidate,
   ValidationReport,
   ApplyBoardResult,
-  HardwareStatus,
   I2cScanResult,
 } from "@/schemas";
 

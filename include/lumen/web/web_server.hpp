@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <vector>
 
 #include "esp_err.h"
 #include "esp_http_server.h"
@@ -49,6 +50,11 @@ struct WebServerConfig
 // HTTP request handler function type
 using HttpHandler = std::function<esp_err_t(httpd_req_t *req)>;
 
+// Shared HTTP helpers (defined in web_server.cpp) used by route modules.
+esp_err_t read_request_body(httpd_req_t *req, std::string &out, std::size_t max_size);
+esp_err_t send_json_response(httpd_req_t *req, int status, const std::string &json);
+esp_err_t send_error_response(httpd_req_t *req, int status, const char *code, const char *message);
+
 // WebSocket message handler
 using WsHandler = std::function<void(const std::string &payload)>;
 
@@ -82,6 +88,25 @@ class WebServer
     WebServerConfig config_;
     httpd_handle_t server_ = nullptr;
     WebSocketManager *ws_manager_ = nullptr;
+
+    // Registered API handlers (path is the full path including api_prefix).
+    struct HandlerEntry
+    {
+        std::string path;
+        HttpHandler handler;
+    };
+    std::vector<HandlerEntry> get_handlers_;
+    std::vector<HandlerEntry> post_handlers_;
+    std::vector<HandlerEntry> put_handlers_;
+    std::vector<HandlerEntry> delete_handlers_;
+    // Persistent storage for URI strings handed to httpd (it keeps the
+    // pointer, so the backing string must outlive registration). Reserved
+    // once so addresses stay stable across push_back.
+    std::vector<std::string> uri_storage_;
+
+    // Trampoline registered with httpd for each API path; looks up the
+    // matching HandlerEntry by req->uri + req->method and calls it.
+    static esp_err_t api_dispatch(httpd_req_t *req);
 
     // Static URI handlers that forward to registered handlers
     static esp_err_t http_get_handler(httpd_req_t *req);

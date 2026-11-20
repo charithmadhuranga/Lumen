@@ -28,7 +28,27 @@
 #include "lumen/core/diagnostics.hpp"
 #include "lumen/core/service.hpp"
 #include "lumen/core/system_manager.hpp"
+#include "lumen/core/storage.hpp"
+#include "lumen/core/config_manager.hpp"
 #include "lumen/version.hpp"
+
+#include "lumen/web/web_server.hpp"
+#include "lumen/web/api_routes.hpp"
+#include "lumen/web/auth_manager.hpp"
+#include "lumen/core/json.hpp"
+#include "lumen/core/event_bus.hpp"
+#include <cstring>
+
+// Minimal test-only lock/clock for EventBus — re-declared here
+// (actual implementations live in test/fixtures but duplicated for firmware).
+struct NoopLock final : lumen::ILock {
+    void lock() override {}
+    void unlock() override {}
+};
+struct FakeClock final : lumen::IClock {
+    uint32_t now = 0;
+    uint32_t ms() override { return now; }
+};
 
 #ifndef LUMEN_FIRMWARE_VERSION
 #define LUMEN_FIRMWARE_VERSION "0.0.0"
@@ -417,6 +437,32 @@ extern "C" void app_main(void)
 
     test_relays();
     test_gpio_inputs();
+
+    // EventBus shared state (used by ConfigManager, web server, etc.).
+    static NoopLock g_lock;
+    static FakeClock g_clock;
+    static lumen::Event g_event_pool[128];
+    lumen::EventBus g_bus(g_lock, g_clock, g_event_pool, 128);
+
+    // Phase 6/7 web server + API routes.
+    lumen::WebServerConfig ws_cfg;
+    lumen::WebServer web_server(ws_cfg);
+    esp_err_t ws_err = web_server.start();
+    if (ws_err != ESP_OK) {
+        ESP_LOGE(TAG, "Web server start failed: %s", esp_err_to_name(ws_err));
+    } else {
+        ESP_LOGI(TAG, "Web server started on %s", ws_cfg.api_prefix);
+    }
+
+    lumen::IStorage *storage = lumen::create_posix_fs("/spiffs");
+    lumen::IJson *json_adapter = lumen::create_cjson_adapter();
+    lumen::ConfigManager config(*storage, *json_adapter, g_bus);
+
+    lumen::web::ApiRoutes api_routes(web_server, config, *storage);
+    esp_err_t api_err = api_routes.register_all();
+    if (api_err != ESP_OK) {
+        ESP_LOGE(TAG, "API routes registration failed: %s", esp_err_to_name(api_err));
+    }
 
     // Phase 1 heartbeat loop: proof of life on real hardware. The SystemManager
     // is now the boot skeleton; services drive their own work in later phases.

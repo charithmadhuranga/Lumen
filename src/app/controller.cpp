@@ -24,6 +24,12 @@
 namespace lumen
 {
 
+namespace
+{
+MqttService *g_shutdown_mqtt = nullptr; // for the esp_restart() shutdown handler
+}
+
+
 cJSON *network_status_json(const NetworkStatus &n); // api_network.cpp
 
 namespace
@@ -156,6 +162,15 @@ void Controller::start()
         return net_sender_.enqueue(host, port, payload, tcp);
     };
 
+    // Integrations (Phase 10): MQTT/HA and TCP/UDP control.
+    mqtt_ = std::make_unique<MqttService>(ctx_);
+    control_ = std::make_unique<ControlServers>(ctx_);
+    ctx_.mqtt = mqtt_.get();
+    ctx_.control = control_.get();
+    ctx_.mqtt_publish = [this](const std::string &topic, const std::string &payload, bool retain) {
+        return mqtt_->publish(topic, payload, retain);
+    };
+
     // Automations (Phase 9): engine + persisted definitions + location.
     auto_host_ = std::make_unique<AppAutomationHost>(ctx_);
     automation_ = std::make_unique<AutomationEngine>(*auto_host_);
@@ -183,7 +198,9 @@ void Controller::start()
             cJSON_AddStringToObject(o, "result", h.result.c_str());
             cJSON_AddStringToObject(o, "message", h.message.c_str());
             cJSON_AddNumberToObject(o, "durationMs", h.duration_ms);
-            self->ws_->broadcast("automation_executed", api::to_string(o));
+            const std::string text = api::to_string(o);
+            self->ws_->broadcast("automation_executed", text);
+            self->mqtt_->automation_status(h.automation_id, text);
             cJSON_Delete(o);
             if (h.result != "ok") {
                 ESP_LOGW(TAG, "automation %s: %s %s", h.automation_id.c_str(), h.result.c_str(), h.message.c_str());
@@ -199,6 +216,7 @@ void Controller::start()
     register_hardware_routes(ctx_);
     register_network_routes(ctx_);
     register_automation_routes(ctx_);
+    register_integration_routes(ctx_);
 
     if (web_->start() == ESP_OK) {
         ws_->attach(web_->handle());
@@ -215,6 +233,17 @@ void Controller::start()
             static_cast<Controller *>(user)->on_light_changed(ch, change);
         },
         this);
+
+    mqtt_->load();
+    control_->load();
+    if (mqtt_->start() != ESP_OK) ESP_LOGW(TAG, "MQTT start failed (see Integrations)");
+    // Every esp_restart() path (API, OTA, profile apply) leaves a clean
+    // retained "offline" instead of waiting for the broker's LWT timeout.
+    g_shutdown_mqtt = mqtt_.get();
+    ESP_ERROR_CHECK_WITHOUT_ABORT(esp_register_shutdown_handler([] {
+        if (g_shutdown_mqtt != nullptr) g_shutdown_mqtt->stop();
+    }));
+    control_->start();
 
     // 5. Tasks.
     TaskHandle_t lt = nullptr;
@@ -271,6 +300,8 @@ void Controller::lighting_loop()
                 ae.id = in.id;
                 ae.state = events[i].state;
                 automation_->post(ae);
+                mqtt_->event("{\"type\":\"input\",\"id\":\"" + in.id + "\",\"name\":\"" + in.name +
+                             "\",\"state\":" + (events[i].state ? "true" : "false") + "}");
                 ws_->broadcast("input_state_changed",
                                "{\"id\":\"" + in.id + "\",\"name\":\"" + in.name +
                                    "\",\"state\":" + (events[i].state ? "true" : "false") + "}");
@@ -309,6 +340,7 @@ void Controller::housekeeping_loop()
             }
         }
         net_sender_.process();
+        mqtt_->poll(now);
         if (now - last_net >= 1000) {
             last_net = now;
             network_->poll();
@@ -348,9 +380,12 @@ void Controller::on_light_changed(const Channel &ch, LightChange change)
     const std::size_t index = lighting_->channel_manager().index_of(ch.id);
     if (change == LightChange::kConfig) {
         ws_->broadcast("config_changed", "{\"kind\":\"lights\"}");
+        if (mqtt_) mqtt_->lights_reconfigured();
         return;
     }
     ws_->notify_light(index);
+    if (mqtt_) mqtt_->light_changed(index);
+    if (control_) control_->light_changed(index);
     if (automation_) {
         LightState &prev = last_light_states_[ch.id];
         AutoEvent ae;
@@ -557,7 +592,7 @@ void Controller::schedule_restart(uint32_t delay_ms)
             // the startup behaviour is applied, relays reset with the SoC.
             esp_restart();
         },
-        "restart", 2048, reinterpret_cast<void *>(static_cast<uintptr_t>(delay_ms)), 1, nullptr);
+        "restart", 4096, reinterpret_cast<void *>(static_cast<uintptr_t>(delay_ms)), 1, nullptr);
 }
 
 void Controller::factory_reset()

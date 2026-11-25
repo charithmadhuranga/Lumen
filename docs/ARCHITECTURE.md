@@ -60,16 +60,28 @@
 ## 3. Task registry
 
 AGENTS.md §5: every FreeRTOS task is documented here — owner, priority,
-stack. Rows are added the moment a task exists. Phase 1 creates **no new
-FreeRTOS tasks** (SystemManager, event bus, storage and config managers are
-plain C++ driven from `main`); the only task is `main` below.
+stack, core. No other task is created; per-request work never spawns tasks.
 
-| Task | Owner module | Priority | Stack | Role |
-|---|---|---|---|---|
-| `main` (ESP-IDF) | `src/main.cpp` | 1 (ESP-IDF default) | 3584 B (default) | Boot banner, SystemManager init+start, 5 s heartbeat. Replaced by service tasks in later phases. |
+| Task | Owner module | Prio | Stack | Core | Role |
+|---|---|---|---|---|---|
+| `main` (ESP-IDF) | `src/main.cpp` | 1 | 8192 B (`CONFIG_ESP_MAIN_TASK_STACK_SIZE`) | 0 | Runs `Controller::start()` (boot sequence) and returns. |
+| `lighting` | `src/app/controller.cpp` | 6 | 6144 B | 1 | 20 ms tick: drain command queue, transitions/effects, batched PCA9685 flush, input polling; automation tick every 3rd iteration (60 ms). Watched by the task WDT. Never blocks on network. |
+| `housekeeping` | `src/app/controller.cpp` | 2 | 6144 B | 0 | 250 ms: debounced state save, outbound UDP/TCP actions (`NetSender`), MQTT `poll()` (inbound commands, coalesced state/discovery publishing outside the model lock), network supervision, WS status. Watched by the task WDT (MQTT network timeout 2 s < WDT 5 s). |
+| `httpd` | `src/web/web_server.cpp` (esp_http_server) | 5 | 10240 B | any | REST API, static `web.pack`, WebSocket. Handlers only validate and enqueue. |
+| `ctrl` | `src/networking/control_servers.cpp` | 3 | 5120 B | 0 | `select()` loop (100 ms) for the TCP control server (≤4 clients) and the UDP discovery/control socket; pushes coalesced state lines. Created once at boot. |
+| `mqtt_task` | esp-mqtt (`src/networking/mqtt_service.cpp`) | 5 (`CONFIG_MQTT_TASK_PRIORITY`) | 6144 B | any | Broker connection. Its event handler only queues inbound messages (bounded inbox of 16) — it never takes the model lock. Exists only while MQTT is enabled. |
+| `restart` | `Controller::schedule_restart` | 1 | 4096 B | any | One-shot: waits, runs shutdown handlers (MQTT `offline`), `esp_restart()`. |
+| ESP-IDF system tasks | `tiT` (lwIP), `sys_evt`, `wifi`, `ipc0/1`, `esp_timer`, mDNS | IDF defaults | IDF defaults | — | Platform services. |
 
-Configured limits: no uncontrolled task creation (AGENTS.md §5); queue
-bounds and timeouts are documented per service as they land.
+**Lock order** (deadlock rule): model mutex (`lumen::model_mutex()`, recursive)
+→ service mutex (MQTT/control/automation internals) → esp-mqtt client lock.
+Code holding a service mutex never calls into esp-mqtt; the MQTT task never
+takes the model lock.
+
+Configured limits: lighting command queue 64 (overflow counted in
+`stats().queue_dropped`), WS coalescing per light, MQTT inbox 16 and async
+outbox 16 (overflow counted in `status.dropped`), TCP 4 clients × 1 KB line,
+UDP 20 frames/s, `NetSender` bounded queue, HTTP 10 sockets with LRU purge.
 
 ## 4. Event bus (implemented in Phase 1)
 

@@ -418,12 +418,17 @@ bool LightingTask::remove_channel(const std::string &channel_id)
         }
     }
     effects_.cancel(channel_id);
+    const Channel removed = channel_manager_.at(index); // listeners see the old config
     channel_manager_.remove_channel(channel_id);
     // Keep slots aligned with the shifted channel table.
     for (std::size_t i = index; i + 1 < slots_.size(); ++i) {
         slots_[i] = std::move(slots_[i + 1]);
     }
     slots_[slots_.size() - 1] = Slot{};
+    // Indices shifted: subscribers must treat this as a full reconfiguration.
+    if (listener_ != nullptr) {
+        listener_(removed, LightChange::kConfig, listener_user_);
+    }
     return true;
 }
 

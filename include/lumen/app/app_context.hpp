@@ -24,6 +24,9 @@
 namespace lumen
 {
 
+class MqttService;
+class ControlServers;
+
 struct ProfileApplyOutcome
 {
     bool applied = false;
@@ -49,6 +52,8 @@ struct AppContext
     WebSocketManager *ws = nullptr;
     NetworkManager *network = nullptr;
     AutomationEngine *automation = nullptr;
+    MqttService *mqtt = nullptr;
+    ControlServers *control = nullptr;
 
     // Transactional board-profile apply with rollback (SPEC §5.4).
     std::function<ProfileApplyOutcome(const std::string &id, bool force)> apply_profile;
@@ -79,5 +84,6 @@ void register_scene_routes(AppContext &ctx);
 void register_hardware_routes(AppContext &ctx);
 void register_network_routes(AppContext &ctx);
 void register_automation_routes(AppContext &ctx);
+void register_integration_routes(AppContext &ctx);
 
 } // namespace lumen

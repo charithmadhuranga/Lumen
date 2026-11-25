@@ -9,7 +9,7 @@ Legend: `[x]` done · `[ ]` not done · **HW** = verified on physical hardware.
 ## Phase 0 — Foundation
 
 - [x] PlatformIO project (pinned `espressif32@8.0.0`, ESP-IDF 6.1.0, envs `esp32`, `esp32s3`, `native`)
-- [x] Partition table created (4 MB, dual OTA + 1.125 MB LittleFS) — validated by host test
+- [x] Partition table (4 MB): 2 × 1.625 MB OTA app slots + 640 KB LittleFS (grown from 1.25 MB slots on 2026-11-25, approved) — validated by host test
 - [x] SPEC §22 source tree (`src/core`, `src/hardware`, `src/lighting`, `src/automation`, `src/networking`, `src/web`, `src/services`, `include/`)
 - [x] Minimal `main.cpp` (version banner, structured log format, heartbeat) — **HW: boots on KC868-AP**
 - [x] `.clang-format` + `.clang-tidy`
@@ -113,101 +113,58 @@ Legend: `[x]` done · `[ ]` not done · **HW** = verified on physical hardware.
       PCF8574 debounce — all passing (75 tests)
 - [x] Firmware builds on esp32 + esp32s3; device boots on KC868-AP (**HW**)
 
-## Phase 4 — Lighting engine
-
-- [x] Color engine (`include/lumen/lighting/color_engine.h`) — header-only,
-      RGB↔HSV, RGBW, CCT (kelvin↔RGB), gamma, brightness compensation,
-      type-aware validation, normalization. Pure functions, host-tested.
-- [x] Channel manager (`src/lighting/channel_manager.cpp`) — logical channel
-      registry (64 max), state triple (requested/applied/actual),
-      type-aware validation, state→duty translation.
-- [x] Lighting task (`src/lighting/lighting_task.*`) — bounded command queue
-      (32 entries), transition processing, hardware write via driver adapters,
-      config_changed event publication.
-- [x] Transition engine (`include/lumen/lighting/transition.h`) — non-blocking
-      interpolation with linear/smooth-step/ease-in-out-cubic easing,
-      newer-command-replaces-active, cancellable.
-- [x] Effects engine (`include/lumen/lighting/effects.h`,
-      `src/lighting/effects_engine.cpp`) — 9 effects: breathing, pulse,
-      rainbow, color cycle, candlelight, sunrise, sunset, strobe, custom
-      sequence. Resource-managed (16 max), cancellable by direct command.
-- [x] Driver adapters (`src/lighting/drivers/`) — LEDC dimmer/switch,
-      PCA9685 RGB/RGBW/CCT groups, relay switch, RMT addressable LEDs.
-      All use `driver_type()` + `static_cast` (no RTTI, ESP-IDF compatible).
-- [x] Host unit tests: color engine golden values (gamma, RGB/HSV, RGBW,
-      CCT, brightness, calibration, validation, normalization), transition
-      engine (easing, interpolation, cancellation, instant vs transition).
-      38 new tests, 113 total.
-- [x] Firmware builds on esp32 + esp32s3; device boots on KC868-AP (**HW**).
-- [x] Docs: ARCHITECTURE.md (lighting engine + task).
+> **Correction (2026-11-25).** Earlier entries for Phases 3–5 were written
+> while the code could not work: the managers discarded commands, the PCA9685
+> encoding never turned an output on, the PCF8574 latch was never released,
+> every `/{id}` route was broken and the KC868-AP profile had a GPIO16
+> conflict. Those defects are fixed (commit d85b0c0) and the items below are
+> re-verified on the device by PCA9685 register read-back, not by "code
+> exists". Phase 3's PCA9685 "verified writable" claim is only true from
+> d85b0c0 on.
 
 ## Phase 4 — Lighting engine
 
-- [x] Color engine (`include/lumen/lighting/color_engine.h`) — header-only,
-      RGB↔HSV, RGBW, CCT (kelvin↔RGB), gamma, brightness compensation,
-      type-aware validation, normalization. Pure functions, host-tested.
-- [x] Channel manager (`src/lighting/channel_manager.cpp`) — logical channel
-      registry (64 max), state triple (requested/applied/actual),
-      type-aware validation, state→duty translation.
-- [x] Lighting task (`src/lighting/lighting_task.*`) — bounded command queue
-      (32 entries), transition processing, hardware write via driver adapters,
-      config_changed event publication.
-- [x] Transition engine (`include/lumen/lighting/transition.h`) — non-blocking
-      interpolation with linear/smooth-step/ease-in-out-cubic easing,
-      newer-command-replaces-active, cancellable.
-- [x] Effects engine (`include/lumen/lighting/effects.h`,
-      `src/lighting/effects_engine.cpp`) — 9 effects: breathing, pulse,
-      rainbow, color cycle, candlelight, sunrise, sunset, strobe, custom
-      sequence. Resource-managed (16 max), cancellable by direct command.
-- [x] Driver adapters (`src/lighting/drivers/`) — LEDC dimmer/switch,
-      PCA9685 RGB/RGBW/CCT groups, relay switch, RMT addressable LEDs.
-      All use `driver_type()` + `static_cast` (no RTTI, ESP-IDF compatible).
-- [x] Host unit tests: color engine golden values (gamma, RGB/HSV, RGBW,
-      CCT, brightness, calibration, validation, normalization), transition
-      engine (easing, interpolation, cancellation, instant vs transition).
-      38 new tests, 113 total.
-- [x] Firmware builds on esp32 + esp32s3; device boots on KC868-AP (**HW**).
-- [x] Docs: ARCHITECTURE.md (lighting engine + task).
+- [x] Colour engine, channel manager (requested / applied state, 64 lights),
+      perceptual (CIE) dimming with 16-bit duties, CCT warm/cool mix.
+- [x] Lighting task: bounded queue (64, own mutex), non-blocking transitions,
+      newer command replaces transition/effect, redundant writes skipped,
+      batched PCA9685 flush; listener events (requested / settled / config).
+- [x] Effects (breathing, pulse, rainbow, colour cycle, candlelight, sunrise,
+      sunset, strobe); duration 0 runs until replaced.
+- [x] Driver adapters (`src/lighting/drivers/driver_adapter.cpp`): PCA9685
+      dimmer/RGB/RGBW/CCT with channel offsets, LEDC, relay/GPIO switch.
+- [ ] **Addressable LEDs (RMT/WS2812)**: adapter exists, but no ESP-IDF RMT
+      driver is built by the hardware manager — such lights report a
+      hardware error. Not implemented.
+- [x] Host tests (`test_host_engine`, 14): command → hardware duties, offsets,
+      transitions, effects, CCT, removal re-indexing.
+- [x] **HW**: dimmer/RGB/CCT/relay lights driven and verified by PCA9685
+      read-back; 2 s fade observed; state persists across reboot.
 
 ## Phase 5 — Rooms, groups, scenes
 
-- [x] Room manager (`src/lighting/room_manager.*`) — Room model with id, name,
-      floor, icon, channel IDs, group IDs, floorplan ID; CRUD persisted via
-      config manager; add/remove light from room; master power/brightness
-      fan-out through lighting task.
-- [x] Group manager (`src/lighting/group_manager.*`) — Groups span rooms;
-      aggregation policy (average/max/min); brightness change adjusts every
-      member preserving color; RGB/CCT applies only to supporting members;
-      on/off applies to all; aggregate state (on-count/mean brightness) for UI.
-- [x] Scene manager (`src/lighting/scene_manager.*`) — Scene documents with
-      `schema_version`, per-light states with transition_ms; CRUD with type
-      validation at save (rejects unknown lights, unsupported properties);
-      activation fans out as one coordinated command batch sharing command_id;
-      publishes `SCENE_ACTIVATED` event.
-- [x] Config persistence round-trip: save → reboot → identical rooms/groups/scenes
-      (transactional config store, migration pipeline verified).
-- [x] Host unit tests: 40 new tests — room CRUD, master power/brightness,
-      group add/remove/aggregate (dimmer-only, RGB-only, mixed), scene CRUD
-      with validation (unknown light, unsupported property rejected), scene
-      activation. 134 total host tests.
-- [x] Firmware builds on esp32 + esp32s3; device boots on KC868-AP (**HW**).
-- [x] Docs: ARCHITECTURE.md (rooms/groups/scenes), docs/IMPLEMENTATION_STATUS.md.
+- [x] Room/group/scene managers enqueue real commands (were no-ops), cJSON
+      loaders, transactional persistence; deleting a light detaches it everywhere.
+- [x] Scene activation, capture, duplicate; group command/power/brightness.
+- [x] Host tests (`test_host_lighting`, fan-out test in `test_host_engine`).
+- [x] **HW**: room control from the UI verified by read-back (e2e). Scene/group fan-out is host-tested only.
 
 ## Phase 6 — WebUI foundation
 
-- [ ] App shell, routing, auth flow (forced password change)
-- [ ] API client + Zod schemas
-- [ ] WebSocket client + live store
-- [ ] Lighting components, Rooms/Overview
-- [ ] Scenes screen
-- [ ] Mock API mode (MSW)
-- [ ] Playwright + axe; bundle budgets enforced in CI
+- [x] App shell, routing, auth flow with forced password change
+- [x] API client (single envelope unwrap) + Zod schemas; TanStack Query / Zustand split
+- [x] WebSocket client + live store (session-authenticated upgrade)
+- [x] Overview, Rooms, Scenes, Devices screens
+- [x] Vitest + RTL unit tests (36)
+- [x] Playwright + axe against the real device (`LUMEN_URL`, `LUMEN_PASSWORD`): 12/12, desktop + mobile, light + dark
+- [x] Bundle budgets enforced (`npm run check:budget`): initial 158.1/160 KB gz, CSS 12.8/25 KB, total 353/450 KB
+- [ ] MSW mock-API mode — not implemented (tests stub `fetch`)
 
 ## Phase 7 — Hardware configuration UI
 
-- [ ] Board profile screens
-- [ ] Pin mapping / peripherals editor
-- [ ] Validation + apply/rollback workflow
+- [x] Board profile list/detail, validation and apply with rollback
+- [x] Pin map, outputs (test pulse, read-back), inputs, I²C scan
+- [x] **HW**: output read-back and I²C scan on the KC868-AP. Profile apply/rollback with a deliberately failing profile: not yet exercised on hardware.
 
 ## Phase 8 — Floor-plan editor
 
@@ -215,37 +172,58 @@ Legend: `[x]` done · `[ ]` not done · **HW** = verified on physical hardware.
 - [ ] Control mode (inline SVG + Motion glows)
 - [ ] Edit mode (React Konva)
 - [ ] Coordinate system shared by both modes
+- Screen shows "not available in this firmware build" — nothing is faked.
 
 ## Phase 9 — Automation
 
-- [ ] Trigger/condition/action engine
-- [ ] Loop prevention, cooldowns, rate limits, cancellation
-- [ ] Simple form editor
-- [ ] Advanced React Flow editor
-- [ ] Execution history
+- [x] Trigger/condition/action engine (time, sun, input, light, MQTT, variable triggers)
+- [x] Loop prevention (chain depth), cooldowns, rate limits, cancellation
+- [x] Simple form editor and React Flow editor (lazy-loaded)
+- [x] Execution history; per-automation files (`automations/<id>.json`)
+- [x] Host tests (`test_host_automation`, 13); **HW**: delay, test run, disable, loop detection, UI-built automation (e2e)
 
 ## Phase 10 — Networking
 
-- [ ] Wi-Fi STA/AP + fallback
-- [ ] MQTT + Home Assistant discovery
-- [ ] TCP / UDP control
-- [ ] ESP-NOW protocol (versioned envelopes)
-- [ ] Integrations/Network UI
+- [x] Wi-Fi STA + WPA2 fallback hotspot, mDNS `<hostname>.local`, SNTP — **HW**
+- [x] MQTT (`src/networking/mqtt_service.cpp`): set/state/group/scene topics,
+      retained state, LWT + clean `offline` on restart, TLS with the cert
+      bundle, password in NVS, bounded inbox/outbox, direct publishing outside
+      the model lock — **HW** against a local Mosquitto 2 broker
+- [x] Home Assistant discovery (lights + diagnostics), cleanup on delete /
+      disable / identity change — **HW** (retained topics inspected); not yet
+      tested against a running Home Assistant instance
+- [x] TCP control server (8266, token auth, push, heartbeat) — **HW** (e2e + scripted)
+- [x] UDP discovery + HMAC-signed control with replay/timestamp/rate checks — **HW**
+- [x] Integrations UI (MQTT, HA, TCP/UDP, token) + Network UI — **HW** (e2e + axe)
+- [x] Host tests (`test_host_integration`): HA parsing/serialisation,
+      discovery, framing, HMAC RFC 4231 vector, replay guard
+- [ ] Ethernet (LAN8720): code path present, opt-in, **unverified on hardware**
+- [ ] ESP-NOW protocol (moved to Phase 11)
 
 ## Phase 11 — Multi-controller
 
+- [ ] ESP-NOW versioned envelopes
 - [ ] Peer discovery/sync
 - [ ] Command conflict resolution
 - [ ] Controllers UI
 
 ## Phase 12 — Security and production
 
-- [ ] Auth hardening (sessions, CSRF, rate limits)
-- [ ] Forced password change enforcement
-- [ ] Dual-partition OTA + rollback
-- [ ] Backup/restore
-- [ ] Factory recovery
+- [x] Auth hardening: sessions, CSRF, IP rate limit + account lockout (**HW**)
+- [x] Forced password change enforcement (**HW**)
+- [x] Factory reset endpoint (erases config + credentials)
+- [ ] Dual-partition OTA upload + rollback; web UI (`web.pack`) update endpoint
+- [ ] Backup/restore (Settings shows these as unavailable)
+- [ ] Long soak test (heap ≈ 80 KB free after boot with MQTT — watch)
 - [ ] Performance/reliability audit
+
+## Known limitations
+
+- RS485, Ethernet, relay polarity on the KC868-AP: **unverified on hardware**.
+- Addressable LED strips: no RMT driver yet (see Phase 4).
+- The automation "send TCP" action opens a short-lived connection per action; there is no persistent outbound session.
+- `pio run -t uploadfs` replaces the whole LittleFS image, including `/config`; until the Phase 12 update endpoint exists, re-create configuration afterwards (`test/device/setup_demo.py` for the demo set). NVS secrets (passwords, MQTT password, integration token) survive.
+- UDP control needs a synchronised clock (SNTP); frames are refused before that.
 
 ---
 
@@ -261,7 +239,9 @@ not belong in this section.
 | 2026-11-18 | same | Boot banner (version, IDF 6.1.0, chip info, flash size, heap) | PASS — observed over serial |
 | 2026-11-18 | same | 5 s heartbeat ×3 beats, stable free heap (303 KB) | PASS — observed over serial |
 | 2026-11-18 | same | Partition table accepted by bootloader (dual OTA + storage) | PASS — bootloader log |
-| 2026-11-19 | same | Config persistence round-trip: save → reboot → identical rooms/groups/scenes (134 native tests pass) | PASS — native test suite |
-| 2026-11-19 | same | Config persistence migration pipeline (schema_version, defaults, validation) | PASS — native test suite |
-| 2026-11-19 | same | Firmware builds (esp32, esp32s3) with config persistence | PASS — PlatformIO build |
-| 2026-11-19 | same | Schema validation (7 schemas, 9 fixtures, 6 boards) | PASS — npm validate:schemas |
+| 2026-11-25 | same, `/dev/ttyUSB0` | PCA9685 at 0x40, PCF8574 at 0x22/0x21 detected by I²C scan; outputs driven by lights verified by PCA register read-back | PASS |
+| 2026-11-25 | same | Wi-Fi STA, mDNS, SNTP; auth + forced password change; WebSocket upgrade with session | PASS |
+| 2026-11-25 | same | Automations: delay, test, disable, loop detection | PASS |
+| 2026-11-25 | same | Playwright e2e on the device: 12/12 (control, automation, TCP integration, axe light/dark, desktop + mobile) | PASS |
+| 2026-11-25 | same | MQTT vs. Mosquitto 2 (auth): commands → read-back, retained state, invalid payload rejected, HA discovery publish + cleanup, LWT/offline on disable and restart | PASS |
+| 2026-11-25 | same | TCP 8266 (auth, commands, push, errors) and UDP 8267 (discovery, HMAC control; replay, bad MAC, stale ts rejected; rate limit) | PASS |

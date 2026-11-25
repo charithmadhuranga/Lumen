@@ -226,7 +226,7 @@ void register_light_routes(AppContext &ctx)
         detach_everywhere(ctx, id);
         cJSON *o = cJSON_CreateObject();
         cJSON_AddStringToObject(o, "id", id.c_str());
-        ctx.ws->broadcast("config_changed", "{\"kind\":\"lights\"}");
+        // config_changed is broadcast by the lighting listener (kConfig).
         return send_data(req, o);
     });
 

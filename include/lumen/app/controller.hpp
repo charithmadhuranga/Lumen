@@ -15,6 +15,8 @@
 
 #include "lumen/app/app_context.hpp"
 #include "lumen/app/automation_host.hpp"
+#include "lumen/networking/control_servers.hpp"
+#include "lumen/networking/mqtt_service.hpp"
 #include "lumen/networking/net_sender.hpp"
 #include <map>
 #include "lumen/core/event.hpp"
@@ -68,6 +70,8 @@ class Controller
     std::unique_ptr<AppAutomationHost> auto_host_;
     std::unique_ptr<AutomationEngine> automation_;
     NetSender net_sender_;
+    std::unique_ptr<MqttService> mqtt_;
+    std::unique_ptr<ControlServers> control_;
     std::map<std::string, LightState> last_light_states_; // for automation prev-state
     AppContext ctx_;
 

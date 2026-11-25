@@ -397,6 +397,50 @@ static void test_room_group_scene_fan_out_reaches_hardware(void)
     delete json;
 }
 
+
+namespace
+{
+struct ConfigSpy
+{
+    int config = 0;
+    std::string last_id;
+};
+void spy_listener(const Channel &ch, LightChange change, void *user)
+{
+    auto *spy = static_cast<ConfigSpy *>(user);
+    if (change == LightChange::kConfig) {
+        spy->config++;
+        spy->last_id = ch.id;
+    }
+}
+} // namespace
+
+static void test_remove_channel_notifies_config_and_releases_output(void)
+{
+    MockHw hw;
+    LightingTask t;
+    ConfigSpy spy;
+    t.set_listener(spy_listener, &spy);
+    t.register_channel(make("a", LightType::kDimmer, "pca9685", "pca", 0));
+    t.register_channel(make("b", LightType::kDimmer, "pca9685", "pca", 1));
+    t.attach_hardware(&hw);
+    LightState s{};
+    s.brightness = 80;
+    cmd(t, "a", s, kFieldBrightness);
+    t.run_once(0);
+    TEST_ASSERT_TRUE(hw.pwm.duty[0] > 0);
+    spy.config = 0;
+    TEST_ASSERT_TRUE(t.remove_channel("a"));
+    TEST_ASSERT_EQUAL(1, spy.config);           // MQTT/WS rediscover on delete
+    TEST_ASSERT_EQUAL_STRING("a", spy.last_id.c_str());
+    TEST_ASSERT_EQUAL_UINT16(0, hw.pwm.duty[0]); // removed light goes dark
+    TEST_ASSERT_FALSE(t.remove_channel("a"));
+    // The remaining light still maps to its own output after the shift.
+    cmd(t, "b", s, kFieldBrightness);
+    t.run_once(20);
+    TEST_ASSERT_EQUAL_UINT16(pca12(80), hw.pwm.duty[1]);
+}
+
 static void test_light_store_validation_and_round_trip(void)
 {
     BoardProfile profile;
@@ -561,6 +605,7 @@ int main(int, char **)
     RUN_TEST(test_effect_runs_and_plain_command_cancels);
     RUN_TEST(test_cct_mixes_warm_and_cool);
     RUN_TEST(test_room_group_scene_fan_out_reaches_hardware);
+    RUN_TEST(test_remove_channel_notifies_config_and_releases_output);
     RUN_TEST(test_light_store_validation_and_round_trip);
     RUN_TEST(test_hardware_manager_builds_kc868_profile);
     RUN_TEST(test_builtin_profiles_validate_with_bus_pins);

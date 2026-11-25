@@ -52,7 +52,8 @@ Environment names: `esp32` (KC868-AP reference board + flash/monitor ports), `es
 | Web UI tests | `cd webui && npm test` |
 | Web UI bundle budget | `cd webui && npm run check:budget` |
 | Web UI build | `cd webui && npm run build` |
-| Web UI e2e | `cd webui && npm run test:e2e` — fails by design until Playwright lands in Phase 6 |
+| Web UI e2e (real device) | `cd webui && LUMEN_URL=http://<controller-ip> LUMEN_PASSWORD=<admin password> npm run test:e2e` (creates/removes `e2e_*` lights on PCA9685 channels 14–15) |
+| Device test helpers | `test/device/setup_demo.py <url> <password>` (demo rooms/lights), `test/device/lumen_udp.py` (signed UDP client) |
 | Validate schemas | `npm run validate:schemas` (repo root; first `npm ci` at root installs ajv) |
 
 ## 4. Architecture rules (mandatory)

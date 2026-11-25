@@ -54,7 +54,7 @@ Route access levels: **public** (`/auth/login`, `/auth/session`, `/system/health
 | GET | `/system/health` | public liveness probe |
 | GET | `/system/info` | firmware version, board, chip, uptime |
 | GET | `/system/diagnostics` | heap, tasks, lighting tick timing, storage use |
-| POST | `/system/restart` | restarts after 1.5 s (MQTT publishes `offline` first) |
+| POST | `/system/restart` | restarts after 1.5 s; pending light state is saved and MQTT publishes `offline` first |
 | POST | `/system/factory-reset` | erases configuration and credentials (confirm in UI) |
 
 ### Lights
@@ -149,7 +149,7 @@ Base topic `{topicPrefix}/{controllerId}` (defaults `lighting/<hostname>`).
 | Topic | Direction | Payload |
 |---|---|---|
 | `base/status` | out, retained, LWT | `online` / `offline` |
-| `base/light/{id}/set` | in | HA JSON schema: `state` ON/OFF/TOGGLE, `brightness` 0–100, `color {r,g,b[,w]}`, `white`, `color_temp_kelvin` or `color_temp` (mireds), `transition` (s, 0–600), `effect` |
+| `base/light/{id}/set` | in | HA JSON schema: `state` ON/OFF/TOGGLE, `brightness` 0–100, `color {r,g,b[,w]}`, `white`, `color_temp` (kelvin — discovery sets `color_temp_kelvin: true`; values < 1000 are read as mireds) or `color_temp_kelvin`, `transition` (s, 0–600), `effect` |
 | `base/light/{id}/state` | out, retained | same schema |
 | `base/group/{id}/set` | in | same schema, fanned out to members |
 | `base/scene/{id}/activate` | in | any payload |
@@ -158,9 +158,13 @@ Base topic `{topicPrefix}/{controllerId}` (defaults `lighting/<hostname>`).
 | `base/diagnostics` | out, every 60 s | `{uptime, free_heap, rssi, version}` |
 
 Invalid payloads are rejected and counted (`status.rejected`); nothing partial
-is applied. With discovery on, `{haPrefix}/light/{controllerId}/{light}/config`
-(schema `json`, `brightness_scale` 100, supported colour modes and effects per
-light) and three diagnostic sensors are published, retained. When a light is
+is applied. State uses the same keys (`color_temp` in kelvin). With discovery
+on, `{haPrefix}/light/{controllerId}/{light}/config` (schema `json`,
+`brightness_scale` 100, supported colour modes, kelvin range and effects per
+light) and three diagnostic sensors are published, retained. The device is
+named `Lumen <suffix>` (`lumen-0798` → "Lumen 0798") and entity ids default to
+`light.<controller>_<light>` via `default_entity_id` (`object_id` is ignored by
+current Home Assistant); users can rename entities in HA afterwards. When a light is
 deleted, or discovery / MQTT is turned off, its config and retained state are
 cleared with empty retained payloads, so Home Assistant removes the entity.
 
@@ -185,7 +189,8 @@ Newline-delimited JSON, protocol `"v":1`, max 4 clients, 1 KB lines.
 ```
 
 Light and group commands take the MQTT/HA field set. Idle connections close
-after 300 s; send `ping` as a heartbeat.
+after 300 s; send `ping` as a heartbeat. TCP keepalive (30 s idle, 3 × 5 s
+probes) frees the slot of a peer that disappears without closing.
 
 ## 7. UDP — port 8267
 

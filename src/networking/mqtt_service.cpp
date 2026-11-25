@@ -464,7 +464,7 @@ void MqttService::publish_discovery(std::vector<Outbound> &out)
     dc.discovery_prefix = s.ha_prefix;
     dc.topic_prefix = s.topic_prefix;
     dc.controller_id = s.controller_id.empty() ? net.hostname : s.controller_id;
-    dc.device_name = "Lumen " + dc.controller_id;
+    dc.device_name = integration::device_display_name(dc.controller_id);
     dc.model = ctx_.hardware->profile().name;
     dc.sw_version = kVersion;
     if (!net.sta_ip.empty()) dc.configuration_url = "http://" + net.sta_ip + "/";
@@ -503,6 +503,7 @@ void MqttService::publish_discovery(std::vector<Outbound> &out)
         cJSON_AddStringToObject(o, "name", se.name);
         const std::string uid = integration::topic_safe(dc.controller_id) + "_" + se.key;
         cJSON_AddStringToObject(o, "unique_id", uid.c_str());
+        cJSON_AddStringToObject(o, "default_entity_id", ("sensor." + integration::entity_slug(dc.controller_id + "_" + se.key)).c_str());
         cJSON_AddStringToObject(o, "state_topic", (b + "/diagnostics").c_str());
         cJSON_AddStringToObject(o, "value_template", (std::string("{{ value_json.") + se.key + " }}").c_str());
         cJSON_AddStringToObject(o, "unit_of_measurement", se.unit);

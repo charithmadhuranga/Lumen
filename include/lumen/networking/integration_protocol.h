@@ -50,6 +50,10 @@ cJSON *discovery_config(const DiscoveryContext &ctx, const Channel &ch, const st
 
 // Sanitise an id for MQTT topic levels / HA object ids ([a-z0-9_-]).
 std::string topic_safe(const std::string &s);
+// Home Assistant entity-id slug: [a-z0-9_], no leading/trailing/double '_'.
+std::string entity_slug(const std::string &s);
+// Device name shown in HA ("lumen-0798" -> "Lumen 0798").
+std::string device_display_name(const std::string &controller_id);
 
 // --- TCP line framing -------------------------------------------------------
 class LineFramer

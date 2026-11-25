@@ -42,3 +42,10 @@ secrets.ini
 # Generated LittleFS image source (built from webui/dist by scripts/build_fs.py)
 data/
 include/lumen/generated/
+
+# Integration test stack state and generated credentials (test/integration/ha)
+test/integration/ha/.env
+test/integration/ha/.ha_token
+test/integration/ha/ha-config/
+test/integration/ha/mosquitto/passwd
+test/integration/ha/mosquitto/data/

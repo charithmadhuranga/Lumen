@@ -484,6 +484,13 @@ void ControlServers::run()
                     send(fd, busy, std::strlen(busy), MSG_DONTWAIT);
                     close(fd);
                 } else {
+                    // Detect peers that vanish without a FIN (power loss, Wi-Fi
+                    // drop) in ~45 s instead of holding a slot for the idle timeout.
+                    int on = 1, idle = 30, intvl = 5, cnt = 3;
+                    setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &on, sizeof(on));
+                    setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE, &idle, sizeof(idle));
+                    setsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL, &intvl, sizeof(intvl));
+                    setsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT, &cnt, sizeof(cnt));
                     *slot = Client{};
                     slot->fd = fd;
                     slot->connected_ms = now;

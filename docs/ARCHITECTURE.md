@@ -70,7 +70,7 @@ stack, core. No other task is created; per-request work never spawns tasks.
 | `httpd` | `src/web/web_server.cpp` (esp_http_server) | 5 | 10240 B | any | REST API, static `web.pack`, WebSocket. Handlers only validate and enqueue. |
 | `ctrl` | `src/networking/control_servers.cpp` | 3 | 5120 B | 0 | `select()` loop (100 ms) for the TCP control server (≤4 clients) and the UDP discovery/control socket; pushes coalesced state lines. Created once at boot. |
 | `mqtt_task` | esp-mqtt (`src/networking/mqtt_service.cpp`) | 5 (`CONFIG_MQTT_TASK_PRIORITY`) | 6144 B | any | Broker connection. Its event handler only queues inbound messages (bounded inbox of 16) — it never takes the model lock. Exists only while MQTT is enabled. |
-| `restart` | `Controller::schedule_restart` | 1 | 4096 B | any | One-shot: waits, runs shutdown handlers (MQTT `offline`), `esp_restart()`. |
+| `restart` | `Controller::schedule_restart` | 1 | 6144 B | any | One-shot: waits, then `esp_restart()`; the shutdown handler persists pending light state and publishes MQTT `offline`. |
 | ESP-IDF system tasks | `tiT` (lwIP), `sys_evt`, `wifi`, `ipc0/1`, `esp_timer`, mDNS | IDF defaults | IDF defaults | — | Platform services. |
 
 **Lock order** (deadlock rule): model mutex (`lumen::model_mutex()`, recursive)

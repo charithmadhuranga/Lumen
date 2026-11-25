@@ -26,7 +26,7 @@ namespace lumen
 
 namespace
 {
-MqttService *g_shutdown_mqtt = nullptr; // for the esp_restart() shutdown handler
+Controller *g_controller = nullptr; // for the esp_restart() shutdown handler
 }
 
 
@@ -237,11 +237,12 @@ void Controller::start()
     mqtt_->load();
     control_->load();
     if (mqtt_->start() != ESP_OK) ESP_LOGW(TAG, "MQTT start failed (see Integrations)");
-    // Every esp_restart() path (API, OTA, profile apply) leaves a clean
-    // retained "offline" instead of waiting for the broker's LWT timeout.
-    g_shutdown_mqtt = mqtt_.get();
+    // Every esp_restart() path (API, OTA, profile apply): persist the light
+    // state still inside the save debounce window and leave a clean retained
+    // "offline" instead of waiting for the broker's LWT timeout.
+    g_controller = this;
     ESP_ERROR_CHECK_WITHOUT_ABORT(esp_register_shutdown_handler([] {
-        if (g_shutdown_mqtt != nullptr) g_shutdown_mqtt->stop();
+        if (g_controller != nullptr) g_controller->on_shutdown();
     }));
     control_->start();
 
@@ -582,6 +583,20 @@ bool Controller::save_location(double lat, double lon)
     return true;
 }
 
+void Controller::on_shutdown()
+{
+    if (!factory_reset_) {
+        ModelLock lock(model_mutex());
+        if (lighting_->take_state_dirty() || state_pending_) {
+            state_pending_ = false;
+            if (light_store::save_states(*config_, *lighting_) != ConfigStatus::kOk) {
+                ESP_LOGW(TAG, "light state save at shutdown failed");
+            }
+        }
+    }
+    if (mqtt_) mqtt_->stop();
+}
+
 void Controller::schedule_restart(uint32_t delay_ms)
 {
     ESP_LOGW(TAG, "restart requested (in %lu ms)", static_cast<unsigned long>(delay_ms));
@@ -592,7 +607,7 @@ void Controller::schedule_restart(uint32_t delay_ms)
             // the startup behaviour is applied, relays reset with the SoC.
             esp_restart();
         },
-        "restart", 4096, reinterpret_cast<void *>(static_cast<uintptr_t>(delay_ms)), 1, nullptr);
+        "restart", 6144, reinterpret_cast<void *>(static_cast<uintptr_t>(delay_ms)), 1, nullptr);
 }
 
 void Controller::factory_reset()
@@ -601,6 +616,7 @@ void Controller::factory_reset()
     {
         ModelLock lock(model_mutex());
         lighting_->detach_hardware();
+        factory_reset_ = true;
         remove_tree(kConfigRoot);
         mkdir(kConfigRoot, 0755);
     }

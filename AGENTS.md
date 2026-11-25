@@ -53,6 +53,7 @@ Environment names: `esp32` (KC868-AP reference board + flash/monitor ports), `es
 | Web UI bundle budget | `cd webui && npm run check:budget` |
 | Web UI build | `cd webui && npm run build` |
 | Web UI e2e (real device) | `cd webui && LUMEN_URL=http://<controller-ip> LUMEN_PASSWORD=<admin password> npm run test:e2e` (creates/removes `e2e_*` lights on PCA9685 channels 14–15) |
+| MQTT / Home Assistant / TCP / UDP integration suite | `cd test/integration/ha && ./setup.sh && python3 ha_test.py http://<controller-ip> '<admin password>'` (docker: Mosquitto :18830, HA :8124) |
 | Device test helpers | `test/device/setup_demo.py <url> <password>` (demo rooms/lights), `test/device/lumen_udp.py` (signed UDP client) |
 | Validate schemas | `npm run validate:schemas` (repo root; first `npm ci` at root installs ajv) |
 

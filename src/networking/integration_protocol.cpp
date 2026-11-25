@@ -175,7 +175,11 @@ bool command_from_ha(const cJSON *obj, const LightState &current, LightCommand &
         cmd.state.white = static_cast<uint8_t>(v);
         cmd.fields |= kFieldWhite;
     }
-    if (num(obj, "color_temp_kelvin", v) || (num(obj, "color_temp", v) && v > 0 && (v = 1000000.0 / v, true))) {
+    // Our discovery sets color_temp_kelvin:true, so Home Assistant sends
+    // "color_temp" in kelvin. Values below 1000 can only be mireds (other
+    // clients / legacy HA), which keeps both forms unambiguous.
+    if (num(obj, "color_temp_kelvin", v) || num(obj, "color_temp", v)) {
+        if (v > 0 && v < 1000) v = 1000000.0 / v;
         if (v < 1000 || v > 20000) {
             error = "colour temperature out of range";
             return false;
@@ -227,7 +231,8 @@ cJSON *state_to_ha(const Channel &ch, const std::string &effect)
         if (ch.type == LightType::kRgbw || ch.type == LightType::kAddressableRgbw) cJSON_AddNumberToObject(c, "w", s.white);
     } else if (ch.type == LightType::kCct) {
         cJSON_AddStringToObject(o, "color_mode", "color_temp");
-        cJSON_AddNumberToObject(o, "color_temp_kelvin", s.color_temperature);
+        // HA JSON schema with color_temp_kelvin:true reads "color_temp" (K).
+        cJSON_AddNumberToObject(o, "color_temp", s.color_temperature);
     } else if (ch.type == LightType::kDimmer) {
         cJSON_AddStringToObject(o, "color_mode", "brightness");
     } else {
@@ -250,6 +255,27 @@ std::string topic_safe(const std::string &s)
     return out;
 }
 
+std::string entity_slug(const std::string &s)
+{
+    std::string out;
+    for (char c : s) {
+        const bool alnum = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9');
+        if (c >= 'A' && c <= 'Z') out.push_back(static_cast<char>(c - 'A' + 'a'));
+        else if (alnum) out.push_back(c);
+        else if (!out.empty() && out.back() != '_') out.push_back('_');
+    }
+    while (!out.empty() && out.back() == '_') out.pop_back();
+    return out.empty() ? "lumen" : out;
+}
+
+std::string device_display_name(const std::string &controller_id)
+{
+    // "lumen-0798" -> "Lumen 0798" (HA prefixes entity names with this).
+    std::string rest = controller_id;
+    if (rest.rfind("lumen-", 0) == 0 || rest.rfind("lumen_", 0) == 0) rest = rest.substr(6);
+    return rest.empty() ? "Lumen" : "Lumen " + rest;
+}
+
 std::string discovery_topic(const DiscoveryContext &ctx, const std::string &light_id)
 {
     return ctx.discovery_prefix + "/light/" + topic_safe(ctx.controller_id) + "/" + topic_safe(light_id) + "/config";
@@ -261,7 +287,9 @@ cJSON *discovery_config(const DiscoveryContext &ctx, const Channel &ch, const st
     cJSON *o = cJSON_CreateObject();
     cJSON_AddStringToObject(o, "name", ch.name.c_str());
     cJSON_AddStringToObject(o, "unique_id", (topic_safe(ctx.controller_id) + "_" + topic_safe(ch.id)).c_str());
-    cJSON_AddStringToObject(o, "object_id", (topic_safe(ctx.controller_id) + "_" + topic_safe(ch.id)).c_str());
+    // object_id is ignored by current Home Assistant; default_entity_id sets
+    // the entity id on first registration (users may rename it later).
+    cJSON_AddStringToObject(o, "default_entity_id", ("light." + entity_slug(ctx.controller_id + "_" + ch.id)).c_str());
     cJSON_AddStringToObject(o, "schema", "json");
     cJSON_AddStringToObject(o, "command_topic", (base + "/light/" + ch.id + "/set").c_str());
     cJSON_AddStringToObject(o, "state_topic", (base + "/light/" + ch.id + "/state").c_str());

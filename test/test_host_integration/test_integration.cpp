@@ -45,6 +45,12 @@ static void test_ha_command_parsing(void)
     cJSON_Delete(o);
     TEST_ASSERT_EQUAL_UINT16(4000, cmd.state.color_temperature);
 
+    // With color_temp_kelvin:true (our discovery) HA sends "color_temp" in K.
+    o = cJSON_Parse(R"({"color_temp":6500})");
+    TEST_ASSERT_TRUE(command_from_ha(o, cur, cmd, err));
+    cJSON_Delete(o);
+    TEST_ASSERT_EQUAL_UINT16(6500, cmd.state.color_temperature);
+
     o = cJSON_Parse(R"({"effect":"rainbow"})");
     TEST_ASSERT_TRUE_MESSAGE(command_from_ha(o, cur, cmd, err), err.c_str());
     cJSON_Delete(o);
@@ -68,7 +74,10 @@ static void test_ha_state_and_discovery_per_type(void)
 {
     DiscoveryContext ctx;
     ctx.controller_id = "lumen-0798";
-    ctx.device_name = "Lumen lumen-0798";
+    ctx.device_name = device_display_name("lumen-0798");
+    TEST_ASSERT_EQUAL_STRING("Lumen 0798", ctx.device_name.c_str());
+    TEST_ASSERT_EQUAL_STRING("lumen_0798_living_main", entity_slug("lumen-0798_living_main").c_str());
+    TEST_ASSERT_EQUAL_STRING("a_b_c", entity_slug("-A--b..C-").c_str());
     ctx.model = "KinCony KC868-AP";
     ctx.sw_version = "0.1.0";
     Channel cct = make(LightType::kCct);
@@ -77,6 +86,18 @@ static void test_ha_state_and_discovery_per_type(void)
     cJSON *cfg = discovery_config(ctx, cct, {"breathing"});
     TEST_ASSERT_EQUAL_STRING("lumen-0798_living_main", cJSON_GetObjectItem(cfg, "unique_id")->valuestring);
     TEST_ASSERT_EQUAL_STRING("lighting/lumen-0798/light/living_main/set", cJSON_GetObjectItem(cfg, "command_topic")->valuestring);
+    TEST_ASSERT_EQUAL_STRING("light.lumen_0798_living_main", cJSON_GetObjectItem(cfg, "default_entity_id")->valuestring);
+    TEST_ASSERT_NULL(cJSON_GetObjectItem(cfg, "object_id")); // ignored by current HA
+    {
+        Channel warm = cct;
+        warm.requested.power = true;
+        warm.requested.color_temperature = 3000;
+        cJSON *st = state_to_ha(warm, "");
+        // HA reads "color_temp" (kelvin, because color_temp_kelvin:true).
+        TEST_ASSERT_EQUAL(3000, cJSON_GetObjectItem(st, "color_temp")->valueint);
+        TEST_ASSERT_NULL(cJSON_GetObjectItem(st, "color_temp_kelvin"));
+        cJSON_Delete(st);
+    }
     TEST_ASSERT_EQUAL_STRING("color_temp", cJSON_GetArrayItem(cJSON_GetObjectItem(cfg, "supported_color_modes"), 0)->valuestring);
     TEST_ASSERT_EQUAL(2700, cJSON_GetObjectItem(cfg, "min_kelvin")->valueint);
     TEST_ASSERT_EQUAL(100, cJSON_GetObjectItem(cfg, "brightness_scale")->valueint);

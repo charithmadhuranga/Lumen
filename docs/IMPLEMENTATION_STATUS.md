@@ -190,8 +190,9 @@ Legend: `[x]` done · `[ ]` not done · **HW** = verified on physical hardware.
       bundle, password in NVS, bounded inbox/outbox, direct publishing outside
       the model lock — **HW** against a local Mosquitto 2 broker
 - [x] Home Assistant discovery (lights + diagnostics), cleanup on delete /
-      disable / identity change — **HW** (retained topics inspected); not yet
-      tested against a running Home Assistant instance
+      disable / identity change — **HW** against Home Assistant 2026.11.2
+      (`test/integration/ha`, 34/34: control round trips by read-back,
+      lifecycle, availability, controller/HA restart, broker outage)
 - [x] TCP control server (8266, token auth, push, heartbeat) — **HW** (e2e + scripted)
 - [x] UDP discovery + HMAC-signed control with replay/timestamp/rate checks — **HW**
 - [x] Integrations UI (MQTT, HA, TCP/UDP, token) + Network UI — **HW** (e2e + axe)
@@ -224,6 +225,8 @@ Legend: `[x]` done · `[ ]` not done · **HW** = verified on physical hardware.
 - The automation "send TCP" action opens a short-lived connection per action; there is no persistent outbound session.
 - `pio run -t uploadfs` replaces the whole LittleFS image, including `/config`; until the Phase 12 update endpoint exists, re-create configuration afterwards (`test/device/setup_demo.py` for the demo set). NVS secrets (passwords, MQTT password, integration token) survive.
 - UDP control needs a synchronised clock (SNTP); frames are refused before that.
+- UDP bursts faster than lwIP's receive mailbox (6 datagrams) are dropped by the network stack before the 20/s limiter; send at a steady rate.
+- Home Assistant entity ids are set only when an entity is first registered; installations discovered by earlier firmware keep `light.lumen_lumen_…` ids until the device is removed in HA or the entities are renamed.
 
 ---
 
@@ -245,3 +248,4 @@ not belong in this section.
 | 2026-11-25 | same | Playwright e2e on the device: 12/12 (control, automation, TCP integration, axe light/dark, desktop + mobile) | PASS |
 | 2026-11-25 | same | MQTT vs. Mosquitto 2 (auth): commands → read-back, retained state, invalid payload rejected, HA discovery publish + cleanup, LWT/offline on disable and restart | PASS |
 | 2026-11-25 | same | TCP 8266 (auth, commands, push, errors) and UDP 8267 (discovery, HMAC control; replay, bad MAC, stale ts rejected; rate limit) | PASS |
+| 2026-11-25 | same | Integration suite vs. Mosquitto 2.1.4 + Home Assistant 2026.11.2 (`test/integration/ha/ha_test.py`): MQTT, HA, HTTP, TCP, UDP | PASS — 34/34 (twice) |

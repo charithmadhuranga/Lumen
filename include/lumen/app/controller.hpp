@@ -46,6 +46,8 @@ class Controller
     void load_location();
     bool save_location(double lat, double lon);
     void schedule_restart(uint32_t delay_ms);
+    // esp_restart() shutdown handler: persist pending light state, MQTT offline.
+    void on_shutdown();
     void on_light_changed(const Channel &ch, LightChange change);
     std::string render_light(std::size_t index);
 
@@ -80,6 +82,7 @@ class Controller
     bool fs_ok_ = false;
     uint32_t state_dirty_since_ms_ = 0;
     bool state_pending_ = false;
+    bool factory_reset_ = false; // never write config back while erasing it
     bool network_dirty_ = false;
     uint8_t auto_divider_ = 0;
 };

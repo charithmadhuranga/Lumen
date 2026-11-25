@@ -1,0 +1,36 @@
+# Lumen integration test stack: Mosquitto + Home Assistant.
+#
+# Ports are chosen not to collide with a developer's own broker/HA:
+#   MQTT  18830 (host) -> 1883 (container)   Lumen connects to <PC IP>:18830
+#   HA     8124 (host) -> 8123 (container)   http://localhost:8124
+# Start with ./setup.sh (creates the broker password, onboards HA, adds the
+# MQTT integration); run the checks with ha_test.py. State lives in
+# ha-config/ and mosquitto/data (gitignored); `docker compose down -v` +
+# deleting them gives a clean slate.
+name: lumen-it
+
+services:
+  mosquitto:
+    # 2.1.4, pinned by digest
+    image: eclipse-mosquitto:2.1.4@sha256:fa12172a051310efe5bcb7a6a11b77bd5faacb82cbacd7742aa758bf024fd8e4
+    restart: unless-stopped
+    ports:
+      - "18830:1883"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto/passwd:/mosquitto/config/passwd:ro
+      - ./mosquitto/data:/mosquitto/data
+
+  homeassistant:
+    # Home Assistant 2026.11.2 (linuxserver build ls267), pinned by digest
+    image: lscr.io/linuxserver/homeassistant:2026.11.2-ls267@sha256:9b260b889d67a21d1bef7b260090e03bf17e9b94ea85d5a26627a69a1de73538
+    restart: unless-stopped
+    depends_on: [mosquitto]
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Colombo
+    ports:
+      - "8124:8123"
+    volumes:
+      - ./ha-config:/config

@@ -3,15 +3,36 @@
   "title": "Automation",
   "description": "Trigger-condition-action automation (SPEC 11.5). Executes locally; no remote code.",
   "type": "object",
-  "required": ["schema_version", "id", "name", "enabled", "trigger", "actions"],
+  "required": [
+    "schema_version",
+    "id",
+    "name",
+    "enabled",
+    "trigger",
+    "actions"
+  ],
   "properties": {
-    "schema_version": {"type": "integer", "minimum": 1},
-    "id": {"type": "string", "pattern": "^[a-z0-9_-]+$"},
-    "name": {"type": "string", "minLength": 1, "maxLength": 80},
-    "enabled": {"type": "boolean"},
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_-]+$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "enabled": {
+      "type": "boolean"
+    },
     "trigger": {
       "type": "object",
-      "required": ["type"],
+      "required": [
+        "type"
+      ],
       "properties": {
         "type": {
           "type": "string",
@@ -40,30 +61,42 @@
     },
     "conditions": {
       "type": "object",
-      "required": ["operator", "items"],
+      "required": [
+        "operator",
+        "items"
+      ],
       "properties": {
-        "operator": {"type": "string", "enum": ["AND", "OR", "NOT"]},
+        "operator": {
+          "type": "string",
+          "enum": [
+            "AND",
+            "OR",
+            "NOT"
+          ]
+        },
         "items": {
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["type"],
+            "required": [
+              "type"
+            ],
             "properties": {
               "type": {
                 "type": "string",
                 "enum": [
-                  "equal",
-                  "not_equal",
-                  "greater_than",
-                  "less_than",
-                  "greater_than_equal",
-                  "less_than_equal",
                   "and",
-                  "or",
-                  "not",
-                  "time_range",
                   "day_of_week",
-                  "state_comparison"
+                  "equal",
+                  "greater_than",
+                  "greater_than_equal",
+                  "less_than",
+                  "less_than_equal",
+                  "not",
+                  "not_equal",
+                  "or",
+                  "state_comparison",
+                  "time_range"
                 ]
               }
             },
@@ -78,7 +111,9 @@
       "minItems": 1,
       "items": {
         "type": "object",
-        "required": ["type"],
+        "required": [
+          "type"
+        ],
         "properties": {
           "type": {
             "type": "string",
@@ -99,7 +134,9 @@
               "udp_send",
               "tcp_send",
               "execute_automation",
-              "set_variable"
+              "set_variable",
+              "light_toggle",
+              "room_control"
             ]
           }
         },
@@ -109,11 +146,38 @@
     "execution": {
       "type": "object",
       "properties": {
-        "cooldown_ms": {"type": "integer", "minimum": 0},
-        "max_executions_per_hour": {"type": "integer", "minimum": 1},
-        "allow_parallel": {"type": "boolean"}
+        "cooldown_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_executions_per_hour": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "allow_parallel": {
+          "type": "boolean"
+        }
       },
       "additionalProperties": false
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "simple",
+        "advanced"
+      ]
+    },
+    "graph": {
+      "type": "object",
+      "description": "Advanced editor layout (node positions); ignored by the engine",
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "nodes": {
+          "type": "array"
+        }
+      }
     }
   }
 }

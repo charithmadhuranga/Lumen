@@ -21,6 +21,7 @@
 #include "esp_err.h"
 #include "esp_http_server.h"
 #include "lumen/web/auth_manager.hpp"
+#include "lumen/web/web_pack.hpp"
 
 namespace lumen
 {
@@ -99,6 +100,7 @@ class WebServer
     static std::string client_ip(httpd_req_t *req);
 
     uint32_t requests_served() const { return requests_; }
+    WebPack &pack() { return pack_; }
 
   private:
     struct Route
@@ -127,6 +129,7 @@ class WebServer
     WebSocketManager *ws_ = nullptr;
     std::vector<Route> routes_;
     uint32_t requests_ = 0;
+    WebPack pack_{"/lfs/web/web.pack"};
 };
 
 void add_security_headers(httpd_req_t *req);

@@ -5,7 +5,7 @@ import { expect, test } from "@playwright/test";
 
 import { signIn } from "./helpers";
 
-const ROUTES = ["/", "/rooms", "/scenes", "/devices", "/hardware", "/network", "/settings"];
+const ROUTES = ["/", "/rooms", "/scenes", "/automations", "/automations/new", "/devices", "/hardware", "/network", "/settings"];
 
 test("login page is accessible", async ({ page }) => {
   await page.goto("/login");

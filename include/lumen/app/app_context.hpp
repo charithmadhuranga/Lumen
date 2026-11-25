@@ -6,6 +6,7 @@
 #include <functional>
 #include <string>
 
+#include "lumen/automation/automation_engine.h"
 #include "lumen/core/config_manager.hpp"
 #include "lumen/core/event_bus.hpp"
 #include "lumen/core/storage.hpp"
@@ -47,6 +48,7 @@ struct AppContext
     WebServer *web = nullptr;
     WebSocketManager *ws = nullptr;
     NetworkManager *network = nullptr;
+    AutomationEngine *automation = nullptr;
 
     // Transactional board-profile apply with rollback (SPEC §5.4).
     std::function<ProfileApplyOutcome(const std::string &id, bool force)> apply_profile;
@@ -58,6 +60,14 @@ struct AppContext
     std::function<void()> factory_reset;
     // Live diagnostics snapshot (JSON object text).
     std::function<std::string()> diagnostics_json;
+    // Current wall clock + sun times for automations.
+    std::function<AutoClock()> automation_clock;
+    // Location used for sunrise/sunset (persisted in automation.json).
+    std::function<bool(double lat, double lon)> set_location;
+    std::function<bool(double &lat, double &lon)> get_location;
+    // Outbound integrations (bounded queues; never block the caller).
+    std::function<bool(const std::string &host, uint16_t port, const std::string &payload, bool tcp)> net_send;
+    std::function<bool(const std::string &topic, const std::string &payload, bool retain)> mqtt_publish;
 };
 
 // Route registration per API area (src/web/api_*.cpp).
@@ -68,5 +78,6 @@ void register_room_routes(AppContext &ctx);
 void register_scene_routes(AppContext &ctx);
 void register_hardware_routes(AppContext &ctx);
 void register_network_routes(AppContext &ctx);
+void register_automation_routes(AppContext &ctx);
 
 } // namespace lumen

@@ -40,7 +40,7 @@ const Envelope = z.object({
 
 type Method = "GET" | "POST" | "PUT" | "DELETE";
 
-async function request<T>(
+export async function request<T>(
   method: Method,
   path: string,
   schema: z.ZodType<T>,

@@ -415,6 +415,7 @@ void NetworkManager::handle_event(esp_event_base_t base, int32_t id, void *data)
             status_.sta_netmask = ip_str(ev->ip_info.netmask);
             sta_up_since_ms_ = now;
             retry_delay_ms_ = 1000;
+            esp_netif_sntp_start(); // (re)sync the clock right away (schedules depend on it)
             ESP_LOGI(TAG, "station connected to '%s', IP %s — open http://%s/ or http://%s.local/",
                      settings_.sta_ssid.c_str(), status_.sta_ip.c_str(), status_.sta_ip.c_str(),
                      settings_.hostname.c_str());

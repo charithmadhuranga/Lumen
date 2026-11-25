@@ -278,6 +278,11 @@ void register_scene_routes(AppContext &ctx)
         const SceneResult r = ctx.scenes->activate_scene(req.params[0], override_ms, "rest", command_id);
         if (r != SceneResult::kOk) return scene_error(req, r);
         ctx.ws->broadcast("scene_activated", "{\"sceneId\":\"" + req.params[0] + "\"}", false);
+        AutoEvent ae;
+        ae.type = AutoEventType::kScene;
+        ae.id = req.params[0];
+        ae.origin = "rest";
+        ctx.automation->post(ae);
         cJSON *o = cJSON_CreateObject();
         cJSON_AddBoolToObject(o, "accepted", true);
         return send_data(req, o, 202);

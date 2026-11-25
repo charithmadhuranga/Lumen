@@ -5,8 +5,6 @@
 
 #include <cstdio>
 #include <cstring>
-#include <fstream>
-#include <sstream>
 
 namespace lumen
 {
@@ -14,20 +12,25 @@ namespace lumen
 namespace
 {
 
+// stdio instead of <fstream>: iostreams pull the whole locale machinery
+// (~100 KB) into the firmware image.
 bool read_file(const std::string &path, std::string &out)
 {
-    std::ifstream file(path, std::ios::binary | std::ios::ate);
-    if (!file.is_open()) {
+    FILE *f = std::fopen(path.c_str(), "rb");
+    if (f == nullptr) {
         return false;
     }
-    const std::streamsize size = file.tellg();
+    std::fseek(f, 0, SEEK_END);
+    const long size = std::ftell(f);
+    std::fseek(f, 0, SEEK_SET);
     if (size <= 0) {
+        std::fclose(f);
         return false;
     }
-    file.seekg(0, std::ios::beg);
     out.resize(static_cast<std::size_t>(size));
-    file.read(out.data(), size);
-    return static_cast<bool>(file);
+    const std::size_t got = std::fread(&out[0], 1, out.size(), f);
+    std::fclose(f);
+    return got == out.size();
 }
 
 bool get_string(cJSON *object, const char *key, std::string &out)

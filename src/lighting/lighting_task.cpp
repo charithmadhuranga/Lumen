@@ -211,6 +211,7 @@ void LightingTask::apply_command(const LightCommand &cmd, uint32_t now_ms)
     }
     target = normalize_for_channel(ch, target);
     ch.requested = target;
+    ch.last_origin = cmd.origin;
     state_dirty_ = true;
     stats_.commands_processed++;
 

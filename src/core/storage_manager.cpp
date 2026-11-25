@@ -10,8 +10,6 @@
 //   atomic rename. Never destroys the last good copy.
 #include <cstdio>
 #include <cstring>
-#include <fstream>
-#include <sstream>
 #include <sys/stat.h>
 #include <dirent.h>
 #include <algorithm>
@@ -36,30 +34,36 @@ std::string tmp_path(const std::string &path)
 
 // Read an entire file into `out`. Returns false on any failure (missing,
 // unreadable, empty).
+// stdio instead of <fstream>: iostreams pull the whole locale machinery
+// (~100 KB) into the firmware image.
 bool read_file(const std::string &path, std::string &out)
 {
-    std::ifstream file(path, std::ios::binary | std::ios::ate);
-    if (!file.is_open()) {
+    FILE *f = std::fopen(path.c_str(), "rb");
+    if (f == nullptr) {
         return false;
     }
-    const std::streamsize size = file.tellg();
+    std::fseek(f, 0, SEEK_END);
+    const long size = std::ftell(f);
+    std::fseek(f, 0, SEEK_SET);
     if (size <= 0) {
+        std::fclose(f);
         return false;
     }
-    file.seekg(0, std::ios::beg);
     out.resize(static_cast<std::size_t>(size));
-    file.read(out.data(), size);
-    return file.gcount() == size;
+    const std::size_t got = std::fread(&out[0], 1, out.size(), f);
+    std::fclose(f);
+    return got == out.size();
 }
 
 bool write_file(const std::string &path, const std::string &contents)
 {
-    std::ofstream file(path, std::ios::binary | std::ios::trunc);
-    if (!file.is_open()) {
+    FILE *f = std::fopen(path.c_str(), "wb");
+    if (f == nullptr) {
         return false;
     }
-    file.write(contents.data(), static_cast<std::streamsize>(contents.size()));
-    return static_cast<bool>(file);
+    const std::size_t put = std::fwrite(contents.data(), 1, contents.size(), f);
+    const bool ok = put == contents.size() && std::fflush(f) == 0;
+    return std::fclose(f) == 0 && ok;
 }
 
 bool file_exists(const std::string &path)

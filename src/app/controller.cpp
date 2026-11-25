@@ -16,6 +16,7 @@
 #include "nvs_flash.h"
 
 #include "lumen/core/model_lock.hpp"
+#include "lumen/automation/automation_store.h"
 #include "lumen/lighting/light_store.h"
 #include "lumen/version.hpp"
 #include "lumen/web/api_util.hpp"
@@ -55,7 +56,7 @@ void remove_tree(const std::string &path)
 
 void register_docs(ConfigManager &config)
 {
-    for (const char *doc : {"rooms.json", "groups.json", "scenes.json"}) {
+    for (const char *doc : {"rooms.json", "groups.json", "scenes.json", "automation.json"}) {
         DocConfig cfg{doc, 1, migrate_additive, nullptr, nullptr};
         config.register_document(cfg);
     }
@@ -151,6 +152,44 @@ void Controller::start()
     ctx_.schedule_restart = [this](uint32_t ms) { schedule_restart(ms); };
     ctx_.factory_reset = [this]() { factory_reset(); };
     ctx_.diagnostics_json = [this]() { return diagnostics_json(); };
+    ctx_.net_send = [this](const std::string &host, uint16_t port, const std::string &payload, bool tcp) {
+        return net_sender_.enqueue(host, port, payload, tcp);
+    };
+
+    // Automations (Phase 9): engine + persisted definitions + location.
+    auto_host_ = std::make_unique<AppAutomationHost>(ctx_);
+    automation_ = std::make_unique<AutomationEngine>(*auto_host_);
+    ctx_.automation = automation_.get();
+    ctx_.automation_clock = [this]() { return auto_host_->clock(); };
+    ctx_.set_location = [this](double lat, double lon) { return save_location(lat, lon); };
+    ctx_.get_location = [this](double &lat, double &lon) { return auto_host_->location(lat, lon); };
+    load_location();
+    {
+        ModelLock lock(model_mutex());
+        std::string errors;
+        const int n = automation_store::load_all(*storage_, *automation_, errors);
+        ESP_LOGI(TAG, "automations: %d loaded%s%s", n, errors.empty() ? "" : " - skipped: ", errors.c_str());
+        for (std::size_t i = 0; i < lighting_->channel_manager().channel_count(); ++i) {
+            const Channel &ch = lighting_->channel_manager().at(i);
+            last_light_states_[ch.id] = ch.requested;
+        }
+    }
+    automation_->set_listener(
+        [](const HistoryEntry &h, void *user) {
+            auto *self = static_cast<Controller *>(user);
+            cJSON *o = cJSON_CreateObject();
+            cJSON_AddStringToObject(o, "automationId", h.automation_id.c_str());
+            cJSON_AddStringToObject(o, "trigger", h.trigger.c_str());
+            cJSON_AddStringToObject(o, "result", h.result.c_str());
+            cJSON_AddStringToObject(o, "message", h.message.c_str());
+            cJSON_AddNumberToObject(o, "durationMs", h.duration_ms);
+            self->ws_->broadcast("automation_executed", api::to_string(o));
+            cJSON_Delete(o);
+            if (h.result != "ok") {
+                ESP_LOGW(TAG, "automation %s: %s %s", h.automation_id.c_str(), h.result.c_str(), h.message.c_str());
+            }
+        },
+        this);
 
     register_auth_routes(ctx_);
     register_system_routes(ctx_);
@@ -159,6 +198,7 @@ void Controller::start()
     register_scene_routes(ctx_);
     register_hardware_routes(ctx_);
     register_network_routes(ctx_);
+    register_automation_routes(ctx_);
 
     if (web_->start() == ESP_OK) {
         ws_->attach(web_->handle());
@@ -226,9 +266,18 @@ void Controller::lighting_loop()
                 bus_->post(EventId::InputStateChanged, EventPriority::Normal, payload);
                 ESP_LOGI(TAG, "input %s (%s) -> %s", in.name.c_str(), in.id.c_str(),
                          events[i].state ? "ON" : "off");
+                AutoEvent ae;
+                ae.type = AutoEventType::kInput;
+                ae.id = in.id;
+                ae.state = events[i].state;
+                automation_->post(ae);
                 ws_->broadcast("input_state_changed",
                                "{\"id\":\"" + in.id + "\",\"name\":\"" + in.name +
                                    "\",\"state\":" + (events[i].state ? "true" : "false") + "}");
+            }
+            if (++auto_divider_ >= 3) { // ~60 ms automation resolution
+                auto_divider_ = 0;
+                automation_->tick(now, auto_host_->clock());
             }
             const uint32_t took = static_cast<uint32_t>(esp_timer_get_time() - t0);
             lighting_->record_tick_us(took);
@@ -259,6 +308,7 @@ void Controller::housekeeping_loop()
                 }
             }
         }
+        net_sender_.process();
         if (now - last_net >= 1000) {
             last_net = now;
             network_->poll();
@@ -301,6 +351,17 @@ void Controller::on_light_changed(const Channel &ch, LightChange change)
         return;
     }
     ws_->notify_light(index);
+    if (automation_) {
+        LightState &prev = last_light_states_[ch.id];
+        AutoEvent ae;
+        ae.type = AutoEventType::kLight;
+        ae.id = ch.id;
+        ae.light = ch.requested;
+        ae.prev = prev;
+        ae.origin = ch.last_origin;
+        automation_->post(ae);
+        prev = ch.requested;
+    }
     EventPayload payload{};
     payload.data.light.channel = static_cast<uint16_t>(index);
     payload.data.light.on = ch.requested.power ? 1 : 0;
@@ -458,6 +519,32 @@ std::string Controller::diagnostics_json()
     const std::string text = api::to_string(o);
     cJSON_Delete(o);
     return text;
+}
+
+void Controller::load_location()
+{
+    std::string text;
+    if (config_->load_document("automation.json", text) != ConfigStatus::kOk) return;
+    cJSON *root = cJSON_Parse(text.c_str());
+    const cJSON *lat = root ? cJSON_GetObjectItemCaseSensitive(root, "latitude") : nullptr;
+    const cJSON *lon = root ? cJSON_GetObjectItemCaseSensitive(root, "longitude") : nullptr;
+    if (cJSON_IsNumber(lat) && cJSON_IsNumber(lon)) {
+        auto_host_->set_location(lat->valuedouble, lon->valuedouble);
+    }
+    cJSON_Delete(root);
+}
+
+bool Controller::save_location(double lat, double lon)
+{
+    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return false;
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddNumberToObject(root, "latitude", lat);
+    cJSON_AddNumberToObject(root, "longitude", lon);
+    const std::string text = api::to_string(root);
+    cJSON_Delete(root);
+    if (config_->save_document("automation.json", text) != ConfigStatus::kOk) return false;
+    auto_host_->set_location(lat, lon);
+    return true;
 }
 
 void Controller::schedule_restart(uint32_t delay_ms)

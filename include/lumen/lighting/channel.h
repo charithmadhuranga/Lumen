@@ -86,6 +86,10 @@ struct Channel
     LightState requested{}; // user intent
     LightState applied{};   // last commanded to hardware
     LightState actual{};    // read-back (unused unless driver reports)
+
+    // Origin of the command that last changed `requested` ("rest", "mqtt",
+    // "auto:<id>:<depth>", ...). Automation loop detection relies on it.
+    std::string last_origin;
 };
 
 // Channel registry: fixed-size, no heap growth of the table itself.

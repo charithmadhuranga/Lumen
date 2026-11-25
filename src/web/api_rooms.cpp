@@ -472,6 +472,11 @@ void register_room_routes(AppContext &ctx)
         cJSON_AddBoolToObject(o, "accepted", true);
         cJSON_AddNumberToObject(o, "lights", n);
         ctx.ws->broadcast("group_state_changed", "{\"groupId\":\"" + g->id + "\"}");
+        AutoEvent ae;
+        ae.type = AutoEventType::kGroup;
+        ae.id = g->id;
+        ae.origin = "rest";
+        ctx.automation->post(ae);
         return send_data(req, o, 202);
     });
 

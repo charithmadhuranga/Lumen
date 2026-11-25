@@ -14,6 +14,9 @@
 #include <string>
 
 #include "lumen/app/app_context.hpp"
+#include "lumen/app/automation_host.hpp"
+#include "lumen/networking/net_sender.hpp"
+#include <map>
 #include "lumen/core/event.hpp"
 #include "lumen/core/platform.hpp"
 #include "lumen/hardware/platform/esp_driver_factory.h"
@@ -38,6 +41,8 @@ class Controller
     ProfileApplyOutcome apply_profile(const std::string &id, bool force);
     std::string diagnostics_json();
     void factory_reset();
+    void load_location();
+    bool save_location(double lat, double lon);
     void schedule_restart(uint32_t delay_ms);
     void on_light_changed(const Channel &ch, LightChange change);
     std::string render_light(std::size_t index);
@@ -60,6 +65,10 @@ class Controller
     std::unique_ptr<WebServer> web_;
     std::unique_ptr<WebSocketManager> ws_;
     std::unique_ptr<NetworkManager> network_;
+    std::unique_ptr<AppAutomationHost> auto_host_;
+    std::unique_ptr<AutomationEngine> automation_;
+    NetSender net_sender_;
+    std::map<std::string, LightState> last_light_states_; // for automation prev-state
     AppContext ctx_;
 
     void *lighting_task_ = nullptr;     // TaskHandle_t
@@ -68,6 +77,7 @@ class Controller
     uint32_t state_dirty_since_ms_ = 0;
     bool state_pending_ = false;
     bool network_dirty_ = false;
+    uint8_t auto_divider_ = 0;
 };
 
 } // namespace lumen

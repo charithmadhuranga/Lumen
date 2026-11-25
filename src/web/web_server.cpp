@@ -243,6 +243,12 @@ esp_err_t WebServer::start()
     cfg.uri_match_fn = httpd_uri_match_wildcard;
     cfg.task_priority = 5;
 
+    if (pack_.load()) {
+        ESP_LOGI(TAG, "web UI pack: %u assets, %u bytes", static_cast<unsigned>(pack_.count()),
+                 static_cast<unsigned>(pack_.total_bytes()));
+    } else {
+        ESP_LOGW(TAG, "web UI pack missing or invalid - serving loose files only");
+    }
     esp_err_t err = httpd_start(&server_, &cfg);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "httpd_start failed: %s", esp_err_to_name(err));
@@ -485,6 +491,34 @@ esp_err_t WebServer::handle_api(httpd_req_t *req)
 
 bool WebServer::serve_file(httpd_req_t *req, const std::string &path, bool is_index)
 {
+    // 1. Packed UI (production image): one file, assets served by offset.
+    const std::string root = config_.static_root;
+    WebPack::Entry entry;
+    if (path.size() > root.size() + 1 && pack_.find(path.substr(root.size() + 1), entry)) {
+        FILE *pf = std::fopen(pack_.file().c_str(), "rb");
+        if (pf == nullptr || std::fseek(pf, static_cast<long>(entry.offset), SEEK_SET) != 0) {
+            if (pf) std::fclose(pf);
+            return false;
+        }
+        httpd_resp_set_type(req, mime_for(path));
+        httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
+        httpd_resp_set_hdr(req, "Cache-Control", is_index ? "no-cache"
+                                                 : path.find("/assets/") != std::string::npos
+                                                     ? "public, max-age=31536000, immutable"
+                                                     : "public, max-age=3600");
+        add_security_headers(req);
+        char buf[2048];
+        uint32_t left = entry.length;
+        while (left > 0) {
+            const std::size_t n = std::fread(buf, 1, left < sizeof(buf) ? left : sizeof(buf), pf);
+            if (n == 0 || httpd_resp_send_chunk(req, buf, static_cast<ssize_t>(n)) != ESP_OK) break;
+            left -= static_cast<uint32_t>(n);
+        }
+        std::fclose(pf);
+        httpd_resp_send_chunk(req, nullptr, 0);
+        return true;
+    }
+    // 2. Loose files (development / custom uploads).
     std::string file = path;
     bool gz = false;
     char enc[64] = {};

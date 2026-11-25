@@ -14,6 +14,7 @@
 #include <string>
 
 #include "lumen/app/app_context.hpp"
+#include "lumen/app/ota_service.hpp"
 #include "lumen/app/automation_host.hpp"
 #include "lumen/networking/control_servers.hpp"
 #include "lumen/networking/mqtt_service.hpp"
@@ -74,6 +75,8 @@ class Controller
     NetSender net_sender_;
     std::unique_ptr<MqttService> mqtt_;
     std::unique_ptr<ControlServers> control_;
+    std::unique_ptr<OtaService> ota_;
+    uint32_t health_ticks_ = 0; // lighting ticks at the previous health check
     std::map<std::string, LightState> last_light_states_; // for automation prev-state
     AppContext ctx_;
 
@@ -82,7 +85,7 @@ class Controller
     bool fs_ok_ = false;
     uint32_t state_dirty_since_ms_ = 0;
     bool state_pending_ = false;
-    bool factory_reset_ = false; // never write config back while erasing it
+    bool config_frozen_ = false; // factory reset / restore: never write config back
     bool network_dirty_ = false;
     uint8_t auto_divider_ = 0;
 };

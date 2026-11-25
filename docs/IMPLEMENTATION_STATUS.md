@@ -213,8 +213,14 @@ Legend: `[x]` done · `[ ]` not done · **HW** = verified on physical hardware.
 - [x] Auth hardening: sessions, CSRF, IP rate limit + account lockout (**HW**)
 - [x] Forced password change enforcement (**HW**)
 - [x] Factory reset endpoint (erases config + credentials)
-- [ ] Dual-partition OTA upload + rollback; web UI (`web.pack`) update endpoint
-- [ ] Backup/restore (Settings shows these as unavailable)
+- [x] Dual-partition OTA upload with verification and automatic rollback — **HW**: valid update, corrupt /
+      truncated / wrong-file / unauthenticated uploads rejected with the running firmware unchanged, crash image
+      rolled back by the bootloader, unhealthy image rolled back by its health check; configuration preserved in
+      every case (`test/device/maintenance_test.py`)
+- [x] Web UI (`web.pack`) update endpoint + built-in `/recovery` page — **HW**
+- [x] Backup / restore (full and partial, transactional, streamed, no secrets) — **HW** + host tests (hostile input, interrupted swap)
+- [x] Settings → Firmware, Web interface, Backup & restore screens (unit tests; axe in e2e)
+- [ ] Signed images / secure boot / flash encryption / anti-rollback: not enabled (owner decision, irreversible eFuses)
 - [ ] Long soak test (heap ≈ 80 KB free after boot with MQTT — watch)
 - [ ] Performance/reliability audit
 
@@ -223,7 +229,9 @@ Legend: `[x]` done · `[ ]` not done · **HW** = verified on physical hardware.
 - RS485, Ethernet, relay polarity on the KC868-AP: **unverified on hardware**.
 - Addressable LED strips: no RMT driver yet (see Phase 4).
 - The automation "send TCP" action opens a short-lived connection per action; there is no persistent outbound session.
-- `pio run -t uploadfs` replaces the whole LittleFS image, including `/config`; until the Phase 12 update endpoint exists, re-create configuration afterwards (`test/device/setup_demo.py` for the demo set). NVS secrets (passwords, MQTT password, integration token) survive.
+- `pio run -t uploadfs` replaces the whole LittleFS image, including `/config`. Install UI updates with Settings → Web interface (or `POST /system/ui/upload`) instead; that keeps the configuration.
+- During a firmware upload the flash erase briefly stalls code running from flash; running transitions/effects can stutter for the ~30 s of the upload.
+- A backup holds no secrets: after restoring onto another controller, Wi-Fi and MQTT passwords must be entered again.
 - UDP control needs a synchronised clock (SNTP); frames are refused before that.
 - UDP bursts faster than lwIP's receive mailbox (6 datagrams) are dropped by the network stack before the 20/s limiter; send at a steady rate.
 - Home Assistant entity ids are set only when an entity is first registered; installations discovered by earlier firmware keep `light.lumen_lumen_…` ids until the device is removed in HA or the entities are renamed.
@@ -249,3 +257,4 @@ not belong in this section.
 | 2026-11-25 | same | MQTT vs. Mosquitto 2 (auth): commands → read-back, retained state, invalid payload rejected, HA discovery publish + cleanup, LWT/offline on disable and restart | PASS |
 | 2026-11-25 | same | TCP 8266 (auth, commands, push, errors) and UDP 8267 (discovery, HMAC control; replay, bad MAC, stale ts rejected; rate limit) | PASS |
 | 2026-11-25 | same | Integration suite vs. Mosquitto 2.1.4 + Home Assistant 2026.11.2 (`test/integration/ha/ha_test.py`): MQTT, HA, HTTP, TCP, UDP | PASS — 34/34 (twice) |
+| 2026-11-25 | same | OTA drills: valid 0.1.1 (ota_0→ota_1, confirmed after 20 s), corrupt/truncated/wrong/unauthenticated rejected, crash image → bootloader rollback (aborted), unhealthy image → health-check rollback (invalid); backup/restore full + partial; UI pack install; config preserved | PASS |

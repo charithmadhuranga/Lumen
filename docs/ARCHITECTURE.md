@@ -181,3 +181,28 @@ measures them.
 
 Changing `partitions.csv` requires asking first (AGENTS.md §15); the layout
 is enforced by the host test `test/test_host_partitions`.
+
+## 10. Firmware update, rollback and backup (Phase 12)
+
+- **Slots**: `ota_0` / `ota_1` (1 664 KB each). Serial flashing (`pio run -t upload`) also writes the initial
+  `otadata`, so it always returns the device to `ota_0`.
+- **Upload** (`src/app/ota_service.cpp`, httpd task): streamed in 4 KB chunks into the inactive slot with
+  `OTA_WITH_SEQUENTIAL_WRITES` (sector erase as it goes). Pre-checks: ESP image magic, chip id, app-descriptor
+  magic, project `lumen-firmware`, size ≤ slot (`src/services/ota_image.cpp`, host-tested). `esp_ota_end()`
+  verifies the whole image; only then `esp_ota_set_boot_partition()`. An interrupted or corrupt upload is
+  aborted and the running image stays selected.
+- **Rollback** (`CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`): the new image boots `pending_verify`. The housekeeping
+  task confirms it (`esp_ota_mark_app_valid_cancel_rollback`) after ≥ 20 s with LittleFS mounted, the web server
+  running and the lighting loop ticking; a reset before that (crash, watchdog, power) makes the bootloader return
+  to the previous image; still unhealthy at 120 s → `esp_ota_mark_app_invalid_rollback_and_reboot()`.
+  Anti-rollback (eFuse secure version), secure boot and flash encryption are **not** enabled — they are
+  irreversible eFuse decisions for the owner (see Known limitations in IMPLEMENTATION_STATUS).
+- **Version**: `version.txt` → `PROJECT_VER` (app descriptor) and `LUMEN_FIRMWARE_VERSION`;
+  `LUMEN_VERSION=…` overrides it, `LUMEN_OTA_SELFTEST=1|2` builds rollback-drill images (scripts/pio_version.py).
+- **Web UI update**: `web.pack` streamed to `web.pack.new`, validated (`WebPack::validate`), renamed over the old
+  pack. When both do not fit in LittleFS the old pack is removed first; `/recovery` (compiled into the firmware)
+  can always install a UI again.
+- **Backup/restore** (`src/services/backup.cpp`, host-tested): streamed in both directions (RAM ≈ one document).
+  Restore assembles `/lfs/config.restore`, then swaps directories (`config → config.old`, `restore → config`);
+  `recover_interrupted()` at boot repairs a cut swap. After a restore, configuration writes are frozen until the
+  restart (the shutdown handler does not save light state over the restored files).

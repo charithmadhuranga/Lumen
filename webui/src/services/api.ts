@@ -80,25 +80,66 @@ export async function request<T>(
   } catch {
     throw new ApiError("INVALID_RESPONSE", `Unexpected response (HTTP ${response.status})`, response.status);
   }
+  return unwrap(method, path, response.status, json, schema, response.headers.get("Retry-After"));
+}
+
+/** The one place the {success, data, error} envelope is unwrapped. */
+function unwrap<T>(method: string, path: string, status: number, json: unknown, schema: z.ZodType<T>, retryAfterHeader?: string | null): T {
   const env = Envelope.safeParse(json);
   if (!env.success) {
-    throw new ApiError("INVALID_RESPONSE", "Malformed response envelope", response.status);
+    throw new ApiError("INVALID_RESPONSE", "Malformed response envelope", status);
   }
   if (!env.data.success) {
     const err = env.data.error ?? { code: "UNKNOWN_ERROR", message: "Request failed" };
-    if (response.status === 401 && path !== "/auth/login" && path !== "/auth/session") {
+    if (status === 401 && path !== "/auth/login" && path !== "/auth/session") {
       setCsrfToken(null);
       onUnauthorized?.();
     }
-    const retryAfter = Number(response.headers.get("Retry-After") ?? "") || undefined;
-    throw new ApiError(err.code, err.message, response.status, env.data.data, retryAfter);
+    const retryAfter = Number(retryAfterHeader ?? "") || undefined;
+    throw new ApiError(err.code, err.message, status, env.data.data, retryAfter);
   }
   const parsed = schema.safeParse(env.data.data ?? null);
   if (!parsed.success) {
     console.error(`[api] ${method} ${path}: response failed validation`, parsed.error.issues);
-    throw new ApiError("INVALID_RESPONSE", "The controller sent data this UI does not understand", response.status);
+    throw new ApiError("INVALID_RESPONSE", "The controller sent data this UI does not understand", status);
   }
   return parsed.data;
+}
+
+/**
+ * Raw binary upload with progress (firmware, UI pack, backup restore).
+ * XMLHttpRequest because fetch() exposes no upload progress.
+ */
+export function upload<T>(path: string, body: Blob, schema: z.ZodType<T>, onProgress?: (fraction: number) => void): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `/api/v1${path}`);
+    xhr.withCredentials = true;
+    xhr.setRequestHeader("Accept", "application/json");
+    xhr.setRequestHeader("Content-Type", "application/octet-stream");
+    if (csrfToken) xhr.setRequestHeader("X-CSRF-Token", csrfToken);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress?.(e.loaded / e.total);
+    };
+    xhr.onerror = () => reject(new ApiError("NETWORK_ERROR", "The connection was lost during the upload", 0));
+    xhr.ontimeout = () => reject(new ApiError("TIMEOUT", "The controller did not respond in time", 0));
+    xhr.timeout = 300000;
+    xhr.onload = () => {
+      let json: unknown;
+      try {
+        json = JSON.parse(xhr.responseText);
+      } catch {
+        reject(new ApiError("INVALID_RESPONSE", `Unexpected response (HTTP ${xhr.status})`, xhr.status));
+        return;
+      }
+      try {
+        resolve(unwrap("POST", path, xhr.status, json, schema, xhr.getResponseHeader("Retry-After")));
+      } catch (e) {
+        reject(e as Error);
+      }
+    };
+    xhr.send(body);
+  });
 }
 
 const Null = z.unknown();

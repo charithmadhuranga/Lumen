@@ -124,6 +124,22 @@ Document format: see `docs/AUTOMATION.md`.
 | GET | `/integrations/token` | integration token (signed-in user only) |
 | POST | `/integrations/token/regenerate` | invalidates every TCP/UDP client |
 
+### Maintenance (firmware, web UI, backup)
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/ota/status` | running / other slot (version, state), progress, last error |
+| POST | `/ota/upload` | raw `firmware.bin`, `Content-Type: application/octet-stream`, streamed (≤ slot size 1 664 KB). Header checked before any flash write (ESP image, chip, Lumen app descriptor); full image verified (checksum + SHA-256) before it is selected; then restarts. 400 `INVALID_FIRMWARE` with the reason, 409 `BUSY`. Refused while the running firmware is still pending verification. |
+| POST | `/system/ui/upload` | raw `web.pack` (≤ 600 KB), validated before it replaces the current UI |
+| GET | `/backup[?sections=lights,scenes,…]` | configuration backup (format below), streamed; no secrets |
+| POST | `/backup/restore[?mode=merge]` | raw backup JSON; transactional; restarts on success. Default replaces the whole configuration, `merge` replaces only the documents in the file. 400 `INVALID_BACKUP` leaves everything unchanged. |
+
+Backup format: `{"format":"lumen-backup","version":1,"firmware","board","created","documents":{"lights.json":{…},"automations/<id>.json":{…}}}`.
+Document names are relative (`[A-Za-z0-9_.-]`, at most one folder level, `.json`), ≤ 200 documents,
+≤ 32 KB each. Passwords, the MQTT password, the integration token and Wi-Fi keys live in NVS and are never exported.
+
+Recovery page: `/recovery` (built into the firmware, independent of LittleFS) — sign in, install a `web.pack`
+or a firmware image. It is also served for `/` when no UI is installed.
+
 ## 4. WebSocket — `/api/v1/ws`
 
 The upgrade request must carry a valid session cookie (refused with 401

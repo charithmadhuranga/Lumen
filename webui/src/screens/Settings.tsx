@@ -17,7 +17,7 @@ import { errorMessage, useAuth } from "@/hooks/useAuth";
 import { useTheme } from "@/hooks/useTheme";
 import { PasswordChangeForm } from "@/schemas";
 import { cn } from "@/lib/utils";
-import { BackupSection, FirmwareSection } from "@/screens/settings/Maintenance";
+import { BackupSection, FirmwareSection, WebInterfaceSection } from "@/screens/settings/Maintenance";
 
 function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
@@ -91,6 +91,7 @@ export default function Settings() {
 
       <BackupSection />
       <FirmwareSection />
+      <WebInterfaceSection />
 
       <Section title="System">
         {i && (

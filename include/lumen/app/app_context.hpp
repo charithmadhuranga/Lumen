@@ -26,6 +26,7 @@ namespace lumen
 
 class MqttService;
 class ControlServers;
+class OtaService;
 
 struct ProfileApplyOutcome
 {
@@ -54,6 +55,7 @@ struct AppContext
     AutomationEngine *automation = nullptr;
     MqttService *mqtt = nullptr;
     ControlServers *control = nullptr;
+    OtaService *ota = nullptr;
 
     // Transactional board-profile apply with rollback (SPEC §5.4).
     std::function<ProfileApplyOutcome(const std::string &id, bool force)> apply_profile;
@@ -61,6 +63,8 @@ struct AppContext
     std::function<ConfigStatus()> save_lights;
     // Deferred restart (lets the HTTP response go out first).
     std::function<void(uint32_t delay_ms)> schedule_restart;
+    // Stop all configuration writes until the next restart (after a restore).
+    std::function<void()> freeze_config;
     // Wipe configuration + credentials, then restart.
     std::function<void()> factory_reset;
     // Live diagnostics snapshot (JSON object text).
@@ -85,5 +89,6 @@ void register_hardware_routes(AppContext &ctx);
 void register_network_routes(AppContext &ctx);
 void register_automation_routes(AppContext &ctx);
 void register_integration_routes(AppContext &ctx);
+void register_maintenance_routes(AppContext &ctx);
 
 } // namespace lumen

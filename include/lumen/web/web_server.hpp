@@ -90,6 +90,10 @@ class WebServer
     // the default request-size limit for upload routes.
     void route(int method, const char *pattern, RouteAuth auth, ApiHandler handler,
                std::size_t max_body = 0);
+    // Upload route: auth/CSRF/size are checked as usual, but the body is NOT
+    // buffered — the handler reads it from req.raw with httpd_req_recv()
+    // (firmware images, web packs). `max_body` is the total size limit.
+    void route_stream(int method, const char *pattern, RouteAuth auth, ApiHandler handler, std::size_t max_body);
 
     void set_ws_manager(WebSocketManager *ws) { ws_ = ws; }
 
@@ -110,6 +114,7 @@ class WebServer
         RouteAuth auth;
         ApiHandler handler;
         std::size_t max_body;
+        bool stream = false;
     };
 
     static esp_err_t api_trampoline(httpd_req_t *req);

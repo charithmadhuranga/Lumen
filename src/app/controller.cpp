@@ -18,6 +18,7 @@
 #include "lumen/core/model_lock.hpp"
 #include "lumen/automation/automation_store.h"
 #include "lumen/lighting/light_store.h"
+#include "lumen/services/backup.h"
 #include "lumen/version.hpp"
 #include "lumen/web/api_util.hpp"
 
@@ -84,6 +85,14 @@ void Controller::start()
     if (formatted) {
         ESP_LOGW(TAG, "storage was formatted (first boot or corruption) - starting from defaults");
     }
+
+    // An interrupted backup restore (power loss between the two renames)
+    // is repaired before anything reads the configuration.
+    if (fs_ok_ && backup::recover_interrupted(kConfigRoot)) {
+        ESP_LOGW(TAG, "repaired an interrupted configuration restore");
+    }
+    ota_ = std::make_unique<OtaService>();
+    ota_->boot();
 
     bus_ = std::make_unique<EventBus>(bus_lock_, clock_, bus_pool_, 64);
     storage_.reset(create_posix_fs(kConfigRoot));
@@ -157,6 +166,8 @@ void Controller::start()
     ctx_.save_lights = [this]() { return light_store::save_lights(*config_, *lighting_); };
     ctx_.schedule_restart = [this](uint32_t ms) { schedule_restart(ms); };
     ctx_.factory_reset = [this]() { factory_reset(); };
+    ctx_.freeze_config = [this]() { config_frozen_ = true; };
+    ctx_.ota = ota_.get();
     ctx_.diagnostics_json = [this]() { return diagnostics_json(); };
     ctx_.net_send = [this](const std::string &host, uint16_t port, const std::string &payload, bool tcp) {
         return net_sender_.enqueue(host, port, payload, tcp);
@@ -217,6 +228,7 @@ void Controller::start()
     register_network_routes(ctx_);
     register_automation_routes(ctx_);
     register_integration_routes(ctx_);
+    register_maintenance_routes(ctx_);
 
     if (web_->start() == ESP_OK) {
         ws_->attach(web_->handle());
@@ -321,7 +333,7 @@ void Controller::lighting_loop()
 void Controller::housekeeping_loop()
 {
     esp_task_wdt_add(nullptr);
-    uint32_t last_net = 0, last_cleanup = 0, last_status = 0;
+    uint32_t last_net = 0, last_cleanup = 0, last_status = 0, last_ota = 0;
     for (;;) {
         esp_task_wdt_reset();
         const uint32_t now = uptime_ms();
@@ -333,7 +345,7 @@ void Controller::housekeeping_loop()
                 state_pending_ = true;
                 state_dirty_since_ms_ = now;
             }
-            if (state_pending_ && now - state_dirty_since_ms_ >= kStateSaveDebounceMs) {
+            if (state_pending_ && !config_frozen_ && now - state_dirty_since_ms_ >= kStateSaveDebounceMs) {
                 state_pending_ = false;
                 if (light_store::save_states(*config_, *lighting_) != ConfigStatus::kOk) {
                     ESP_LOGW(TAG, "light state save failed");
@@ -342,6 +354,15 @@ void Controller::housekeeping_loop()
         }
         net_sender_.process();
         mqtt_->poll(now);
+        // OTA health check: a new firmware is confirmed only while the web
+        // server runs and the lighting loop keeps ticking.
+        if (now - last_ota >= 1000) {
+            last_ota = now;
+            const uint32_t ticks = lighting_->stats().ticks;
+            const bool healthy = fs_ok_ && web_->running() && ticks != health_ticks_;
+            health_ticks_ = ticks;
+            ota_->tick(now, healthy);
+        }
         if (now - last_net >= 1000) {
             last_net = now;
             network_->poll();
@@ -585,7 +606,7 @@ bool Controller::save_location(double lat, double lon)
 
 void Controller::on_shutdown()
 {
-    if (!factory_reset_) {
+    if (!config_frozen_) {
         ModelLock lock(model_mutex());
         if (lighting_->take_state_dirty() || state_pending_) {
             state_pending_ = false;
@@ -616,7 +637,7 @@ void Controller::factory_reset()
     {
         ModelLock lock(model_mutex());
         lighting_->detach_hardware();
-        factory_reset_ = true;
+        config_frozen_ = true;
         remove_tree(kConfigRoot);
         mkdir(kConfigRoot, 0755);
     }

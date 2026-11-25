@@ -1,5 +1,6 @@
 // Lumen web server implementation. See web_server.hpp
 #include "lumen/web/web_server.hpp"
+#include "lumen/web/recovery_page.hpp"
 
 #include <cstdio>
 #include <cstring>
@@ -224,6 +225,12 @@ void WebServer::route(int method, const char *pattern, RouteAuth auth, ApiHandle
 {
     routes_.push_back({method, split_path(pattern), auth, std::move(handler),
                        max_body != 0 ? max_body : config_.max_body});
+}
+
+void WebServer::route_stream(int method, const char *pattern, RouteAuth auth, ApiHandler handler,
+                             std::size_t max_body)
+{
+    routes_.push_back({method, split_path(pattern), auth, std::move(handler), max_body, true});
 }
 
 esp_err_t WebServer::start()
@@ -474,6 +481,7 @@ esp_err_t WebServer::handle_api(httpd_req_t *req)
         return send_error(ar, 413, "PAYLOAD_TOO_LARGE",
                           "Request body exceeds " + std::to_string(match->max_body) + " bytes");
     }
+    if (match->stream) return match->handler(ar); // handler consumes the body
     if (req->content_len > 0) {
         ar.body.resize(req->content_len);
         std::size_t got = 0;
@@ -578,6 +586,15 @@ esp_err_t WebServer::handle_static(httpd_req_t *req)
         ar.raw = req;
         return send_error(ar, 404, "NOT_FOUND", "API endpoint not found");
     }
+    // Built-in recovery page: always available, independent of LittleFS.
+    if (uri == "/recovery" || uri == "/recovery.js") {
+        const bool js = uri == "/recovery.js";
+        httpd_resp_set_type(req, js ? "text/javascript; charset=utf-8" : "text/html; charset=utf-8");
+        httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
+        add_security_headers(req);
+        httpd_resp_sendstr(req, js ? kRecoveryJs : kRecoveryHtml);
+        return ESP_OK;
+    }
     const std::string root = config_.static_root;
     if (uri == "/" || uri.empty()) {
         uri = "/index.html";
@@ -592,15 +609,12 @@ esp_err_t WebServer::handle_static(httpd_req_t *req)
         return ESP_OK;
     }
     if (uri == "/index.html" || !looks_like_asset) {
-        // No UI image flashed yet: explain instead of a bare 404.
+        // No UI installed (first flash or interrupted UI update): the
+        // recovery page lets the user upload one.
         httpd_resp_set_type(req, "text/html; charset=utf-8");
+        httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
         add_security_headers(req);
-        httpd_resp_sendstr(req,
-                           "<!doctype html><title>Lumen</title><h1>Lumen controller</h1>"
-                           "<p>The web UI is not installed on this device. Build it with "
-                           "<code>npm run build:fs</code> and flash the filesystem image "
-                           "(<code>pio run -t uploadfs</code>). The API is available at "
-                           "<code>/api/v1</code>.</p>");
+        httpd_resp_sendstr(req, kRecoveryHtml);
         return ESP_OK;
     }
     httpd_resp_send_404(req);

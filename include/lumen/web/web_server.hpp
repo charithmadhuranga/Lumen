@@ -1,13 +1,14 @@
-// Lumen web server — ESP-IDF HTTP server with static file serving from
-// LittleFS. SPEC §16.1–16.3, §17, DESIGN §14.2.
+// Lumen web server — ESP-IDF httpd with a small router (SPEC §16–17,
+// DESIGN §13–14).
 //
-// Features:
-// - Static assets from LittleFS with pre-gzipped support (Content-Encoding: gzip)
-// - SPA fallback to index.html for unknown non-API paths (DESIGN §14.2)
-// - Strict CSP header (DESIGN §13)
-// - Request size limits and connection limits
-// - API routes mounted under /api/v1/
-// - WebSocket upgrade at /api/v1/ws
+// * /api/v1/*   : JSON API. Routes are "METHOD /pattern/{param}" with an
+//                 auth level; one place enforces session cookie, CSRF and the
+//                 forced-password-change gate (AGENTS.md §8).
+// * /api/v1/ws  : WebSocket (auth via session cookie on the handshake).
+// * /*          : static SPA from LittleFS, pre-gzipped assets served with
+//                 Content-Encoding: gzip, immutable caching for hashed
+//                 bundles, index.html fallback for client-side routes.
+// Every response carries the security headers (CSP, nosniff, frame deny).
 #pragma once
 
 #include <cstddef>
@@ -16,121 +17,116 @@
 #include <string>
 #include <vector>
 
+#include "core/cJSON.h"
 #include "esp_err.h"
 #include "esp_http_server.h"
+#include "lumen/web/auth_manager.hpp"
 
 namespace lumen
 {
 
-// Forward declaration for WebSocket manager
 class WebSocketManager;
 
-// Configuration for the web server
 struct WebServerConfig
 {
-    // Maximum request body size in bytes (default: 64 KB)
-    std::size_t max_request_body = 65536;
-
-    // Maximum number of concurrent connections (default: 8)
-    int max_connections = 8;
-
-    // Base path for static assets in LittleFS (default: "/spiffs/web")
-    const char *static_base_path = "/spiffs/web";
-
-    // URI prefix for API routes (default: "/api/v1")
-    const char *api_prefix = "/api/v1";
-
-    // WebSocket URI (default: "/api/v1/ws")
-    const char *ws_uri = "/api/v1/ws";
-
-    // Enable CORS for development (default: false)
-    bool enable_cors = false;
+    uint16_t port = 80;
+    int max_open_sockets = 10;
+    std::size_t max_body = 16 * 1024; // default request-size limit
+    const char *static_root = "/lfs/web";
 };
 
-// HTTP request handler function type
-using HttpHandler = std::function<esp_err_t(httpd_req_t *req)>;
+enum class RouteAuth : uint8_t
+{
+    kPublic = 0,        // no session needed
+    kPasswordChange,    // any valid session, even one that must change password
+    kUser,              // valid session with the password already changed
+};
 
-// Shared HTTP helpers (defined in web_server.cpp) used by route modules.
-esp_err_t read_request_body(httpd_req_t *req, std::string &out, std::size_t max_size);
-esp_err_t send_json_response(httpd_req_t *req, int status, const std::string &json);
-esp_err_t send_error_response(httpd_req_t *req, int status, const char *code, const char *message);
+// One API request as seen by a route handler.
+struct ApiRequest
+{
+    httpd_req_t *raw = nullptr;
+    int method = 0;                  // http_method (HTTP_GET, ...)
+    std::string path;                // without query string, after /api/v1
+    std::string query;               // raw query string ("" if none)
+    std::vector<std::string> params; // {param} captures in order
+    std::string body;
+    std::string client_ip;
+    std::string session_token;       // "" for public routes without cookie
+    Session session;                 // valid when session_token non-empty
 
-// WebSocket message handler
-using WsHandler = std::function<void(const std::string &payload)>;
+    // Parsed JSON body (owned by the request; nullptr if empty/invalid).
+    cJSON *json();
+    std::string query_param(const char *key) const;
+    ~ApiRequest();
 
-// Main web server class
+  private:
+    cJSON *json_ = nullptr;
+    bool parsed_ = false;
+};
+
+using ApiHandler = std::function<esp_err_t(ApiRequest &)>;
+
+// Response helpers (envelope {success, data, error} — SPEC §17.1).
+esp_err_t send_data(ApiRequest &req, cJSON *data, int status = 200); // takes ownership
+esp_err_t send_ok(ApiRequest &req);                                   // data: null
+esp_err_t send_error(ApiRequest &req, int status, const char *code, const std::string &message);
+esp_err_t send_raw_json(httpd_req_t *req, int status, const std::string &body);
+
 class WebServer
 {
   public:
-    explicit WebServer(const WebServerConfig &config = {});
+    WebServer(AuthManager &auth, const WebServerConfig &config = {});
     ~WebServer();
 
-    // Start the HTTP server
     esp_err_t start();
-
-    // Stop the HTTP server
     esp_err_t stop();
-
-    // Register an HTTP handler for API routes
-    // Path is relative to api_prefix (e.g., "/lights" → "/api/v1/lights")
-    esp_err_t register_handler(const char *method, const char *path, HttpHandler handler);
-
-    // Set WebSocket manager for handling /ws upgrades
-    void set_ws_manager(WebSocketManager *ws_manager);
-
-    // Get the underlying httpd_handle_t for advanced usage
+    bool running() const { return server_ != nullptr; }
     httpd_handle_t handle() const { return server_; }
 
-    // Check if server is running
-    bool running() const { return server_ != nullptr; }
+    // Register an API route. `pattern` is relative to /api/v1 and may use
+    // {name} segments, e.g. "/lights/{id}/command". `max_body` overrides
+    // the default request-size limit for upload routes.
+    void route(int method, const char *pattern, RouteAuth auth, ApiHandler handler,
+               std::size_t max_body = 0);
+
+    void set_ws_manager(WebSocketManager *ws) { ws_ = ws; }
+
+    // Cookie helpers used by the auth routes.
+    static void set_session_cookie(httpd_req_t *req, const std::string &token, int64_t max_age_s);
+    static void clear_session_cookie(httpd_req_t *req);
+    static std::string cookie_token(httpd_req_t *req);
+    static std::string client_ip(httpd_req_t *req);
+
+    uint32_t requests_served() const { return requests_; }
 
   private:
+    struct Route
+    {
+        int method;
+        std::vector<std::string> segments;
+        RouteAuth auth;
+        ApiHandler handler;
+        std::size_t max_body;
+    };
+
+    static esp_err_t api_trampoline(httpd_req_t *req);
+    static esp_err_t static_trampoline(httpd_req_t *req);
+    static esp_err_t ws_trampoline(httpd_req_t *req);
+    static esp_err_t options_trampoline(httpd_req_t *req);
+
+    esp_err_t handle_api(httpd_req_t *req);
+    esp_err_t handle_static(httpd_req_t *req);
+    bool serve_file(httpd_req_t *req, const std::string &path, bool is_index);
+
+    AuthManager &auth_;
     WebServerConfig config_;
     httpd_handle_t server_ = nullptr;
-    WebSocketManager *ws_manager_ = nullptr;
-
-    // Registered API handlers (path is the full path including api_prefix).
-    struct HandlerEntry
-    {
-        std::string path;
-        HttpHandler handler;
-    };
-    std::vector<HandlerEntry> get_handlers_;
-    std::vector<HandlerEntry> post_handlers_;
-    std::vector<HandlerEntry> put_handlers_;
-    std::vector<HandlerEntry> delete_handlers_;
-    // Persistent storage for URI strings handed to httpd (it keeps the
-    // pointer, so the backing string must outlive registration). Reserved
-    // once so addresses stay stable across push_back.
-    std::vector<std::string> uri_storage_;
-
-    // Trampoline registered with httpd for each API path; looks up the
-    // matching HandlerEntry by req->uri + req->method and calls it.
-    static esp_err_t api_dispatch(httpd_req_t *req);
-
-    // Static URI handlers that forward to registered handlers
-    static esp_err_t http_get_handler(httpd_req_t *req);
-    static esp_err_t http_post_handler(httpd_req_t *req);
-    static esp_err_t http_put_handler(httpd_req_t *req);
-    static esp_err_t http_delete_handler(httpd_req_t *req);
-    static esp_err_t http_options_handler(httpd_req_t *req);
-    static esp_err_t ws_upgrade_handler(httpd_req_t *req);
-
-    // Instance method handlers
-    esp_err_t handle_get(httpd_req_t *req);
-    esp_err_t handle_post(httpd_req_t *req);
-    esp_err_t handle_put(httpd_req_t *req);
-    esp_err_t handle_delete(httpd_req_t *req);
-
-    // Static file serving
-    esp_err_t serve_static(httpd_req_t *req);
-    esp_err_t serve_index(httpd_req_t *req);
-
-    // CORS headers
-    void add_cors_headers(httpd_req_t *req) const;
-
-    // CSP header
-    void add_csp_header(httpd_req_t *req) const;
+    WebSocketManager *ws_ = nullptr;
+    std::vector<Route> routes_;
+    uint32_t requests_ = 0;
 };
+
+void add_security_headers(httpd_req_t *req);
 
 } // namespace lumen

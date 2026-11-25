@@ -29,7 +29,12 @@
     },
     "mcu": {
       "type": "string",
-      "enum": ["esp32", "esp32s3", "esp32c3", "esp32c6"]
+      "enum": [
+        "esp32",
+        "esp32s3",
+        "esp32c3",
+        "esp32c6"
+      ]
     },
     "description": {
       "type": "string"
@@ -53,9 +58,14 @@
   "$defs": {
     "resource": {
       "type": "object",
-      "required": ["id", "type"],
+      "required": [
+        "id",
+        "type"
+      ],
       "properties": {
-        "id": {"type": "string"},
+        "id": {
+          "type": "string"
+        },
         "type": {
           "type": "string",
           "enum": [
@@ -73,24 +83,58 @@
           "maximum": 48
         },
         "direction": {
-          "enum": ["input", "output", "bidirectional"]
+          "enum": [
+            "input",
+            "output",
+            "bidirectional"
+          ]
         },
         "inverted": {
           "type": "boolean"
         },
         "pull": {
-          "enum": ["none", "up", "down"]
+          "enum": [
+            "none",
+            "up",
+            "down"
+          ]
         },
         "safe_state": {
-          "type": ["boolean", "integer", "null"]
+          "type": [
+            "boolean",
+            "integer",
+            "null"
+          ]
+        },
+        "pins": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": -1,
+            "maximum": 48
+          }
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 7
+        },
+        "frequency": {
+          "type": "integer",
+          "minimum": 0
         }
       }
     },
     "peripheral": {
       "type": "object",
-      "required": ["id", "type"],
+      "required": [
+        "id",
+        "type"
+      ],
       "properties": {
-        "id": {"type": "string"},
+        "id": {
+          "type": "string"
+        },
         "type": {
           "enum": [
             "pca9685",
@@ -101,7 +145,9 @@
             "addressable_led"
           ]
         },
-        "bus": {"type": "string"},
+        "bus": {
+          "type": "string"
+        },
         "address": {
           "type": "integer",
           "minimum": 0,
@@ -118,6 +164,9 @@
         },
         "settings": {
           "type": "object"
+        },
+        "active_low": {
+          "type": "boolean"
         }
       },
       "additionalProperties": true

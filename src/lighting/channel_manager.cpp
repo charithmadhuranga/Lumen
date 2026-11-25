@@ -1,12 +1,12 @@
 // Lumen — channel manager implementation (src/lighting/channel_manager.cpp)
 //
 // Logical channel registry with state triple (requested/applied/actual) and
-// type-aware validation (SPEC §8.1, §8.3). Pure C++17, no I/O, no heap
-// beyond the fixed registry.
+// type-aware validation (SPEC §8.1, §8.3), plus the state -> output-level
+// translation used by the lighting engine. Pure C++17, no I/O.
 #include "lumen/lighting/channel.h"
 
-#include <cstring>
 #include <algorithm>
+#include <cstring>
 
 namespace lumen
 {
@@ -14,60 +14,98 @@ namespace lumen
 namespace
 {
 
-constexpr char kTypeSwitch[] = "switch";
-constexpr char kTypeDimmer[] = "dimmer";
-constexpr char kTypeRgb[] = "rgb";
-constexpr char kTypeRgbw[] = "rgbw";
-constexpr char kTypeCct[] = "cct";
-constexpr char kTypeAddressableRgb[] = "addressable_rgb";
-constexpr char kTypeAddressableRgbw[] = "addressable_rgbw";
+struct TypeName
+{
+    LightType type;
+    const char *name;
+    uint8_t outputs;
+};
+
+constexpr TypeName kTypes[] = {
+    {LightType::kSwitch, "switch", 1},
+    {LightType::kDimmer, "dimmer", 1},
+    {LightType::kRgb, "rgb", 3},
+    {LightType::kRgbw, "rgbw", 4},
+    {LightType::kCct, "cct", 2},
+    {LightType::kAddressableRgb, "addressable_rgb", 1},
+    {LightType::kAddressableRgbw, "addressable_rgbw", 1},
+};
 
 } // namespace
 
 const char *light_type_name(LightType type)
 {
-    switch (type) {
-    case LightType::kSwitch: return kTypeSwitch;
-    case LightType::kDimmer: return kTypeDimmer;
-    case LightType::kRgb: return kTypeRgb;
-    case LightType::kRgbw: return kTypeRgbw;
-    case LightType::kCct: return kTypeCct;
-    case LightType::kAddressableRgb: return kTypeAddressableRgb;
-    case LightType::kAddressableRgbw: return kTypeAddressableRgbw;
+    for (const auto &t : kTypes) {
+        if (t.type == type) {
+            return t.name;
+        }
     }
     return "unknown";
 }
 
 LightType light_type_from_string(const char *name)
 {
-    if (name == nullptr) return LightType::kDimmer;
-    if (std::strcmp(name, kTypeSwitch) == 0) return LightType::kSwitch;
-    if (std::strcmp(name, kTypeDimmer) == 0) return LightType::kDimmer;
-    if (std::strcmp(name, kTypeRgb) == 0) return LightType::kRgb;
-    if (std::strcmp(name, kTypeRgbw) == 0) return LightType::kRgbw;
-    if (std::strcmp(name, kTypeCct) == 0) return LightType::kCct;
-    if (std::strcmp(name, kTypeAddressableRgb) == 0)
-        return LightType::kAddressableRgb;
-    if (std::strcmp(name, kTypeAddressableRgbw) == 0)
-        return LightType::kAddressableRgbw;
+    if (name != nullptr) {
+        for (const auto &t : kTypes) {
+            if (std::strcmp(name, t.name) == 0) {
+                return t.type;
+            }
+        }
+    }
     return LightType::kDimmer; // safe default
+}
+
+bool light_type_known(const char *name)
+{
+    if (name == nullptr) {
+        return false;
+    }
+    for (const auto &t : kTypes) {
+        if (std::strcmp(name, t.name) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+uint8_t light_type_output_count(LightType type)
+{
+    for (const auto &t : kTypes) {
+        if (t.type == type) {
+            return t.outputs;
+        }
+    }
+    return 1;
 }
 
 StartupBehavior startup_behavior_from_string(const char *name)
 {
     if (name == nullptr) return StartupBehavior::kRestore;
-    if (std::strcmp(name, "restore") == 0) return StartupBehavior::kRestore;
     if (std::strcmp(name, "on") == 0) return StartupBehavior::kOn;
     if (std::strcmp(name, "off") == 0) return StartupBehavior::kOff;
     return StartupBehavior::kRestore; // safe default
 }
 
+const char *startup_behavior_name(StartupBehavior behavior)
+{
+    switch (behavior) {
+    case StartupBehavior::kOn: return "on";
+    case StartupBehavior::kOff: return "off";
+    case StartupBehavior::kRestore: break;
+    }
+    return "restore";
+}
+
+// ---------------------------------------------------------------------------
+// Registry
+// ---------------------------------------------------------------------------
+
 bool ChannelManager::register_channel(const Channel &channel)
 {
-    if (channel_count_ >= kMaxChannels) {
+    if (channel_count_ >= kMaxChannels || channel.id.empty()) {
         return false;
     }
-    if (find_index(channel.id) < channel_count_) {
+    if (index_of(channel.id) != kNotFound) {
         return false; // duplicate id
     }
     channels_[channel_count_] = channel;
@@ -76,28 +114,42 @@ bool ChannelManager::register_channel(const Channel &channel)
     return true;
 }
 
-std::size_t ChannelManager::find_index(const std::string &id) const
+bool ChannelManager::remove_channel(const std::string &id)
+{
+    const std::size_t idx = index_of(id);
+    if (idx == kNotFound) {
+        return false;
+    }
+    for (std::size_t i = idx; i + 1 < channel_count_; ++i) {
+        channels_[i] = channels_[i + 1];
+        available_[i] = available_[i + 1];
+    }
+    channel_count_--;
+    channels_[channel_count_] = Channel{};
+    available_[channel_count_] = false;
+    return true;
+}
+
+std::size_t ChannelManager::index_of(const std::string &id) const
 {
     for (std::size_t i = 0; i < channel_count_; ++i) {
         if (channels_[i].id == id) {
             return i;
         }
     }
-    return channel_count_; // sentinel = not found
+    return kNotFound;
 }
 
 const Channel *ChannelManager::find(const std::string &id) const
 {
-    std::size_t idx = find_index(id);
-    if (idx >= channel_count_) return nullptr;
-    return &channels_[idx];
+    const std::size_t idx = index_of(id);
+    return idx == kNotFound ? nullptr : &channels_[idx];
 }
 
 Channel *ChannelManager::find_mutable(const std::string &id)
 {
-    std::size_t idx = find_index(id);
-    if (idx >= channel_count_) return nullptr;
-    return &channels_[idx];
+    const std::size_t idx = index_of(id);
+    return idx == kNotFound ? nullptr : &channels_[idx];
 }
 
 bool ChannelManager::apply_patch(const std::string &channel_id,
@@ -110,31 +162,8 @@ bool ChannelManager::apply_patch(const std::string &channel_id,
         !validate_state_for_type(patch, light_type_name(ch->type))) {
         return false; // unsupported property for this type
     }
-
-    // Merge patch into requested state. The patch carries the full desired
-    // state for the fields the caller cares about; unspecified fields keep
-    // their current value. A brightness/color value of 0 is a legitimate
-    // target (off), so callers must explicitly set fields they want changed
-    // and leave others at their current requested value.
-    LightState merged = ch->requested;
-    merged.power = patch.power;
-    merged.brightness = patch.brightness;
-    merged.red = patch.red;
-    merged.green = patch.green;
-    merged.blue = patch.blue;
-    merged.white = patch.white;
-    merged.color_temperature = patch.color_temperature;
-
-    // Normalize against channel limits + type.
-    ChannelCalibration cal{}; // identity calibration
-    merged = normalize_state(merged, light_type_name(ch->type), cal);
-
-    // Clamp brightness to channel limits.
-    merged.brightness =
-        clamp(merged.brightness, ch->limits.minimum, ch->limits.maximum);
-
-    ch->requested = merged;
-    out_requested = merged;
+    ch->requested = normalize_for_channel(*ch, patch);
+    out_requested = ch->requested;
     return true;
 }
 
@@ -156,100 +185,110 @@ bool ChannelManager::set_applied(const std::string &channel_id,
     return true;
 }
 
-bool ChannelManager::set_available(const std::string &channel_id,
-                                   bool available)
+bool ChannelManager::set_available(const std::string &channel_id, bool available)
 {
-    Channel *ch = find_mutable(channel_id);
-    if (ch == nullptr) return false;
-    available_[find_index(channel_id)] = available;
+    const std::size_t idx = index_of(channel_id);
+    if (idx == kNotFound) return false;
+    available_[idx] = available;
     return true;
 }
 
 bool ChannelManager::is_available(const std::string &channel_id) const
 {
-    std::size_t idx = find_index(channel_id);
-    if (idx >= channel_count_) return false;
-    return available_[idx];
+    const std::size_t idx = index_of(channel_id);
+    return idx != kNotFound && available_[idx];
 }
 
-// ========================================================================
-// state_to_duties — translate normalized LightState to driver duty values
-// ========================================================================
+// ---------------------------------------------------------------------------
+// Normalisation and output translation
+// ---------------------------------------------------------------------------
 
-DriverDuty state_to_duties(const Channel &channel,
-                           const LightState &state,
+LightState normalize_for_channel(const Channel &channel, const LightState &state)
+{
+    const ChannelCalibration identity{};
+    LightState out = normalize_state(state, light_type_name(channel.type), identity);
+
+    if (channel.type == LightType::kSwitch) {
+        out.brightness = out.power ? 100 : 0;
+    }
+    if (channel.type == LightType::kCct) {
+        uint16_t k = out.color_temperature != 0 ? out.color_temperature
+                                                : channel.limits.color_temperature_min;
+        out.color_temperature = clamp(k, channel.limits.color_temperature_min,
+                                      channel.limits.color_temperature_max);
+    }
+    if (out.power && channel.type != LightType::kSwitch) {
+        const uint8_t lo = std::max<uint8_t>(channel.limits.minimum, 1);
+        out.brightness = clamp(out.brightness, lo, channel.limits.maximum);
+    }
+    return out;
+}
+
+DriverDuty state_to_duties(const Channel &channel, const LightState &state,
                            const ChannelCalibration &cal)
 {
     DriverDuty duty{};
-
-    if (!state.power) {
-        duty.duty = 0;
+    duty.channel_count = light_type_output_count(channel.type);
+    if (!state.power || (channel.type != LightType::kSwitch && state.brightness == 0)) {
+        // Everything off (channel_duty already zero).
         duty.relay_on = false;
-        duty.channel_count = 0;
+        duty.duty = 0;
         return duty;
     }
 
-    // Brightness-limited RGBW color (already normalized by caller).
-    uint8_t bri = state.brightness; // 0..100
+    const uint16_t level = perceptual_level(state.brightness);
+    const Rgbw8 color = apply_calibration({state.red, state.green, state.blue, state.white}, cal);
 
     switch (channel.type) {
     case LightType::kSwitch:
-    case LightType::kDimmer: {
-        // Single channel: brightness -> duty 0..65535.
-        uint32_t d = (static_cast<uint32_t>(bri) * 65535) / 100;
-        duty.duty = static_cast<uint16_t>(clamp(d, uint32_t(0), uint32_t(65535)));
-        duty.channel_count = 0;
+        duty.relay_on = true;
+        duty.duty = 65535;
+        duty.channel_duty[0] = 65535;
         break;
-    }
-    case LightType::kRgb: {
-        // Use the state's red/green/blue directly, brightness-compensated.
-        uint16_t rd = (static_cast<uint32_t>(apply_brightness(state.red, bri)) * 4095) / 255;
-        uint16_t gd = (static_cast<uint32_t>(apply_brightness(state.green, bri)) * 4095) / 255;
-        uint16_t bd = (static_cast<uint32_t>(apply_brightness(state.blue, bri)) * 4095) / 255;
-        duty.channel_duty[0] = static_cast<uint16_t>(clamp(rd, static_cast<uint16_t>(0), static_cast<uint16_t>(4095)));
-        duty.channel_duty[1] = static_cast<uint16_t>(clamp(gd, static_cast<uint16_t>(0), static_cast<uint16_t>(4095)));
-        duty.channel_duty[2] = static_cast<uint16_t>(clamp(bd, static_cast<uint16_t>(0), static_cast<uint16_t>(4095)));
-        duty.channel_count = 3;
+    case LightType::kDimmer:
+        duty.relay_on = true;
+        duty.duty = level;
+        duty.channel_duty[0] = level;
         break;
-    }
-    case LightType::kRgbw: {
-        uint16_t rd = (static_cast<uint32_t>(apply_brightness(state.red, bri)) * 4095) / 255;
-        uint16_t gd = (static_cast<uint32_t>(apply_brightness(state.green, bri)) * 4095) / 255;
-        uint16_t bd = (static_cast<uint32_t>(apply_brightness(state.blue, bri)) * 4095) / 255;
-        uint16_t wd = (static_cast<uint32_t>(apply_brightness(state.white, bri)) * 4095) / 255;
-        duty.channel_duty[0] = static_cast<uint16_t>(clamp(rd, static_cast<uint16_t>(0), static_cast<uint16_t>(4095)));
-        duty.channel_duty[1] = static_cast<uint16_t>(clamp(gd, static_cast<uint16_t>(0), static_cast<uint16_t>(4095)));
-        duty.channel_duty[2] = static_cast<uint16_t>(clamp(bd, static_cast<uint16_t>(0), static_cast<uint16_t>(4095)));
-        duty.channel_duty[3] = static_cast<uint16_t>(clamp(wd, static_cast<uint16_t>(0), static_cast<uint16_t>(4095)));
-        duty.channel_count = 4;
+    case LightType::kRgb:
+        duty.relay_on = true;
+        duty.channel_duty[0] = scale_component(color.r, level);
+        duty.channel_duty[1] = scale_component(color.g, level);
+        duty.channel_duty[2] = scale_component(color.b, level);
         break;
-    }
+    case LightType::kRgbw:
+        duty.relay_on = true;
+        duty.channel_duty[0] = scale_component(color.r, level);
+        duty.channel_duty[1] = scale_component(color.g, level);
+        duty.channel_duty[2] = scale_component(color.b, level);
+        duty.channel_duty[3] = scale_component(color.w, level);
+        break;
     case LightType::kCct: {
-        // CCT: kelvin -> RGB mix; brightness splits across warm/cool channels.
-        Rgb8 rgb = kelvin_to_rgb(state.color_temperature != 0
-                                     ? state.color_temperature
-                                     : 2700);
-        uint16_t rd = (static_cast<uint32_t>(apply_brightness(rgb.r, bri)) * 4095) / 255;
-        uint16_t bd_ = (static_cast<uint32_t>(apply_brightness(rgb.b, bri)) * 4095) / 255;
-        duty.channel_duty[0] = static_cast<uint16_t>(clamp(rd, static_cast<uint16_t>(0), static_cast<uint16_t>(4095))); // warm
-        duty.channel_duty[1] = static_cast<uint16_t>(clamp(bd_, static_cast<uint16_t>(0), static_cast<uint16_t>(4095))); // cool
-        duty.channel_count = 2;
+        // Two-channel tunable white: linear warm/cool mix across the strip's
+        // kelvin range, each scaled by the perceptual level.
+        const uint16_t kmin = channel.limits.color_temperature_min;
+        const uint16_t kmax = channel.limits.color_temperature_max;
+        const uint16_t k = clamp(state.color_temperature != 0 ? state.color_temperature : kmin,
+                                 kmin, kmax);
+        const uint32_t span = (kmax > kmin) ? static_cast<uint32_t>(kmax - kmin) : 1U;
+        const uint32_t cool_ratio = (static_cast<uint32_t>(k - kmin) * 1000U) / span; // 0..1000
+        const uint32_t warm = (static_cast<uint32_t>(level) * (1000U - cool_ratio)) / 1000U;
+        const uint32_t cool = (static_cast<uint32_t>(level) * cool_ratio) / 1000U;
+        duty.relay_on = true;
+        duty.channel_duty[0] = static_cast<uint16_t>(warm);
+        duty.channel_duty[1] = static_cast<uint16_t>(cool);
         break;
     }
     case LightType::kAddressableRgb:
-    case LightType::kAddressableRgbw: {
-        // Addressable: per-LED handled separately by the effects engine;
-        // here just set a global duty placeholder.
-        duty.duty = (static_cast<uint32_t>(bri) * 65535) / 100;
-        duty.channel_count = 0;
+    case LightType::kAddressableRgbw:
+        duty.relay_on = true;
+        duty.duty = level;
+        duty.channel_duty[0] = scale_component(color.r, level);
+        duty.channel_duty[1] = scale_component(color.g, level);
+        duty.channel_duty[2] = scale_component(color.b, level);
+        duty.channel_duty[3] = scale_component(color.w, level);
         break;
     }
-    default:
-        duty.duty = 0;
-        duty.channel_count = 0;
-        break;
-    }
-
     return duty;
 }
 

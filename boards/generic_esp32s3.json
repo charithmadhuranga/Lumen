@@ -6,13 +6,47 @@
   "mcu": "esp32s3",
   "description": "Generic ESP32-S3 development board with native PWM, GPIO and digital inputs.",
   "resources": [
-    {"id": "gpio_builtin_led", "type": "gpio", "gpio": 6, "direction": "output", "safe_state": false},
-    {"id": "gpio_input0", "type": "gpio", "gpio": 34, "direction": "input"},
-    {"id": "ledc_pwm0", "type": "pwm", "gpio": 7, "direction": "output"},
-    {"id": "ledc_pwm1", "type": "pwm", "gpio": 8, "direction": "output"},
-    {"id": "ledc_pwm2", "type": "pwm", "gpio": 9, "direction": "output"},
-    {"id": "uart0", "type": "uart", "gpio": 20, "direction": "output"},
-    {"id": "i2c0", "type": "i2c"}
+    {
+      "id": "gpio_builtin_led",
+      "type": "gpio",
+      "gpio": 6,
+      "direction": "output",
+      "safe_state": false
+    },
+    {
+      "id": "gpio_input0",
+      "type": "gpio",
+      "gpio": 4,
+      "direction": "input"
+    },
+    {
+      "id": "ledc_pwm0",
+      "type": "pwm",
+      "gpio": 7,
+      "direction": "output"
+    },
+    {
+      "id": "ledc_pwm1",
+      "type": "pwm",
+      "gpio": 8,
+      "direction": "output"
+    },
+    {
+      "id": "ledc_pwm2",
+      "type": "pwm",
+      "gpio": 9,
+      "direction": "output"
+    },
+    {
+      "id": "i2c0",
+      "type": "i2c",
+      "port": 0,
+      "frequency": 100000,
+      "pins": {
+        "sda": 1,
+        "scl": 2
+      }
+    }
   ],
   "peripherals": [],
   "capabilities": {

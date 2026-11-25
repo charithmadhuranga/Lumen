@@ -44,6 +44,8 @@ enum class ValidationReason : uint16_t
     kProfileSchemaViolation,
     kProfileUnknownMcu,
     kProfileMissingRequired,
+    // --- appended (append-only enum) ---
+    kAddressUnverified,      // peripheral address must be confirmed by I2C scan
 };
 
 struct ValidationEntry

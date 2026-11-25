@@ -1,26 +1,19 @@
-// Lumen HAL — hardware manager (coordinator).
+// Lumen HAL — hardware manager (coordinator) interface.
 //
-// Owns all drivers registered against a board profile. Coordinates the
-// transactional profile-apply workflow (SPEC §5.4): validate candidate ->
-// stop affected services -> safe states -> init new hardware -> diagnostics
-// -> commit, or restore previous profile on failure.
-//
-// The manager itself is board-agnostic; it knows nothing about pins or
-// specific peripherals — those live in the profile + PinValidator.
+// The lighting engine's view of the hardware: resolve a driver by the
+// board-profile id a channel references, and flush batched outputs once per
+// lighting tick. Board-agnostic — it knows nothing about pins.
 #pragma once
 
-#include <cstddef>
-#include <cstdint>
 #include <string>
-#include <vector>
 
 #include "lumen/hardware/hal/i_driver.h"
 
 namespace lumen
 {
 
-// Result of validating + applying a candidate profile.
-enum class ApplyResult : uint8_t
+// Result of validating + applying a candidate profile (SPEC §5.4).
+enum class ProfileApplyResult : uint8_t
 {
     kOk = 0,
     kValidationFailed,
@@ -34,24 +27,14 @@ class IHardwareManager
   public:
     virtual ~IHardwareManager() = default;
 
-    // Register a driver under `id`. Returns false if `id` already exists.
-    virtual bool register_driver(const std::string &id, IDriver &driver) = 0;
-
-    // Look up a registered driver. Returns nullptr when unknown.
+    // Look up a driver by its board-profile id (peripheral id such as
+    // "pca9685_0" / "relay1", or PWM resource id). nullptr when unknown or
+    // the driver failed to initialise.
     virtual IDriver *driver(const std::string &id) = 0;
 
-    // Initialize all registered drivers. Returns ESP_OK when all succeed;
-    // drivers that fail individually are marked kFailed but initialization
-    // continues (bounded startup, SPEC §1.2 rule 6).
-    virtual esp_err_t initialize_all() = 0;
-
-    // Shut down all registered drivers.
-    virtual esp_err_t shutdown_all() = 0;
-
-    // Apply a candidate board profile transactionally (SPEC §5.4).
-    // Returns an ApplyResult; on any failure the previous profile is
-    // restored and config is left intact.
-    virtual ApplyResult apply_profile(const std::string &candidate_json) = 0;
+    // Flush every batched output device (PCA9685 pending channel writes).
+    // Called once per lighting tick so N channel updates cost one I2C burst.
+    virtual esp_err_t flush_outputs() = 0;
 };
 
 } // namespace lumen

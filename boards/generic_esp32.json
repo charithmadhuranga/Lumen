@@ -6,13 +6,47 @@
   "mcu": "esp32",
   "description": "Generic ESP32 development board with native PWM, GPIO and digital inputs. No external peripherals assumed.",
   "resources": [
-    {"id": "gpio_builtin_led", "type": "gpio", "gpio": 2, "direction": "output", "safe_state": false},
-    {"id": "gpio_input0", "type": "gpio", "gpio": 34, "direction": "input"},
-    {"id": "ledc_pwm0", "type": "pwm", "gpio": 15, "direction": "output"},
-    {"id": "ledc_pwm1", "type": "pwm", "gpio": 16, "direction": "output"},
-    {"id": "ledc_pwm2", "type": "pwm", "gpio": 17, "direction": "output"},
-    {"id": "uart0", "type": "uart", "gpio": 1, "direction": "output"},
-    {"id": "i2c0", "type": "i2c"}
+    {
+      "id": "gpio_builtin_led",
+      "type": "gpio",
+      "gpio": 2,
+      "direction": "output",
+      "safe_state": false
+    },
+    {
+      "id": "gpio_input0",
+      "type": "gpio",
+      "gpio": 34,
+      "direction": "input"
+    },
+    {
+      "id": "ledc_pwm0",
+      "type": "pwm",
+      "gpio": 15,
+      "direction": "output"
+    },
+    {
+      "id": "ledc_pwm1",
+      "type": "pwm",
+      "gpio": 16,
+      "direction": "output"
+    },
+    {
+      "id": "ledc_pwm2",
+      "type": "pwm",
+      "gpio": 17,
+      "direction": "output"
+    },
+    {
+      "id": "i2c0",
+      "type": "i2c",
+      "port": 0,
+      "frequency": 100000,
+      "pins": {
+        "sda": 21,
+        "scl": 22
+      }
+    }
   ],
   "peripherals": [],
   "capabilities": {

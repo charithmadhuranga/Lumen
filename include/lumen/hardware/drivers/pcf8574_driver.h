@@ -40,6 +40,11 @@ class Pcf8574Driver final
     // current uptime. Returns events for pins that changed (after debounce).
     // `events` receives the events; `event_count` is set to the number written
     // (capped at max_events).
+    // Release all pins (write 0xFF) and seed the debounced state.
+    esp_err_t initialize();
+    bool initialized() const { return initialized_; }
+    uint8_t last_raw() const { return last_raw_; }
+
     esp_err_t poll(uint32_t now_ms, InputChangeEvent *events,
                    size_t max_events, size_t &event_count);
 
@@ -71,6 +76,7 @@ class Pcf8574Driver final
 
     uint32_t read_failure_count_ = 0;
     bool healthy_ = true;
+    bool initialized_ = false;
 
     esp_err_t read_byte(uint8_t &byte);
 };

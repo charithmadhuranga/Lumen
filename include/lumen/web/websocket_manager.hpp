@@ -1,10 +1,23 @@
-// Lumen WebSocket manager — handles /api/v1/ws connections.
-// SPEC §17.3, DESIGN §8.4.
+// Lumen WebSocket manager (SPEC §17.3, DESIGN §8.4).
+//
+// * Endpoint /api/v1/ws, authenticated on the handshake by session cookie.
+// * Envelope: {"version":1,"event":"...","timestamp":<unix s or uptime s>,
+//   "data":{...}}.
+// * Bounded outbound queue. light_state_changed is COALESCED per light: the
+//   manager only remembers *which* lights changed and renders their latest
+//   state when it flushes, so a slider drag can never flood a slow client.
+//   Other events use a small FIFO; when full the oldest telemetry event is
+//   dropped and counted (never blocks the producer).
+// * Flushes run in the httpd task via httpd_queue_work(); producers (the
+//   lighting task, input service, ...) never touch sockets.
 #pragma once
 
+#include <array>
+#include <bitset>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <mutex>
 #include <string>
 
 #include "esp_err.h"
@@ -13,78 +26,70 @@
 namespace lumen
 {
 
-// Forward declaration
-class EventBus;
-
-// WebSocket message
-struct WsMessage
-{
-    uint32_t version = 1;
-    std::string event;
-    int64_t timestamp = 0;
-    std::string data; // JSON payload
-};
-
-// Configuration
-struct WsConfig
-{
-    // Maximum message size (default: 4 KB)
-    std::size_t max_message_size = 4096;
-
-    // Outbound queue depth per connection (default: 32)
-    std::size_t queue_depth = 32;
-
-    // Ping interval in ms (default: 30 s)
-    int64_t ping_interval_ms = 30000;
-
-    // Slow client timeout (default: 5 s)
-    int64_t slow_client_timeout_ms = 5000;
-};
-
 class WebSocketManager
 {
   public:
-    explicit WebSocketManager(const WsConfig &config = {});
-    ~WebSocketManager();
+    static constexpr std::size_t kMaxClients = 6;
+    static constexpr std::size_t kQueueSize = 24;
+    static constexpr std::size_t kMaxLights = 64;
 
-    // Initialize with event bus for event fan-out
-    esp_err_t init(EventBus *event_bus);
+    // Renders the current state of light `index` (by channel slot) as the
+    // JSON `data` object of a light_state_changed event; returns "" if gone.
+    using LightRenderer = std::function<std::string(std::size_t index)>;
+    // Re-validates a session token (sessions die on logout/password change).
+    using SessionCheck = std::function<bool(const std::string &token)>;
 
-    // Handle HTTP upgrade request (called from web server)
-    esp_err_t handle_upgrade(httpd_req_t *req);
+    WebSocketManager() = default;
 
-    // Broadcast event to all connected clients
-    esp_err_t broadcast(const char *event, const std::string &json_payload);
+    void attach(httpd_handle_t server) { server_ = server; }
+    void set_light_renderer(LightRenderer r) { render_light_ = std::move(r); }
+    void set_session_check(SessionCheck c) { session_check_ = std::move(c); }
 
-    // Send message to specific client (by session token)
-    esp_err_t send_to(const char *session_token, const char *event, const std::string &json_payload);
+    // httpd callbacks (server task).
+    esp_err_t on_open(httpd_req_t *req, const std::string &session_token);
+    esp_err_t on_frame(httpd_req_t *req);
 
-    // Get number of connected clients
-    size_t client_count() const;
+    // Producers (any task).
+    void notify_light(std::size_t index);
+    void broadcast(const char *event, const std::string &data_json, bool droppable = true);
 
-    // Clean up stale connections
-    void cleanup();
+    // Drop clients whose session ended (call after logout/password change).
+    void revalidate_sessions();
+
+    std::size_t client_count() const;
+    uint32_t dropped() const { return dropped_; }
+    uint32_t sent() const { return sent_; }
 
   private:
-    WsConfig config_;
-    EventBus *event_bus_ = nullptr;
-    httpd_handle_t server_ = nullptr;
-
     struct Client
     {
         int fd = -1;
-        std::string session_token;
-        int64_t last_ping_ms = 0;
-        int64_t last_activity_ms = 0;
+        std::string token;
     };
-    // Simple fixed array for clients (max 8 concurrent)
-    static constexpr size_t kMaxClients = 8;
-    Client clients_[kMaxClients];
-    size_t client_count_ = 0;
+    struct Pending
+    {
+        std::string text;
+        bool droppable = true;
+    };
 
-    esp_err_t handle_client_message(Client *client, const char *data, size_t len);
-    esp_err_t send_frame(Client *client, const std::string &payload);
-    void remove_client(Client *client);
+    static void flush_work(void *arg);
+    void flush();
+    void schedule_flush();
+    void send_all(const std::string &text);
+    std::string envelope(const char *event, const std::string &data_json) const;
+
+    httpd_handle_t server_ = nullptr;
+    mutable std::mutex mutex_;
+    std::array<Client, kMaxClients> clients_{};
+    std::bitset<kMaxLights> dirty_lights_;
+    std::array<Pending, kQueueSize> queue_{};
+    std::size_t q_head_ = 0;
+    std::size_t q_count_ = 0;
+    bool flush_scheduled_ = false;
+    LightRenderer render_light_;
+    SessionCheck session_check_;
+    uint32_t dropped_ = 0;
+    uint32_t sent_ = 0;
 };
 
 } // namespace lumen

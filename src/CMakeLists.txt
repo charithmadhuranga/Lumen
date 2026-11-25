@@ -1,44 +1,30 @@
 # Lumen application component (SPEC §22 source tree).
-# Components under src/ (core, hardware, lighting, automation, networking,
-# web, services) register themselves as phases land; each component
-# registers only what it uses.
+#
+# Every .c/.cpp under src/ is part of the firmware. Host-only test code
+# lives under test/ and is never globbed here. ESP-only sources sit in
+# directories the native test env excludes (see platformio.ini).
+file(GLOB_RECURSE LUMEN_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
 
 idf_component_register(
-    SRCS
-        "main.cpp"
-        "core/event_bus.cpp"
-        "core/storage_manager.cpp"
-        "core/json_adapter.cpp"
-        "core/config_manager.cpp"
-        "core/system_manager.cpp"
-        "core/diagnostics.cpp"
-        "core/cJSON.c"
-        "hardware/hal/pin_validator.cpp"
-        "hardware/hal/board_profile_loader.cpp"
-        "hardware/drivers/gpio_driver.cpp"
-        "hardware/drivers/relay_driver.cpp"
-        "hardware/drivers/ledc_driver.cpp"
-        "hardware/drivers/i2c_manager.cpp"
-        "hardware/drivers/pca9685_driver.cpp"
-        "hardware/drivers/pcf8574_driver.cpp"
-        "lighting/channel_manager.cpp"
-        "lighting/lighting_task.cpp"
-        "lighting/effects_engine.cpp"
-        "lighting/drivers/driver_adapter.cpp"
-        "lighting/drivers/ledc_adapter.cpp"
-        "lighting/drivers/pca9685_adapter.cpp"
-        "lighting/drivers/relay_adapter.cpp"
-        "lighting/drivers/rmt_adapter.cpp"
-        "lighting/room_manager.cpp"
-        "lighting/group_manager.cpp"
-        "lighting/scene_manager.cpp"
-        "web/web_server.cpp"
-        "web/auth_manager.cpp"
-        "web/websocket_manager.cpp"
-        "web/board_json.cpp"
-        "web/api_routes.cpp"
+    SRCS ${LUMEN_SOURCES}
     INCLUDE_DIRS "." "../include"
+    EMBED_TXTFILES
+        "../boards/kincony_kc868_ap.json"
+        "../boards/generic_esp32.json"
+        "../boards/generic_esp32_pca9685.json"
+        "../boards/generic_esp32_pcf8574.json"
+        "../boards/generic_esp32_pwm.json"
+        "../boards/generic_esp32s3.json"
+    REQUIRES
+        esp_driver_gpio esp_driver_i2c esp_driver_ledc esp_driver_rmt esp_driver_uart
+        esp_http_server esp_https_ota esp_http_client esp_wifi esp_eth esp_netif esp_event
+        esp_timer esp_partition esp_app_format app_update nvs_flash mbedtls lwip
+        spi_flash esp_system log freertos vfs esp_hw_support
+        joltwallet__littlefs espressif__mdns espressif__mqtt
 )
 
 # AGENTS.md §5: C++17 (applies to C++ sources only; C files are unaffected).
 target_compile_features(${COMPONENT_LIB} PUBLIC cxx_std_17)
+target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-missing-field-initializers)

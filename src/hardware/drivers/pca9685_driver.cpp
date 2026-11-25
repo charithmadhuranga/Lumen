@@ -2,6 +2,10 @@
 #include "lumen/hardware/drivers/i2c_manager.h"
 #include "lumen/hardware/drivers/pca9685_driver.h"
 
+#ifdef ESP_PLATFORM
+#include "esp_rom_sys.h"
+#endif
+
 namespace lumen
 {
 
@@ -57,50 +61,42 @@ Pca9685Driver::Pca9685Driver(II2CBus &bus, uint8_t device_addr,
 
 esp_err_t Pca9685Driver::initialize()
 {
-    if (state_ != DriverState::kUninitialized) {
-        return ESP_ERR_INVALID_STATE;
+    if (state_ == DriverState::kInitialized) {
+        return ESP_OK;
     }
 
-    // Wake device: clear sleep bit.
-    esp_err_t err = write_reg(kRegMode1, 0x00); // normal mode, no auto-inc yet
-    if (err != ESP_OK) {
-        state_ = DriverState::kFailed;
-        return err;
-    }
-
-    // Mode2: totem-pole outputs, set inversion.
+    // Mode2: totem-pole outputs (+ optional inversion).
     uint8_t mode2 = kMode2OutTotemPole;
     if (inverted_) {
         mode2 |= kMode2Inverted;
     }
-    err = write_reg(kRegMode2, mode2);
+    esp_err_t err = write_reg(kRegMode2, mode2);
     if (err != ESP_OK) {
         state_ = DriverState::kFailed;
         return err;
     }
 
-    // Set frequency (prescale).
+    // Prescale (sleep -> prescale -> wake with auto-increment). ALLCALL is
+    // left disabled so the chip does not also answer at 0x70.
     err = set_prescale(frequency_hz_);
     if (err != ESP_OK) {
         state_ = DriverState::kFailed;
         return err;
     }
 
-    // Initialize all channels to off (safe state).
+    // Every channel forced fully off (safe state) on first flush.
     for (uint8_t ch = 0; ch < kChannelCount; ++ch) {
         channel_duty_[ch] = 0;
         channel_on_[ch] = false;
         channel_dirty_[ch] = true;
     }
 
-    // Mark initialized before flushing (flush checks state_).
-    state_ = DriverState::kInitialized;
+    state_ = DriverState::kInitialized; // flush() requires initialized
     err = flush();
     if (err != ESP_OK) {
         state_ = DriverState::kFailed;
         return err;
     }
-
     return ESP_OK;
 }
 
@@ -152,7 +148,15 @@ esp_err_t Pca9685Driver::set_prescale(uint32_t frequency_hz)
     if (err != ESP_OK) {
         return err;
     }
-    // Re-enable (clear sleep), set restart.
+    // Wake (clear sleep, auto-increment on, ALLCALL off); the oscillator
+    // needs 500 us before RESTART may be set (datasheet §7.3.1.1).
+    err = write_reg(kRegMode1, kMode1AutoInc);
+    if (err != ESP_OK) {
+        return err;
+    }
+#ifdef ESP_PLATFORM
+    esp_rom_delay_us(600);
+#endif
     err = write_reg(kRegMode1, kMode1Restart | kMode1AutoInc);
     if (err != ESP_OK) {
         return err;
@@ -237,7 +241,12 @@ esp_err_t Pca9685Driver::set_channel_duty(uint8_t channel, PwmDuty duty)
     if (duty > kMaxDuty) {
         return ESP_ERR_INVALID_ARG;
     }
+    const bool on = duty > 0;
+    if (channel_duty_[channel] == duty && channel_on_[channel] == on) {
+        return ESP_OK; // redundant write skipped (AGENTS.md §7)
+    }
     channel_duty_[channel] = duty;
+    channel_on_[channel] = on;
     channel_dirty_[channel] = true;
     return ESP_OK;
 }
@@ -290,15 +299,16 @@ esp_err_t Pca9685Driver::flush()
     }
 
     // Collect dirty channels in ascending order for auto-increment batching.
-    std::vector<uint8_t> dirty;
-    dirty.reserve(kChannelCount);
+    // Fixed-size scratch: no heap allocation on the lighting hot path.
+    uint8_t dirty[kChannelCount];
+    std::size_t dirty_count = 0;
     for (uint8_t ch = 0; ch < kChannelCount; ++ch) {
         if (channel_dirty_[ch]) {
-            dirty.push_back(ch);
+            dirty[dirty_count++] = ch;
         }
     }
 
-    if (dirty.empty()) {
+    if (dirty_count == 0) {
         return ESP_OK;
     }
 
@@ -308,12 +318,12 @@ esp_err_t Pca9685Driver::flush()
     // necessarily. Simplest correct approach: one write per dirty channel
     // (4 bytes each). To batch contiguous runs, group them.
     std::size_t i = 0;
-    while (i < dirty.size()) {
+    while (i < dirty_count) {
         // Find a contiguous run starting at dirty[i].
         std::size_t run_start = i;
         uint8_t first_ch = dirty[i];
         ++i;
-        while (i < dirty.size() && dirty[i] == static_cast<uint8_t>(dirty[i - 1] + 1)) {
+        while (i < dirty_count && dirty[i] == static_cast<uint8_t>(dirty[i - 1] + 1)) {
             ++i;
         }
         std::size_t run_len = i - run_start;
@@ -321,28 +331,29 @@ esp_err_t Pca9685Driver::flush()
         // Build register block: for each channel in run, ON_L,ON_H,OFF_L,OFF_H.
         // We use auto-increment starting at LED0_ON_L of first_ch.
         uint8_t start_reg = kRegLed0OnL + (first_ch * 4);
-        std::vector<uint8_t> buf;
-        buf.reserve(run_len * 4 + 1); // +1 for register byte
-        buf.push_back(start_reg);
+        uint8_t buf[1 + kChannelCount * 4];
+        std::size_t len = 0;
+        buf[len++] = start_reg;
         for (std::size_t r = 0; r < run_len; ++r) {
             uint8_t ch = dirty[run_start + r];
+            // Register encoding (datasheet §7.3.3): ON=0, OFF=duty for
+            // 1..4094; bit 12 of OFF_H = full off; bit 12 of ON_H = full on.
             uint16_t on_val = 0;
-            uint16_t off_val = channel_on_[ch] ? channel_duty_[ch] : 0;
-            // If off_val == 0 and on wanted, treat as full-on: ON=0, OFF=4096.
-            // PCA9685: OFF=0 with ON=0 means full-on? Actually duty 0 = off.
-            // For full-on we set ON_L=0x00, ON_H=0x10 (bit4=full), OFF_L/H=0.
-            uint8_t on_h = 0;
-            uint8_t off_h = 0;
-            if (channel_on_[ch] && channel_duty_[ch] == kMaxDuty) {
-                // Full on.
-                on_h = 0x10; // bit4 = full on
+            uint16_t off_val = 0;
+            const uint16_t duty = channel_on_[ch] ? channel_duty_[ch] : 0;
+            if (duty == 0) {
+                off_val = 0x1000; // full off
+            } else if (duty >= kMaxDuty) {
+                on_val = 0x1000;  // full on
+            } else {
+                off_val = duty;
             }
-            buf.push_back(static_cast<uint8_t>(on_val & 0xFF));
-            buf.push_back(on_h);
-            buf.push_back(static_cast<uint8_t>(off_val & 0xFF));
-            buf.push_back(off_h);
+            buf[len++] = static_cast<uint8_t>(on_val & 0xFF);
+            buf[len++] = static_cast<uint8_t>((on_val >> 8) & 0x1F);
+            buf[len++] = static_cast<uint8_t>(off_val & 0xFF);
+            buf[len++] = static_cast<uint8_t>((off_val >> 8) & 0x1F);
         }
-        last_err = bus_.write(device_addr_, buf.data(), buf.size());
+        last_err = bus_.write(device_addr_, buf, len);
         if (last_err != ESP_OK) {
             break;
         }
@@ -350,11 +361,35 @@ esp_err_t Pca9685Driver::flush()
 
     // Mark all dirty as clean only on full success.
     if (last_err == ESP_OK) {
-        for (uint8_t ch : dirty) {
-            channel_dirty_[ch] = false;
+        for (std::size_t d = 0; d < dirty_count; ++d) {
+            channel_dirty_[dirty[d]] = false;
         }
     }
     return last_err;
+}
+
+esp_err_t Pca9685Driver::read_back(uint8_t channel, uint16_t &on_reg, uint16_t &off_reg,
+                                   uint16_t &duty)
+{
+    if (channel >= kChannelCount) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    const uint8_t reg = static_cast<uint8_t>(kRegLed0OnL + channel * 4);
+    uint8_t buf[4] = {};
+    const esp_err_t err = bus_.write_then_read(device_addr_, &reg, 1, buf, 4);
+    if (err != ESP_OK) {
+        return err;
+    }
+    on_reg = static_cast<uint16_t>(buf[0] | (buf[1] << 8));
+    off_reg = static_cast<uint16_t>(buf[2] | (buf[3] << 8));
+    if (off_reg & 0x1000) {
+        duty = 0; // full off has priority
+    } else if (on_reg & 0x1000) {
+        duty = kMaxDuty; // full on
+    } else {
+        duty = static_cast<uint16_t>((off_reg - on_reg) & 0x0FFF);
+    }
+    return ESP_OK;
 }
 
 } // namespace lumen

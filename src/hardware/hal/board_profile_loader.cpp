@@ -113,6 +113,19 @@ bool load_board_profile(const std::string &json, BoardProfile &out)
                 r.safe_state_set = true;
                 r.safe_state = ss;
             }
+            get_int(item, "port", r.port);
+            get_int(item, "frequency", r.frequency);
+            cJSON *pins = cJSON_GetObjectItemCaseSensitive(item, "pins");
+            if (pins && cJSON_IsObject(pins)) {
+                cJSON *pin = nullptr;
+                cJSON_ArrayForEach(pin, pins)
+                {
+                    if (pin->string && cJSON_IsNumber(pin)) {
+                        r.pins.emplace_back(pin->string,
+                                            static_cast<int32_t>(pin->valueint));
+                    }
+                }
+            }
             out.resources.push_back(r);
         }
     }
@@ -140,6 +153,15 @@ bool load_board_profile(const std::string &json, BoardProfile &out)
             get_bool(item, "address_verification_required",
                      p.address_verification_required);
             get_string(item, "unverified_note", p.unverified_note);
+            get_bool(item, "active_low", p.active_low);
+            cJSON *settings = cJSON_GetObjectItemCaseSensitive(item, "settings");
+            if (settings && cJSON_IsObject(settings)) {
+                char *raw = cJSON_PrintUnformatted(settings);
+                if (raw) {
+                    p.settings_json = raw;
+                    cJSON_free(raw);
+                }
+            }
             out.peripherals.push_back(p);
         }
     }

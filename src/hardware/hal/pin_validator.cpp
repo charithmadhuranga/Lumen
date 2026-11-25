@@ -37,58 +37,71 @@ ValidationReport PinValidator::validate(const BoardProfileIndex &profile) const
     return report;
 }
 
+namespace
+{
+bool pin_role_outputish(const std::string &type, const std::string &role)
+{
+    if (type == "i2c") return true;  // open-drain SDA/SCL
+    if (role == "rx") return false;  // UART receive
+    return true;                     // tx, de, mdc, mdio, clk, data, power
+}
+} // namespace
+
+std::vector<PinAssignment> collect_pin_assignments(const BoardProfile &p)
+{
+    std::vector<PinAssignment> uses;
+    for (const auto &res : p.resources) {
+        if (res.gpio >= 0) {
+            const bool outputish =
+                (res.direction == "output" || res.direction == "bidirectional" ||
+                 res.type == "pwm" || res.type == "rmt");
+            uses.push_back({res.gpio, res.id, res.id + " (" + res.type + ")", res.type, outputish});
+        }
+        for (const auto &pin : res.pins) {
+            if (pin.second >= 0) {
+                uses.push_back({pin.second, res.id, res.id + "." + pin.first, pin.first,
+                                pin_role_outputish(res.type, pin.first)});
+            }
+        }
+    }
+    return uses;
+}
+
 void PinValidator::validate_gpios(const BoardProfileIndex &profile,
                                   ValidationReport &report) const
 {
     const BoardProfile &p = profile.profile();
-
-    for (const auto &res : p.resources) {
-        if (res.gpio < 0) {
-            continue; // not a pin resource
-        }
-
-        std::string id = res.id + " (" + res.type + ")";
-
-        if (!gpio_exists(res.gpio)) {
-            report.errors.push_back(
-                {ValidationReason::kGpioDoesNotExist, id,
-                 "GPIO " + std::to_string(res.gpio) +
-                     " does not exist on " + capabilities_.mcu,
-                 true});
+    for (const auto &use : collect_pin_assignments(p)) {
+        const std::string &id = use.label;
+        const std::string g = std::to_string(use.gpio);
+        if (!gpio_exists(use.gpio)) {
+            report.errors.push_back({ValidationReason::kGpioDoesNotExist, id,
+                                     "GPIO " + g + " does not exist on " + capabilities_.mcu,
+                                     true});
             continue;
         }
-
-        const bool outputish =
-            (res.direction == "output" || res.direction == "bidirectional");
-        if (outputish && is_input_only(res.gpio)) {
-            report.errors.push_back(
-                {ValidationReason::kInputOnlyAsOutput, id,
-                 "GPIO " + std::to_string(res.gpio) +
-                     " is input-only on " + capabilities_.mcu,
-                 true});
+        if (use.outputish && is_input_only(use.gpio)) {
+            report.errors.push_back({ValidationReason::kInputOnlyAsOutput, id,
+                                     "GPIO " + g + " is input-only on " + capabilities_.mcu,
+                                     true});
         }
-
-        if (is_strapping(res.gpio)) {
+        if (is_strapping(use.gpio)) {
             report.warnings.push_back(
                 {ValidationReason::kStrappingPinMisused, id,
-                 "GPIO " + std::to_string(res.gpio) +
-                     " is a boot-strapping pin on " + capabilities_.mcu +
-                     "; changing it may prevent boot", false});
+                 "GPIO " + g + " is a boot-strapping pin on " + capabilities_.mcu +
+                     "; changing it may prevent boot",
+                 false});
         }
-
-        if (is_flash_reserved(res.gpio)) {
-            report.errors.push_back(
-                {ValidationReason::kFlashReservedPin, id,
-                 "GPIO " + std::to_string(res.gpio) +
-                     " is reserved for flash/PSRAM on " + capabilities_.mcu,
-                 true});
+        if (is_flash_reserved(use.gpio)) {
+            report.errors.push_back({ValidationReason::kFlashReservedPin, id,
+                                     "GPIO " + g + " is reserved for flash/PSRAM on " +
+                                         capabilities_.mcu,
+                                     true});
         }
-
-        if (is_board_reserved(res.gpio)) {
-            report.errors.push_back(
-                {ValidationReason::kBoardReservedPin, id,
-                 "GPIO " + std::to_string(res.gpio) +
-                     " is board-reserved and cannot be assigned", true});
+        if (is_board_reserved(use.gpio)) {
+            report.errors.push_back({ValidationReason::kBoardReservedPin, id,
+                                     "GPIO " + g + " is board-reserved and cannot be assigned",
+                                     true});
         }
     }
 }
@@ -96,28 +109,16 @@ void PinValidator::validate_gpios(const BoardProfileIndex &profile,
 void PinValidator::validate_duplicates(const BoardProfileIndex &profile,
                                        ValidationReport &report) const
 {
-    const BoardProfile &p = profile.profile();
-
-    // Map GPIO -> list of resource ids using it.
-    std::vector<std::pair<int32_t, std::string>> used;
-    used.reserve(p.resources.size());
-    for (const auto &res : p.resources) {
-        if (res.gpio >= 0) {
-            used.push_back({res.gpio, res.id});
-        }
-    }
-
-    std::sort(used.begin(), used.end(),
-              [](const auto &a, const auto &b) { return a.first < b.first; });
-
+    std::vector<PinAssignment> used = collect_pin_assignments(profile.profile());
+    std::stable_sort(used.begin(), used.end(),
+                     [](const PinAssignment &a, const PinAssignment &b) { return a.gpio < b.gpio; });
     for (std::size_t i = 1; i < used.size(); ++i) {
-        if (used[i].first == used[i - 1].first) {
+        if (used[i].gpio == used[i - 1].gpio) {
             report.errors.push_back(
                 {ValidationReason::kDuplicateAssignment,
-                 used[i - 1].second + "+" + used[i].second,
-                 "GPIO " + std::to_string(used[i].first) +
-                     " assigned to both '" + used[i - 1].second + "' and '" +
-                     used[i].second + "'",
+                 used[i - 1].owner + "+" + used[i].owner,
+                 "GPIO " + std::to_string(used[i].gpio) + " assigned to both '" +
+                     used[i - 1].label + "' and '" + used[i].label + "'",
                  true});
         }
     }
@@ -164,7 +165,7 @@ void PinValidator::validate_bus_conflicts(const BoardProfileIndex &profile,
                     {ValidationReason::kI2cConflict, a.id + "+" + b.id,
                      "I2C address conflict on bus '" + a.bus +
                          "': '" + a.id + "' and '" + b.id +
-                         "' both at 0x" +
+                         "' both at address " +
                          std::to_string(a.address),
                      true});
             }

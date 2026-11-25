@@ -19,7 +19,9 @@ esp_err_t RelayDriver::initialize()
     io_conf.mode = GPIO_MODE_OUTPUT;
     io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
     io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
-
+    // Latch the safe (off) level before enabling the output driver.
+    gpio_set_level(static_cast<gpio_num_t>(gpio_),
+                   ((polarity_ == RelayPolarity::kActiveHigh) ? safe_on_ : !safe_on_) ? 1 : 0);
     esp_err_t err = gpio_config(&io_conf);
     if (err != ESP_OK) {
         state_ = DriverState::kFailed;

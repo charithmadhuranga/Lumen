@@ -75,15 +75,18 @@ inline const McuCapabilities kEsp32Capabilities{
 
 inline const McuCapabilities kEsp32S3Capabilities{
     "esp32s3",
-    {/* gpio */ 46, /* input_only */ {},
-     /* strapping */ {0, 3, 4, 5},
-     /* flash_reserved */ {0, 1, 2, 3, 4, 5, 45, 46}},
-    {/* ledc */ 8, /* timer */ 16, /* channel */ 80'000000, /* max res */ 20},
-    {/* rmt */ 8, /* tx */ 8},
+    // ESP32-S3 datasheet §2.3: GPIO0..48; strapping 0/3/45/46; GPIO26..32
+    // are the SPI flash/PSRAM bus on every module (33..37 additionally on
+    // octal-PSRAM modules — profiles must avoid them there).
+    {/* gpio */ 49, /* input_only */ {},
+     /* strapping */ {0, 3, 45, 46},
+     /* flash_reserved */ {26, 27, 28, 29, 30, 31, 32}},
+    {/* ledc */ 8, /* timer */ 4, /* channel */ 80'000000, /* max res */ 14},
+    {/* rmt */ 8, /* tx */ 4},
     {/* i2c */ 2},
     {/* uart */ 3},
-    true, // ethernet (not on all S3 variants, but capability exists)
-    true  // esp_now
+    false, // no internal EMAC (SPI Ethernet only)
+    true   // esp_now
 };
 
 // Registry of all known MCU capabilities. Look up by mcu string.

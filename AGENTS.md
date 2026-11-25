@@ -41,8 +41,8 @@ Environment names: `esp32` (KC868-AP reference board + flash/monitor ports), `es
 | Task | Command |
 |---|---|
 | Build firmware | `pio run -e esp32` (or `pio run -e esp32s3`) |
-| Flash reference board | `pio run -e esp32 -t upload` (port pinned to `/dev/ttyUSB1`) |
-| Serial monitor | `pio device monitor -p /dev/ttyUSB1 -b 115200` |
+| Flash reference board | `pio run -e esp32 -t upload` (port pinned to `/dev/ttyUSB0`) |
+| Serial monitor | `pio device monitor -p /dev/ttyUSB0 -b 115200` |
 | Host unit tests | `pio test -e native` |
 | On-target test suites | `pio test -e esp32` (`test_device_*` only; runs once Phase 3+ suites exist) |
 | Build LittleFS image | `pio run -e esp32 -t buildfs` |

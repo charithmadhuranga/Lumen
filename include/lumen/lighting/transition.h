@@ -68,13 +68,32 @@ struct Transition
 
 // Lighting command envelope (SPEC §8.1 / contract). Producers enqueue these;
 // the lighting task is the only executor.
+// Which LightState fields a command sets. Unset fields keep the channel's
+// current requested value (partial updates from the UI / MQTT / automation).
+enum LightField : uint8_t
+{
+    kFieldPower = 1U << 0,
+    kFieldBrightness = 1U << 1,
+    kFieldColor = 1U << 2,  // red/green/blue
+    kFieldWhite = 1U << 3,
+    kFieldCct = 1U << 4,
+    kFieldAll = 0x1F,
+};
+
 struct LightCommand
 {
     std::string channel_id;
-    LightState state{};         // target state
+    LightState state{};         // target state (fields per `fields`)
+    uint8_t fields = kFieldAll; // which fields of `state` are meaningful
     uint32_t transition_ms = 0; // 0 = instant
+    bool use_default_transition = false; // use the channel's default duration
     std::string origin;         // "rest", "ws", "mqtt", "automation", etc.
     std::string command_id;     // for Phase 11 dedup
+    // Optional effect: empty = none (a plain command cancels a running
+    // effect), "stop" = cancel only. Names per effect_type_from_string().
+    std::string effect;
+    uint32_t effect_speed_ms = 0;    // 0 = effect default
+    uint32_t effect_duration_ms = 0; // 0 = run until replaced
 };
 
 // Result of applying a command or transition tick.

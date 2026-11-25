@@ -24,6 +24,41 @@ esp_err_t Pcf8574Driver::read_byte(uint8_t &byte)
     return bus_.read(device_addr_, &byte, 1);
 }
 
+esp_err_t Pcf8574Driver::initialize()
+{
+    // PCF8574 has no registers: writing a byte sets the quasi-bidirectional
+    // output latch. 0xFF releases every pin (weak pull-up) so it can be read
+    // as an input. Writing anything else would drive pins low and make every
+    // active-low input read as "pressed".
+    const uint8_t release = 0xFF;
+    esp_err_t err = bus_.write(device_addr_, &release, 1);
+    if (err != ESP_OK) {
+        healthy_ = false;
+        ++read_failure_count_;
+        return err;
+    }
+    // Seed the debounced state from the first read so boot does not emit a
+    // burst of spurious change events.
+    uint8_t raw = 0xFF;
+    err = read_byte(raw);
+    if (err != ESP_OK) {
+        healthy_ = false;
+        ++read_failure_count_;
+        return err;
+    }
+    last_raw_ = raw;
+    for (uint8_t pin = 0; pin < kPinCount; ++pin) {
+        const bool raw_bit = (raw >> pin) & 1U;
+        const bool level = active_low_ ? !raw_bit : raw_bit;
+        stable_[pin] = level;
+        level_[pin] = level;
+        pending_change_[pin] = false;
+    }
+    healthy_ = true;
+    initialized_ = true;
+    return ESP_OK;
+}
+
 esp_err_t Pcf8574Driver::poll(uint32_t now_ms, InputChangeEvent *events,
                               size_t max_events, size_t &event_count)
 {
@@ -89,7 +124,7 @@ esp_err_t Pcf8574Driver::get_level(uint8_t pin, bool &level) const
     if (pin >= kPinCount) {
         return ESP_ERR_INVALID_ARG;
     }
-    level = level_[pin];
+    level = stable_[pin]; // debounced level
     return ESP_OK;
 }
 

@@ -39,12 +39,17 @@ class GpioDriver final : public IOutputDriver, public IDigitalInputDriver
 
     // IDigitalInputDriver
     esp_err_t read(bool &state) override;
+
+    // Pull configuration applied at initialize(): "none", "up", "down".
+    void set_pull(const std::string &pull) { pull_ = pull; }
+    int32_t gpio() const { return gpio_; }
     esp_err_t set_inverted(bool inverted) override;
     esp_err_t get_inverted(bool &inverted) override;
 
   private:
     int32_t gpio_;
     std::string direction_;
+    std::string pull_ = "none";
     bool inverted_ = false;
     bool safe_active_ = false;
     uint32_t safe_value_ = 0;

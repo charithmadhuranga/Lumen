@@ -15,6 +15,35 @@
 namespace lumen
 {
 
+namespace
+{
+// cJSON helpers shared by the loaders (bounded string reads).
+std::string json_str(const cJSON *obj, const char *key)
+{
+    const cJSON *it = cJSON_GetObjectItemCaseSensitive(obj, key);
+    return (cJSON_IsString(it) && it->valuestring != nullptr) ? std::string(it->valuestring)
+                                                              : std::string();
+}
+int json_int(const cJSON *obj, const char *key, int fallback)
+{
+    const cJSON *it = cJSON_GetObjectItemCaseSensitive(obj, key);
+    return cJSON_IsNumber(it) ? it->valueint : fallback;
+}
+std::vector<std::string> json_str_array(const cJSON *obj, const char *key)
+{
+    std::vector<std::string> out;
+    const cJSON *arr = cJSON_GetObjectItemCaseSensitive(obj, key);
+    const cJSON *it = nullptr;
+    cJSON_ArrayForEach(it, arr)
+    {
+        if (cJSON_IsString(it) && it->valuestring != nullptr) {
+            out.emplace_back(it->valuestring);
+        }
+    }
+    return out;
+}
+} // namespace
+
 GroupManager::GroupManager(ChannelManager &channel_mgr,
                            LightingTask &lighting_task,
                            ConfigManager &config)
@@ -131,6 +160,7 @@ GroupResult GroupManager::set_power(const std::string &group_id, bool power,
 
     LightCommand cmd{};
     cmd.state.power = power;
+    cmd.fields = kFieldPower;
     cmd.transition_ms = transition_ms;
     cmd.origin = origin;
     cmd.command_id = command_id;
@@ -140,7 +170,7 @@ GroupResult GroupManager::set_power(const std::string &group_id, bool power,
         fanout.channel_id = cid;
         LightCommandEnvelope envelope{};
         envelope.command = fanout;
-        (void)envelope;
+        lighting_task_.enqueue(envelope);
     }
     return GroupResult::kOk;
 }
@@ -157,6 +187,7 @@ GroupResult GroupManager::set_brightness(const std::string &group_id,
     LightCommand cmd{};
     cmd.state.power = brightness > 0;
     cmd.state.brightness = brightness;
+    cmd.fields = kFieldBrightness;
     cmd.transition_ms = transition_ms;
     cmd.origin = origin;
     cmd.command_id = command_id;
@@ -166,7 +197,7 @@ GroupResult GroupManager::set_brightness(const std::string &group_id,
         fanout.channel_id = cid;
         LightCommandEnvelope envelope{};
         envelope.command = fanout;
-        (void)envelope;
+        lighting_task_.enqueue(envelope);
     }
     return GroupResult::kOk;
 }
@@ -185,6 +216,7 @@ GroupResult GroupManager::set_color(const std::string &group_id, uint8_t r,
     cmd.state.red = r;
     cmd.state.green = g;
     cmd.state.blue = b;
+    cmd.fields = kFieldColor;
     cmd.transition_ms = transition_ms;
     cmd.origin = origin;
     cmd.command_id = command_id;
@@ -202,7 +234,7 @@ GroupResult GroupManager::set_color(const std::string &group_id, uint8_t r,
         fanout.channel_id = cid;
         LightCommandEnvelope envelope{};
         envelope.command = fanout;
-        (void)envelope;
+        lighting_task_.enqueue(envelope);
     }
     return GroupResult::kOk;
 }
@@ -219,6 +251,7 @@ GroupResult GroupManager::set_cct(const std::string &group_id,
     LightCommand cmd{};
     cmd.state.power = true;
     cmd.state.color_temperature = kelvin;
+    cmd.fields = kFieldCct;
     cmd.transition_ms = transition_ms;
     cmd.origin = origin;
     cmd.command_id = command_id;
@@ -233,7 +266,7 @@ GroupResult GroupManager::set_cct(const std::string &group_id,
         fanout.channel_id = cid;
         LightCommandEnvelope envelope{};
         envelope.command = fanout;
-        (void)envelope;
+        lighting_task_.enqueue(envelope);
     }
     return GroupResult::kOk;
 }
@@ -326,67 +359,28 @@ ConfigStatus GroupManager::save_groups()
 ConfigStatus GroupManager::load_groups()
 {
     std::string contents;
-    ConfigStatus st = config_.load_document("groups.json", contents);
-    if (st != ConfigStatus::kOk) {
+    if (config_.load_document("groups.json", contents) != ConfigStatus::kOk) {
         return ConfigStatus::kOk;
     }
-
-    JsonDoc *doc = config_.json().parse(contents);
-    if (!doc) return ConfigStatus::kCorrupt;
-
-    JsonDoc *groups_arr = config_.json().get_object(doc, "groups");
-    if (!groups_arr) {
-        config_.json().free(doc);
-        return ConfigStatus::kCorrupt;
-    }
-
-    int arr_size = config_.json().get_array_size(doc, "groups");
-    if (arr_size < 0) {
-        config_.json().free(doc);
-        return ConfigStatus::kCorrupt;
-    }
-
-    for (int i = 0; i < arr_size; ++i) {
-        JsonDoc *g_obj = config_.json().get_array_item(groups_arr, i);
-        if (!g_obj) continue;
-
+    cJSON *root = cJSON_Parse(contents.c_str());
+    if (root == nullptr) return ConfigStatus::kCorrupt;
+    const cJSON *arr = cJSON_GetObjectItemCaseSensitive(root, "groups");
+    const cJSON *item = nullptr;
+    cJSON_ArrayForEach(item, arr)
+    {
+        if (group_count_ >= kMaxGroups) break;
         Group group{};
-        std::string id_str;
-        if (config_.json().get_string(g_obj, "id", id_str) == IJson::JsonResult::kOk) {
-            group.id = id_str;
-        }
-        std::string name_str;
-        if (config_.json().get_string(g_obj, "name", name_str) == IJson::JsonResult::kOk) {
-            group.name = name_str;
-        }
-        std::string room_str;
-        if (config_.json().get_string(g_obj, "room_id", room_str) == IJson::JsonResult::kOk) {
-            group.room_id = room_str;
-        }
-
-        int light_count = config_.json().get_array_size(g_obj, "light_ids");
-        if (light_count > 0) {
-            JsonDoc *lights_arr = config_.json().get_object(g_obj, "light_ids");
-            for (int j = 0; j < light_count; ++j) {
-                JsonDoc *item = config_.json().get_array_item(lights_arr, j);
-                if (!item) continue;
-                std::string lid;
-                if (config_.json().get_string(item, "", lid) == IJson::JsonResult::kOk) {
-                    group.channel_ids.push_back(lid);
-                }
-            }
-        }
-
-        int32_t policy_val = 0;
-        if (config_.json().get_int(g_obj, "policy", policy_val) == IJson::JsonResult::kOk) {
-            group.policy = static_cast<AggregationPolicy>(policy_val);
-        }
-
-        groups_[group_count_] = group;
-        group_count_++;
+        group.id = json_str(item, "id");
+        if (group.id.empty() || find_index(group.id) < group_count_) continue;
+        group.name = json_str(item, "name");
+        group.room_id = json_str(item, "room_id");
+        group.channel_ids = json_str_array(item, "light_ids");
+        const int policy = json_int(item, "policy", 0);
+        group.policy = (policy >= 0 && policy <= 2) ? static_cast<AggregationPolicy>(policy)
+                                                    : AggregationPolicy::kAverage;
+        groups_[group_count_++] = group;
     }
-
-    config_.json().free(doc);
+    cJSON_Delete(root);
     return ConfigStatus::kOk;
 }
 

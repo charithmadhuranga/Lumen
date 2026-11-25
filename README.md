@@ -32,8 +32,8 @@ controller-presets/  vendor reference only — never a source of verified facts
 | Task | Command |
 |---|---|
 | Build firmware | `pio run -e esp32` (or `-e esp32s3`) |
-| Flash reference board | `pio run -e esp32 -t upload` (port pinned: `/dev/ttyUSB1`) |
-| Serial monitor | `pio device monitor -p /dev/ttyUSB1 -b 115200` |
+| Flash reference board | `pio run -e esp32 -t upload` (port pinned: `/dev/ttyUSB0`) |
+| Serial monitor | `pio device monitor -p /dev/ttyUSB0 -b 115200` |
 | Host unit tests | `pio test -e native` |
 | LittleFS image | `pio run -e esp32 -t buildfs` |
 | Install web UI deps | `cd webui && npm ci` |

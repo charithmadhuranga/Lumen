@@ -438,4 +438,40 @@ inline LightState normalize_state(const LightState &state, const char *type,
     return out;
 }
 
+// ========================================================================
+// Perceptual dimming curve (CIE 1931 lightness -> luminance)
+// ========================================================================
+
+// Maps a perceived brightness percentage (0..100) to a linear 16-bit
+// output level (0..65535). 1% maps to a visible-but-dim level instead of
+// the near-zero a gamma-2.2 curve gives, and steps feel even to the eye.
+inline uint16_t perceptual_level(uint8_t brightness_percent)
+{
+    if (brightness_percent == 0) {
+        return 0;
+    }
+    if (brightness_percent >= 100) {
+        return 65535;
+    }
+    const float l = static_cast<float>(brightness_percent); // L* 0..100
+    float y;
+    if (l <= 8.0f) {
+        y = l / 903.3f;
+    } else {
+        const float f = (l + 16.0f) / 116.0f;
+        y = f * f * f;
+    }
+    int out = static_cast<int>(y * 65535.0f + 0.5f);
+    if (out < 1) {
+        out = 1;
+    }
+    return static_cast<uint16_t>(clamp(out, 1, 65535));
+}
+
+// Scales an 8-bit colour component by a 16-bit level -> 16-bit duty.
+inline uint16_t scale_component(uint8_t component, uint16_t level)
+{
+    return static_cast<uint16_t>((static_cast<uint32_t>(component) * level + 127U) / 255U);
+}
+
 } // namespace lumen

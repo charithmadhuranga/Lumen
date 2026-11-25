@@ -14,6 +14,35 @@
 namespace lumen
 {
 
+namespace
+{
+// cJSON helpers shared by the loaders (bounded string reads).
+std::string json_str(const cJSON *obj, const char *key)
+{
+    const cJSON *it = cJSON_GetObjectItemCaseSensitive(obj, key);
+    return (cJSON_IsString(it) && it->valuestring != nullptr) ? std::string(it->valuestring)
+                                                              : std::string();
+}
+int json_int(const cJSON *obj, const char *key, int fallback)
+{
+    const cJSON *it = cJSON_GetObjectItemCaseSensitive(obj, key);
+    return cJSON_IsNumber(it) ? it->valueint : fallback;
+}
+std::vector<std::string> json_str_array(const cJSON *obj, const char *key)
+{
+    std::vector<std::string> out;
+    const cJSON *arr = cJSON_GetObjectItemCaseSensitive(obj, key);
+    const cJSON *it = nullptr;
+    cJSON_ArrayForEach(it, arr)
+    {
+        if (cJSON_IsString(it) && it->valuestring != nullptr) {
+            out.emplace_back(it->valuestring);
+        }
+    }
+    return out;
+}
+} // namespace
+
 SceneManager::SceneManager(ChannelManager &channel_mgr,
                            LightingTask &lighting_task,
                            ConfigManager &config)
@@ -216,7 +245,7 @@ SceneResult SceneManager::activate_scene(const std::string &scene_id,
 
         LightCommandEnvelope envelope{};
         envelope.command = cmd;
-        (void)envelope;
+        lighting_task_.enqueue(envelope);
     }
 
     return SceneResult::kOk;
@@ -292,89 +321,41 @@ ConfigStatus SceneManager::save_scenes()
 ConfigStatus SceneManager::load_scenes()
 {
     std::string contents;
-    ConfigStatus st = config_.load_document("scenes.json", contents);
-    if (st != ConfigStatus::kOk) {
+    if (config_.load_document("scenes.json", contents) != ConfigStatus::kOk) {
         return ConfigStatus::kOk;
     }
-
-    JsonDoc *doc = config_.json().parse(contents);
-    if (!doc) return ConfigStatus::kCorrupt;
-
-    JsonDoc *scenes_arr = config_.json().get_object(doc, "scenes");
-    if (!scenes_arr) {
-        config_.json().free(doc);
-        return ConfigStatus::kCorrupt;
-    }
-
-    int arr_size = config_.json().get_array_size(doc, "scenes");
-    if (arr_size < 0) {
-        config_.json().free(doc);
-        return ConfigStatus::kCorrupt;
-    }
-
-    for (int i = 0; i < arr_size; ++i) {
-        JsonDoc *s_obj = config_.json().get_array_item(scenes_arr, i);
-        if (!s_obj) continue;
-
+    cJSON *root = cJSON_Parse(contents.c_str());
+    if (root == nullptr) return ConfigStatus::kCorrupt;
+    const cJSON *arr = cJSON_GetObjectItemCaseSensitive(root, "scenes");
+    const cJSON *item = nullptr;
+    cJSON_ArrayForEach(item, arr)
+    {
+        if (scene_count_ >= kMaxScenes) break;
         Scene scene{};
-        std::string id_str;
-        if (config_.json().get_string(s_obj, "id", id_str) == IJson::JsonResult::kOk) {
-            scene.id = id_str;
+        scene.id = json_str(item, "id");
+        if (scene.id.empty() || find_index(scene.id) < scene_count_) continue;
+        scene.name = json_str(item, "name");
+        scene.transition_ms = static_cast<uint32_t>(json_int(item, "transition_ms", 0));
+        const cJSON *states = cJSON_GetObjectItemCaseSensitive(item, "states");
+        const cJSON *st = nullptr;
+        cJSON_ArrayForEach(st, states)
+        {
+            SceneLightState ls{};
+            ls.light_id = json_str(st, "light_id");
+            if (ls.light_id.empty()) continue;
+            ls.power = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(st, "power"));
+            ls.brightness = static_cast<uint8_t>(clamp(json_int(st, "brightness", 0), 0, 100));
+            ls.red = static_cast<uint8_t>(clamp(json_int(st, "red", 0), 0, 255));
+            ls.green = static_cast<uint8_t>(clamp(json_int(st, "green", 0), 0, 255));
+            ls.blue = static_cast<uint8_t>(clamp(json_int(st, "blue", 0), 0, 255));
+            ls.white = static_cast<uint8_t>(clamp(json_int(st, "white", 0), 0, 255));
+            ls.color_temperature =
+                static_cast<uint16_t>(clamp(json_int(st, "color_temperature", 0), 0, 20000));
+            scene.states.push_back(ls);
         }
-        std::string name_str;
-        if (config_.json().get_string(s_obj, "name", name_str) == IJson::JsonResult::kOk) {
-            scene.name = name_str;
-        }
-        int32_t tm = 0;
-        if (config_.json().get_int(s_obj, "transition_ms", tm) == IJson::JsonResult::kOk) {
-            scene.transition_ms = static_cast<uint32_t>(tm);
-        }
-
-        int state_count = config_.json().get_array_size(s_obj, "states");
-        if (state_count > 0) {
-            JsonDoc *states_arr = config_.json().get_object(s_obj, "states");
-            for (int j = 0; j < state_count; ++j) {
-                JsonDoc *st_obj = config_.json().get_array_item(states_arr, j);
-                if (!st_obj) continue;
-
-                SceneLightState st{};
-                std::string lid;
-                if (config_.json().get_string(st_obj, "light_id", lid) == IJson::JsonResult::kOk) {
-                    st.light_id = lid;
-                }
-                bool power_val = false;
-                if (config_.json().get_bool(st_obj, "power", power_val) == IJson::JsonResult::kOk) {
-                    st.power = power_val;
-                }
-                int32_t val = 0;
-                if (config_.json().get_int(st_obj, "brightness", val) == IJson::JsonResult::kOk) {
-                    st.brightness = static_cast<uint8_t>(val);
-                }
-                if (config_.json().get_int(st_obj, "red", val) == IJson::JsonResult::kOk) {
-                    st.red = static_cast<uint8_t>(val);
-                }
-                if (config_.json().get_int(st_obj, "green", val) == IJson::JsonResult::kOk) {
-                    st.green = static_cast<uint8_t>(val);
-                }
-                if (config_.json().get_int(st_obj, "blue", val) == IJson::JsonResult::kOk) {
-                    st.blue = static_cast<uint8_t>(val);
-                }
-                if (config_.json().get_int(st_obj, "white", val) == IJson::JsonResult::kOk) {
-                    st.white = static_cast<uint8_t>(val);
-                }
-                if (config_.json().get_int(st_obj, "color_temperature", val) == IJson::JsonResult::kOk) {
-                    st.color_temperature = static_cast<uint16_t>(val);
-                }
-
-                scene.states.push_back(st);
-            }
-        }
-
-        scenes_[scene_count_] = scene;
-        scene_count_++;
+        scenes_[scene_count_++] = scene;
     }
-
-    config_.json().free(doc);
+    cJSON_Delete(root);
     return ConfigStatus::kOk;
 }
 

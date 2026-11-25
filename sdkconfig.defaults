@@ -6,3 +6,26 @@ CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
 
 # Structured logging: INFO by default (SPEC §21 categories land in Phase 1).
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+
+# --- Lumen runtime (Phase 6+) ---
+# WebSocket support in esp_http_server (/api/v1/ws).
+CONFIG_HTTPD_WS_SUPPORT=y
+# Session cookies + CSRF header fit comfortably.
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
+CONFIG_HTTPD_MAX_URI_LEN=512
+# Sockets: 10 for httpd (+3 internal) plus MQTT/TCP/UDP/mDNS headroom.
+CONFIG_LWIP_MAX_SOCKETS=16
+# Task watchdog guards the lighting + housekeeping tasks (5 s).
+CONFIG_ESP_TASK_WDT_EN=y
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=5
+# Main task stack: Controller::start() parses JSON + builds the model.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+# LittleFS: allow long-ish asset names (hashed bundles).
+CONFIG_LITTLEFS_OBJ_NAME_LEN=64
+# C++ exceptions stay disabled (ESP-IDF default); RTTI off.
+
+# --- Image size (ota slots are 1.375 MB; keep >= 15% headroom) ---
+CONFIG_COMPILER_OPTIMIZATION_SIZE=y
+CONFIG_LIBC_NEWLIB_NANO_FORMAT=y
+# Bluetooth is unused (ESP-NOW rides on Wi-Fi).
+CONFIG_BT_ENABLED=n

@@ -6,12 +6,29 @@
   "mcu": "esp32",
   "description": "Generic ESP32 with PCF8574 8-bit GPIO expander over I2C for digital inputs. PCF8574 I2C address (default 0x20) must be confirmed by bus scan.",
   "resources": [
-    {"id": "i2c0", "type": "i2c"},
-    {"id": "gpio_sda", "type": "gpio", "gpio": 21, "direction": "bidirectional"},
-    {"id": "gpio_scl", "type": "gpio", "gpio": 22, "direction": "bidirectional"}
+    {
+      "id": "i2c0",
+      "type": "i2c",
+      "port": 0,
+      "frequency": 100000,
+      "pins": {
+        "sda": 21,
+        "scl": 22
+      }
+    }
   ],
   "peripherals": [
-    {"id": "pcf8574_0", "type": "pcf8574", "bus": "i2c0", "address": 32, "channels": 8, "unverified": true, "address_verification_required": true, "unverified_note": "Default PCF8574 address is 0x20; confirm by I2C scan before use. Polarity (active-low vs active-high) unverified."}
+    {
+      "id": "pcf8574_0",
+      "type": "pcf8574",
+      "bus": "i2c0",
+      "address": 32,
+      "channels": 8,
+      "unverified": true,
+      "address_verification_required": true,
+      "unverified_note": "Default PCF8574 address is 0x20; confirm by I2C scan before use. Polarity (active-low vs active-high) unverified.",
+      "active_low": true
+    }
   ],
   "capabilities": {
     "native_pwm": false,

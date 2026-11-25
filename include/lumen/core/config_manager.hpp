@@ -42,6 +42,12 @@ using DocMigrate = bool (*)(std::string &doc, uint16_t from_version,
 using DocValidate = bool (*)(const std::string &doc, IJson &json);
 using DocDefault = std::string (*)();
 
+// Additive migration (SPEC §19.3): older documents only lack newer
+// optional fields, which loaders default. Used by every Lumen document whose
+// schema has only grown additively; schema_version is re-stamped on save.
+bool migrate_additive(std::string &doc, uint16_t from_version, uint16_t to_version,
+                      IJson &json);
+
 struct DocConfig
 {
     const char *path;                 // relative path in storage, e.g. "system.json"

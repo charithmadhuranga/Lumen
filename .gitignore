@@ -35,3 +35,10 @@ test-results/
 __pycache__/
 *.pyc
 .venv/
+
+# Local development secrets (Wi-Fi seed credentials)
+secrets.ini
+
+# Generated LittleFS image source (built from webui/dist by scripts/build_fs.py)
+data/
+include/lumen/generated/

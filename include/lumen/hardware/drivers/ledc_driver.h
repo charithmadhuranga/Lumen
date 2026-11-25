@@ -1,13 +1,18 @@
-// Lumen — native LEDC PWM driver (SPEC §7.1, P0; §7.4).
+// Lumen — native PWM driver (ESP-IDF LEDC). SPEC §7.4.
 //
-// ESP-IDF LEDC implementation of IPwmDriver. Manages timer frequency,
-// resolution, channel allocation, duty, inversion. Conflict detection via
-// static tracking of allocated channels/timers.
+// One instance per PWM resource in the board profile ("type": "pwm",
+// "gpio": N). Channels are allocated from the global LEDC pool; timers are
+// shared between channels running at the same frequency/resolution (the
+// ESP32 has 4 low-speed timers but 8 channels).
+//
+// Duty contract (IPwmDriver): 16-bit normalised, 0 = off, 65535 = full on.
+// The driver scales it to the configured timer resolution.
 #pragma once
 
 #include "esp_err.h"
-
 #include "lumen/hardware/hal/i_pwm_driver.h"
+
+#include <cstdint>
 
 namespace lumen
 {
@@ -15,17 +20,16 @@ namespace lumen
 class LedcDriver final : public IPwmDriver
 {
   public:
-    LedcDriver(uint8_t channel, uint8_t timer_num, uint32_t frequency_hz,
-               uint8_t resolution_bits);
+    LedcDriver(int32_t gpio, uint32_t frequency_hz = 1000,
+               uint8_t resolution_bits = 13, bool inverted = false);
+    ~LedcDriver() override;
 
-    // IDriver
     esp_err_t initialize() override;
     esp_err_t shutdown() override;
     DriverState state() const override;
     const char *name() const override;
     DriverType driver_type() const override { return DriverType::kPwm; }
 
-    // IPwmDriver
     esp_err_t set_duty(PwmDuty duty) override;
     esp_err_t get_duty(PwmDuty &duty) override;
     esp_err_t set_frequency(uint32_t frequency_hz) override;
@@ -34,21 +38,25 @@ class LedcDriver final : public IPwmDriver
     esp_err_t get_resolution(uint8_t &resolution_bits) override;
     esp_err_t set_inverted(bool inverted) override;
     esp_err_t get_inverted(bool &inverted) override;
-    virtual esp_err_t set_channel_duty(uint8_t channel, PwmDuty duty) = 0;
 
-    virtual esp_err_t flush() = 0;
+    // Single-channel device: channel 0 is the only valid channel.
+    esp_err_t set_channel_duty(uint8_t channel, PwmDuty duty) override;
+    esp_err_t flush() override { return ESP_OK; } // LEDC updates immediately
 
-    uint8_t channel() const { return channel_; }
-    uint8_t timer_num() const { return timer_num_; }
+    int32_t gpio() const { return gpio_; }
+    int channel() const { return channel_; }
 
   private:
-    uint8_t channel_;
-    uint8_t timer_num_;
+    int32_t gpio_;
     uint32_t frequency_hz_;
     uint8_t resolution_bits_;
+    bool inverted_;
+    int channel_ = -1;
+    int timer_ = -1;
     PwmDuty duty_ = 0;
-    bool inverted_ = false;
     DriverState state_ = DriverState::kUninitialized;
+
+    esp_err_t write_raw(PwmDuty duty);
 };
 
 } // namespace lumen

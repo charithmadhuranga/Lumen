@@ -1,33 +1,37 @@
-// Lumen — lighting command queue and task (include/lumen/lighting/lighting_task.h)
+// Lumen — lighting engine (include/lumen/lighting/lighting_task.h)
 //
-// The lighting service is the sole executor of lighting commands. Producers
-// (REST/WS/MQTT/inputs/automation) enqueue LightCommand envelopes into a
-// bounded queue; the lighting task dequeues and applies them with transitions
-// and effects, then writes to hardware via driver adapters.
+// The lighting service is the sole executor of lighting commands (SPEC §8,
+// §23). Producers (REST/WS/MQTT/inputs/automation/scenes) enqueue
+// LightCommandEnvelopes into a bounded queue; the lighting task drains it,
+// resolves the requested state, then advances transitions and effects every
+// tick and writes changed outputs through driver adapters. PCA9685 writes
+// are batched: one flush per device per tick.
 //
-// All hardware access goes through driver adapters (no GPIO in lighting code).
-// Commands carry origin + command_id for Phase 11 conflict resolution.
+// Pure C++ core (host-testable with a mock IHardwareManager). The FreeRTOS
+// loop that calls run_once() lives in the lighting service (main firmware).
 //
-// Pure C++ core (host-testable); FreeRTOS task wrapper lives in the .cpp.
+// Threading: enqueue() is safe from any task (internal queue mutex). All
+// other methods must be called with lumen::model_mutex() held.
 #pragma once
 
-#include <cstdint>
-#include <cstddef>
-#include <string>
 #include <array>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <mutex>
+#include <string>
 
+#include "lumen/hardware/hal/i_hardware_manager.h"
+#include "lumen/lighting/channel.h"
+#include "lumen/lighting/driver_adapter.h"
+#include "lumen/lighting/effects.h"
 #include "lumen/lighting/transition.h"
-#include "lumen/lighting/channel.h"
-#include "lumen/lighting/channel.h"
 
 namespace lumen
 {
 
 // Maximum number of commands the queue can hold (bounded, no dynamic alloc).
-static constexpr std::size_t kLightingCommandQueueSize = 32;
-
-// Maximum number of concurrent transitions/effects (one per channel).
-static constexpr std::size_t kLightingMaxChannels = 32;
+static constexpr std::size_t kLightingCommandQueueSize = 64;
 
 // A command pushed to the lighting task by producers.
 struct LightCommandEnvelope
@@ -36,64 +40,128 @@ struct LightCommandEnvelope
     uint32_t posted_ms = 0; // uptime when posted
 };
 
-// Result of trying to enqueue a command.
 enum class EnqueueResult : uint8_t
 {
     kOk = 0,
-    kQueueFull, // bounded queue — caller must drop or retry
+    kQueueFull, // bounded queue — observable via stats().queue_dropped
 };
 
-// Lighting task interface (host-testable).
+// Why a listener is being notified.
+enum class LightChange : uint8_t
+{
+    kRequested = 0, // a command changed the target state
+    kSettled,       // a transition/effect finished; outputs == requested
+    kConfig,        // channel added/updated/removed
+};
+
+using LightListener = void (*)(const Channel &channel, LightChange change, void *user);
+
+struct LightingStats
+{
+    uint32_t commands_processed = 0;
+    uint32_t commands_rejected = 0; // unknown channel
+    uint32_t queue_dropped = 0;     // enqueue() on a full queue
+    uint32_t hardware_writes = 0;
+    uint32_t hardware_errors = 0;
+    uint32_t ticks = 0;
+    uint32_t max_tick_us = 0;
+};
+
 class LightingTask
 {
   public:
     LightingTask() = default;
 
-    // Enqueue a command for the lighting task to apply.
-    // Returns kQueueFull when the queue is at capacity.
+    // --- hardware binding -------------------------------------------------
+    // Bind (or rebind after a profile apply) every channel to its driver.
+    // Channels whose driver is missing are marked unavailable but keep
+    // their state, so they recover on the next attach.
+    void attach_hardware(IHardwareManager *hw);
+    // Drive every bound output to its safe state and drop the adapters.
+    void detach_hardware();
+    bool hardware_attached() const { return hw_ != nullptr; }
+
+    // --- commands ---------------------------------------------------------
     EnqueueResult enqueue(const LightCommandEnvelope &cmd);
-
-    // Process up to `max_commands` pending commands.
-    // Returns how many were processed.
-    // `now_ms` is the current uptime (for transition timing).
+    // Drain up to `max_commands` queued commands (resolves requested state,
+    // starts transitions/effects). Returns how many were processed.
     std::size_t process(uint32_t now_ms, std::size_t max_commands);
+    // Advance transitions/effects and write changed outputs.
+    void tick(uint32_t now_ms);
+    // process() + tick().
+    void run_once(uint32_t now_ms);
+    std::size_t queue_depth() const;
 
-    // Get a channel's current requested state (after command processing).
-    bool get_requested(const std::string &channel_id, LightState &out) const;
-
-    // Get a channel's current applied state (last written to hardware).
-    bool get_applied(const std::string &channel_id, LightState &out) const;
-
-    // Register a channel with the lighting task (for state tracking).
+    // --- channel registry -------------------------------------------------
     bool register_channel(const Channel &channel);
+    bool update_channel(const Channel &channel); // keeps state; rebinds driver
+    bool remove_channel(const std::string &channel_id);
+    ChannelManager &channel_manager() { return channel_manager_; }
+    const ChannelManager &channel_manager() const { return channel_manager_; }
 
-    // Get the channel manager (for driver adapters to resolve device_ids).
-    ChannelManager &channel_manager()
+    bool get_requested(const std::string &channel_id, LightState &out) const;
+    bool get_applied(const std::string &channel_id, LightState &out) const;
+    bool hardware_ok(const std::string &channel_id) const;
+    bool animating(const std::string &channel_id) const; // transition/effect running
+    std::string active_effect(const std::string &channel_id) const;
+
+    // Set requested + applied directly (boot-time restore). No transition.
+    bool restore_state(const std::string &channel_id, const LightState &state);
+
+    void set_listener(LightListener listener, void *user)
     {
-        return channel_manager_;
+        listener_ = listener;
+        listener_user_ = user;
+    }
+
+    // True once since the last call if any requested state changed
+    // (drives debounced persistence of last-known state).
+    bool take_state_dirty();
+
+    const LightingStats &stats() const { return stats_; }
+    void record_tick_us(uint32_t us)
+    {
+        if (us > stats_.max_tick_us) stats_.max_tick_us = us;
     }
 
   private:
-    ChannelManager channel_manager_;
+    struct Slot
+    {
+        Transition transition{};
+        LightState target{};        // exact state to snap to at the end
+        std::unique_ptr<IDriverAdapter> adapter;
+        bool adapter_ok = false;
+        LightState written{};
+        bool written_valid = false;
+        std::string effect;         // active effect name ("" = none)
+    };
 
-    // Bounded command queue (ring buffer).
+    void bind_slot(std::size_t index);
+    void notify(std::size_t index, LightChange change);
+    void apply_command(const LightCommand &cmd, uint32_t now_ms);
+    bool write_slot(std::size_t index, const LightState &out);
+
+    ChannelManager channel_manager_;
+    std::array<Slot, ChannelManager::kMaxChannels> slots_{};
+    EffectEngine effects_;
+    IHardwareManager *hw_ = nullptr;
+
+    // Bounded command queue (ring buffer) + its own lock so producers never
+    // need the model lock to enqueue.
+    mutable std::mutex queue_mutex_;
     std::array<LightCommandEnvelope, kLightingCommandQueueSize> queue_{};
     std::size_t queue_head_ = 0;
     std::size_t queue_tail_ = 0;
     std::size_t queue_count_ = 0;
 
-    // Active transitions (one per channel, indexed by channel slot).
-    std::array<Transition, kLightingMaxChannels> transitions_{};
-    std::size_t transition_slot_count_ = 0;
-
-    // Apply a single command to hardware via driver adapters.
-    // Returns true if hardware was written.
-    bool apply_to_hardware(const LightCommand &cmd,
-                           const LightState &new_state,
-                           uint32_t now_ms);
-
-    // Find the transition slot for a channel (or allocate one).
-    std::size_t find_transition_slot(const std::string &channel_id);
+    LightListener listener_ = nullptr;
+    void *listener_user_ = nullptr;
+    bool state_dirty_ = false;
+    LightingStats stats_{};
 };
+
+// Effect names accepted by LightCommand::effect.
+bool effect_type_from_string(const std::string &name, EffectType &out);
+const char *effect_type_name(EffectType type);
 
 } // namespace lumen

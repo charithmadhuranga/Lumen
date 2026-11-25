@@ -6,12 +6,29 @@
   "mcu": "esp32",
   "description": "Generic ESP32 with an external PCA9685 16-channel PWM expander over I2C. PCA9685 I2C address (default 0x40) must be confirmed by bus scan before use.",
   "resources": [
-    {"id": "i2c0", "type": "i2c"},
-    {"id": "gpio_sda", "type": "gpio", "gpio": 21, "direction": "bidirectional"},
-    {"id": "gpio_scl", "type": "gpio", "gpio": 22, "direction": "output"}
+    {
+      "id": "i2c0",
+      "type": "i2c",
+      "port": 0,
+      "frequency": 100000,
+      "pins": {
+        "sda": 21,
+        "scl": 22
+      }
+    }
   ],
   "peripherals": [
-    {"id": "pca9685_0", "type": "pca9685", "bus": "i2c0", "address": 64, "channels": 16, "frequency": 1000, "unverified": true, "address_verification_required": true, "unverified_note": "Default PCA9685 address is 0x40; confirm by I2C scan before use."}
+    {
+      "id": "pca9685_0",
+      "type": "pca9685",
+      "bus": "i2c0",
+      "address": 64,
+      "channels": 16,
+      "frequency": 1000,
+      "unverified": true,
+      "address_verification_required": true,
+      "unverified_note": "Default PCA9685 address is 0x40; confirm by I2C scan before use."
+    }
   ],
   "capabilities": {
     "native_pwm": false,

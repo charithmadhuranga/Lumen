@@ -19,8 +19,15 @@ esp_err_t GpioDriver::initialize()
     io_conf.intr_type = GPIO_INTR_DISABLE;
     io_conf.mode = (direction_ == "output") ? GPIO_MODE_OUTPUT
                                             : GPIO_MODE_INPUT;
-    io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
-    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    io_conf.pull_up_en = (pull_ == "up") ? GPIO_PULLUP_ENABLE : GPIO_PULLUP_DISABLE;
+    io_conf.pull_down_en =
+        (pull_ == "down") ? GPIO_PULLDOWN_ENABLE : GPIO_PULLDOWN_DISABLE;
+
+    // Outputs: latch the safe level BEFORE switching the pin to output so
+    // there is no glitch at boot.
+    if (direction_ == "output") {
+        gpio_set_level(static_cast<gpio_num_t>(gpio_), safe_active_ ? safe_value_ : 0);
+    }
 
     esp_err_t err = gpio_config(&io_conf);
     if (err != ESP_OK) {

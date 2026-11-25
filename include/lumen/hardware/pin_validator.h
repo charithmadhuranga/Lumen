@@ -28,6 +28,19 @@
 namespace lumen
 {
 
+// One GPIO claimed by a profile resource: its `gpio` field or a named bus
+// pin (e.g. i2c0.sda). Used by the validator and the Pin Mapping API.
+struct PinAssignment
+{
+    int32_t gpio;
+    std::string owner;   // resource id
+    std::string label;   // "id (type)" or "id.sda"
+    std::string role;    // resource type or bus pin name
+    bool outputish;      // drives the pin
+};
+
+std::vector<PinAssignment> collect_pin_assignments(const BoardProfile &profile);
+
 class PinValidator
 {
   public:

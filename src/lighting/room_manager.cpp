@@ -14,6 +14,35 @@
 namespace lumen
 {
 
+namespace
+{
+// cJSON helpers shared by the loaders (bounded string reads).
+std::string json_str(const cJSON *obj, const char *key)
+{
+    const cJSON *it = cJSON_GetObjectItemCaseSensitive(obj, key);
+    return (cJSON_IsString(it) && it->valuestring != nullptr) ? std::string(it->valuestring)
+                                                              : std::string();
+}
+int json_int(const cJSON *obj, const char *key, int fallback)
+{
+    const cJSON *it = cJSON_GetObjectItemCaseSensitive(obj, key);
+    return cJSON_IsNumber(it) ? it->valueint : fallback;
+}
+std::vector<std::string> json_str_array(const cJSON *obj, const char *key)
+{
+    std::vector<std::string> out;
+    const cJSON *arr = cJSON_GetObjectItemCaseSensitive(obj, key);
+    const cJSON *it = nullptr;
+    cJSON_ArrayForEach(it, arr)
+    {
+        if (cJSON_IsString(it) && it->valuestring != nullptr) {
+            out.emplace_back(it->valuestring);
+        }
+    }
+    return out;
+}
+} // namespace
+
 RoomManager::RoomManager(ChannelManager &channel_mgr,
                          LightingTask &lighting_task,
                          ConfigManager &config)
@@ -137,21 +166,15 @@ RoomResult RoomManager::set_power(const std::string &room_id, bool power,
     Room *room = find_mutable(room_id);
     if (room == nullptr) return RoomResult::kNotFound;
 
-    LightCommand cmd{};
-    cmd.channel_id = room_id; // placeholder — lighting task resolves per-channel
-    cmd.state.power = power;
-    cmd.transition_ms = transition_ms;
-    cmd.origin = origin;
-
-    // Fan out: one command per light in the room, each with its own channel_id.
-    LightCommandEnvelope envelope{};
-    envelope.posted_ms = 0; // lighting task fills timestamp
-
+    // Fan out: one command per light in the room (SPEC §9.1 master power).
     for (const auto &cid : room->channel_ids) {
-        LightCommand fanout = cmd;
-        fanout.channel_id = cid;
-        envelope.command = fanout;
-        (void)envelope;
+        LightCommandEnvelope envelope{};
+        envelope.command.channel_id = cid;
+        envelope.command.state.power = power;
+        envelope.command.fields = kFieldPower;
+        envelope.command.transition_ms = transition_ms;
+        envelope.command.origin = origin;
+        lighting_task_.enqueue(envelope);
     }
     return RoomResult::kOk;
 }
@@ -164,18 +187,14 @@ RoomResult RoomManager::set_brightness(const std::string &room_id,
     Room *room = find_mutable(room_id);
     if (room == nullptr) return RoomResult::kNotFound;
 
-    LightCommand cmd{};
-    cmd.state.power = true;
-    cmd.state.brightness = brightness;
-    cmd.transition_ms = transition_ms;
-    cmd.origin = origin;
-
     for (const auto &cid : room->channel_ids) {
-        LightCommand fanout = cmd;
-        fanout.channel_id = cid;
         LightCommandEnvelope envelope{};
-        envelope.command = fanout;
-        (void)envelope;
+        envelope.command.channel_id = cid;
+        envelope.command.state.brightness = brightness;
+        envelope.command.fields = kFieldBrightness;
+        envelope.command.transition_ms = transition_ms;
+        envelope.command.origin = origin;
+        lighting_task_.enqueue(envelope);
     }
     return RoomResult::kOk;
 }
@@ -259,73 +278,28 @@ ConfigStatus RoomManager::save_rooms()
 ConfigStatus RoomManager::load_rooms()
 {
     std::string contents;
-    ConfigStatus st = config_.load_document("rooms.json", contents);
-    if (st != ConfigStatus::kOk) {
-        // No existing rooms — that's fine, start empty.
-        return ConfigStatus::kOk;
+    if (config_.load_document("rooms.json", contents) != ConfigStatus::kOk) {
+        return ConfigStatus::kOk; // no rooms yet
     }
-
-    // Parse JSON.
-    JsonDoc *doc = config_.json().parse(contents);
-    if (!doc) return ConfigStatus::kCorrupt;
-
-    JsonDoc *rooms_arr = config_.json().get_object(doc, "rooms");
-    if (!rooms_arr) {
-        config_.json().free(doc);
-        return ConfigStatus::kCorrupt;
-    }
-
-    int arr_size = config_.json().get_array_size(doc, "rooms");
-    if (arr_size < 0) {
-        config_.json().free(doc);
-        return ConfigStatus::kCorrupt;
-    }
-
-    for (int i = 0; i < arr_size; ++i) {
-        JsonDoc *room_obj = config_.json().get_array_item(rooms_arr, i);
-        if (!room_obj) continue;
-
+    cJSON *root = cJSON_Parse(contents.c_str());
+    if (root == nullptr) return ConfigStatus::kCorrupt;
+    const cJSON *arr = cJSON_GetObjectItemCaseSensitive(root, "rooms");
+    const cJSON *item = nullptr;
+    cJSON_ArrayForEach(item, arr)
+    {
+        if (room_count_ >= kMaxRooms) break;
         Room room{};
-        std::string id_str;
-        if (config_.json().get_string(room_obj, "id", id_str) == IJson::JsonResult::kOk) {
-            room.id = id_str;
-        }
-        std::string name_str;
-        if (config_.json().get_string(room_obj, "name", name_str) == IJson::JsonResult::kOk) {
-            room.name = name_str;
-        }
-        std::string floor_str;
-        if (config_.json().get_string(room_obj, "floor", floor_str) == IJson::JsonResult::kOk) {
-            room.floor = floor_str;
-        }
-        std::string icon_str;
-        if (config_.json().get_string(room_obj, "icon", icon_str) == IJson::JsonResult::kOk) {
-            room.icon = icon_str;
-        }
-        std::string floorplan_str;
-        if (config_.json().get_string(room_obj, "floorplan_id", floorplan_str) == IJson::JsonResult::kOk) {
-            room.floorplan_id = floorplan_str;
-        }
-
-        // Load light_ids array.
-        JsonDoc *lights_arr = config_.json().get_object(room_obj, "light_ids");
-        if (lights_arr) {
-            int light_count = config_.json().get_array_size(room_obj, "light_ids");
-            for (int j = 0; j < light_count; ++j) {
-                JsonDoc *light_id_item = config_.json().get_array_item(lights_arr, j);
-                if (!light_id_item) continue;
-                std::string lid;
-                if (config_.json().get_string(light_id_item, "", lid) == IJson::JsonResult::kOk) {
-                    room.channel_ids.push_back(lid);
-                }
-            }
-        }
-
-        rooms_[room_count_] = room;
-        room_count_++;
+        room.id = json_str(item, "id");
+        if (room.id.empty() || find_index(room.id) < room_count_) continue;
+        room.name = json_str(item, "name");
+        room.floor = json_str(item, "floor");
+        room.icon = json_str(item, "icon");
+        room.floorplan_id = json_str(item, "floorplan_id");
+        room.channel_ids = json_str_array(item, "light_ids");
+        room.group_ids = json_str_array(item, "group_ids");
+        rooms_[room_count_++] = room;
     }
-
-    config_.json().free(doc);
+    cJSON_Delete(root);
     return ConfigStatus::kOk;
 }
 

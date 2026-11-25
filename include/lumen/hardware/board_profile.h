@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace lumen
@@ -24,6 +25,26 @@ struct BoardResource
     std::string pull;              // none, up, down
     bool safe_state_set = false;
     bool safe_state = false;       // for outputs
+
+    // Named bus pins for multi-pin resources, e.g. i2c {"sda":4,"scl":16},
+    // uart {"tx":14,"rx":33,"de":-1}, ethernet {"mdc":23,"mdio":18,
+    // "clk":17,"power":-1}, rmt {"data":27}. Every entry >= 0 is a GPIO
+    // claimed by this resource and goes through the same PinValidator
+    // checks as `gpio` (AGENTS.md §4.4).
+    std::vector<std::pair<std::string, int32_t>> pins;
+    int32_t port = -1;             // peripheral port (I2C/UART controller)
+    int32_t frequency = 0;         // bus/timer frequency in Hz (0 = default)
+
+    // Returns the named pin, or -1 when absent.
+    int32_t pin(const std::string &name) const
+    {
+        for (const auto &p : pins) {
+            if (p.first == name) {
+                return p.second;
+            }
+        }
+        return -1;
+    }
 };
 
 // A peripheral device on a bus/resource.
@@ -36,6 +57,8 @@ struct BoardPeripheral
     int32_t address = -1;          // I2C address (for pca9685, pcf8574)
     int32_t channels = 0;
     int32_t frequency = 0;
+    bool active_low = false;       // inputs (pcf8574) / relays: inverted logic
+    std::string settings_json;     // raw "settings" object (driver-specific)
     // unverified flags: the profile ships user-supplied values that need
     // physical verification (AGENTS.md §6). Never silently "fixed".
     bool unverified = false;

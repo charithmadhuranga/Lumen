@@ -88,6 +88,13 @@ class RoomManager
                               const std::string &scene_id,
                               const std::string &origin = "room");
 
+    // Index access (0..count-1) for listing/iteration.
+    Room *at(std::size_t i) { return i < room_count_ ? &rooms_[i] : nullptr; }
+    const Room *at(std::size_t i) const { return i < room_count_ ? &rooms_[i] : nullptr; }
+
+    // Persist after in-place edits made through find_mutable().
+    ConfigStatus persist() { return save_rooms(); }
+
   private:
     ChannelManager &channel_mgr_;
     LightingTask &lighting_task_;

@@ -91,6 +91,13 @@ class SceneManager
                                const std::string &origin = "scene",
                                const std::string &command_id = "");
 
+    // Index access (0..count-1) for listing/iteration.
+    Scene *at(std::size_t i) { return i < scene_count_ ? &scenes_[i] : nullptr; }
+    const Scene *at(std::size_t i) const { return i < scene_count_ ? &scenes_[i] : nullptr; }
+
+    // Persist after in-place edits made through find_mutable().
+    ConfigStatus persist() { return save_scenes(); }
+
   private:
     ChannelManager &channel_mgr_;
     LightingTask &lighting_task_;

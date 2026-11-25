@@ -59,8 +59,11 @@ class IDriverAdapter
 
 // Factory: create the appropriate adapter for a channel's driver type.
 // Returns nullptr if the driver type is unsupported.
+// Factory: create the adapter for a channel's driver type. `type` decides
+// how many consecutive outputs the light uses. Returns nullptr when the
+// driver type is unsupported or cannot host this light type.
 std::unique_ptr<IDriverAdapter> create_driver_adapter(
-    const std::string &channel_id, const DriverRef &driver_ref,
+    const std::string &channel_id, LightType type, const DriverRef &driver_ref,
     IHardwareManager &hw_manager);
 
 } // namespace lumen

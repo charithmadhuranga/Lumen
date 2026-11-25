@@ -1,212 +1,150 @@
-// Lumen authentication manager — PBKDF2-HMAC-SHA256 with per-user salt,
-// secure session tokens, HTTP-only cookies, CSRF protection.
-// SPEC §16, §16.1–16.3, §17.1, DESIGN §13.
+// Lumen authentication manager (SPEC §16, AGENTS.md §8).
+//
+// * Users live in NVS (namespace "auth"), never in JSON config: salted
+//   PBKDF2-HMAC-SHA256 (per-user 16-byte salt, iteration count stored with
+//   the hash so it can be raised later without invalidating passwords).
+// * First boot provisions admin/admin with force_pw_change = true. A
+//   session created with that flag can only reach the password endpoints
+//   (enforced by the API router).
+// * Sessions: 256-bit random token in an HttpOnly SameSite=Strict cookie;
+//   idle + absolute timeouts; bounded table (oldest evicted); held in RAM
+//   only — a reboot logs everyone out, nothing secret is written to flash.
+// * CSRF: synchronizer token per session, returned in the login/session
+//   response body and required in X-CSRF-Token on every mutating request.
+// * Login rate limiting per client IP + per-account lockout.
+//
+// Thread-safe (internal mutex): called from the HTTP server task.
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
-#include <string>
+#include <mutex>
 #include <optional>
-#include <vector>
-#include <utility>
+#include <string>
 
 #include "esp_err.h"
 
 namespace lumen
 {
 
-// Session information
 struct Session
 {
-    std::string token;       // Opaque session token
-    std::string username;    // Associated username
-    int64_t created_ms = 0;  // Creation timestamp
-    int64_t expiry_ms = 0;   // Expiry timestamp
-    bool force_pw_change = false; // Force password change on next login
+    std::string token;    // 64 hex chars
+    std::string csrf;     // 32 hex chars
+    std::string username;
+    int64_t created_ms = 0;
+    int64_t last_seen_ms = 0;
+    bool force_pw_change = false;
 };
 
-// Authentication result
 struct AuthResult
 {
     enum Code : uint8_t
     {
         kOk = 0,
-        kInvalidCredentials = 1,
-        kUserNotFound = 2,
-        kAccountLocked = 3,
-        kSessionExpired = 4,
-        kSessionInvalid = 5,
-        kRateLimited = 6,
-        kInternalError = 7,
+        kInvalidCredentials,
+        kAccountLocked,
+        kSessionExpired,
+        kSessionInvalid,
+        kRateLimited,
+        kInternalError,
     };
     Code code = kInternalError;
     std::optional<Session> session;
+    uint32_t retry_after_s = 0; // for kRateLimited / kAccountLocked
 };
 
-// Password change result
 struct PasswordChangeResult
 {
     enum Code : uint8_t
     {
         kOk = 0,
-        kCurrentPasswordWrong = 1,
-        kNewPasswordTooWeak = 2,
-        kNewPasswordSameAsOld = 3,
-        kUserNotFound = 4,
-        kInternalError = 5,
+        kCurrentPasswordWrong,
+        kNewPasswordTooWeak,
+        kNewPasswordSameAsOld,
+        kUserNotFound,
+        kInternalError,
     };
     Code code = kInternalError;
+    std::string message;
 };
 
-// CSRF token validation result
-struct CsrfResult
-{
-    enum Code : uint8_t
-    {
-        kOk = 0,
-        kMissing = 1,
-        kInvalid = 2,
-        kExpired = 3,
-    };
-    Code code = kInvalid;
-};
-
-// Configuration for auth manager
 struct AuthConfig
 {
-    // Minimum password length (default: 10)
     std::size_t min_password_length = 10;
-
-    // Session lifetime in milliseconds (default: 24 hours)
-    int64_t session_lifetime_ms = 24 * 60 * 60 * 1000;
-
-    // CSRF token lifetime in milliseconds (default: 1 hour)
-    int64_t csrf_lifetime_ms = 60 * 60 * 1000;
-
-    // Login rate limit: max attempts per window
-    int max_login_attempts = 5;
-
-    // Rate limit window in milliseconds (default: 15 minutes)
-    int64_t rate_limit_window_ms = 15 * 60 * 1000;
-
-    // PBKDF2 iterations (default: 100000)
-    int pbkdf2_iterations = 100000;
-
-    // Salt length in bytes (default: 16)
-    std::size_t salt_length = 16;
-
-    // Session token length in bytes (default: 32)
-    std::size_t session_token_length = 32;
-
-    // CSRF token length in bytes (default: 16)
-    std::size_t csrf_token_length = 16;
-};
-
-// User record stored in NVS
-struct UserRecord
-{
-    std::string username;
-    std::string salt;        // Hex-encoded salt
-    std::string hash;        // Hex-encoded PBKDF2 hash
-    int64_t created_ms = 0;
-    int64_t last_login_ms = 0;
-    int failed_attempts = 0;
-    int64_t lockout_until_ms = 0;
-    bool force_pw_change = false;
+    int64_t session_idle_ms = 2LL * 60 * 60 * 1000;      // 2 h idle
+    int64_t session_absolute_ms = 7LL * 24 * 60 * 60 * 1000; // 7 days max
+    int max_login_attempts = 5;                           // per IP per window
+    int64_t rate_limit_window_ms = 5LL * 60 * 1000;
+    int account_lockout_threshold = 10;                   // consecutive failures
+    int64_t account_lockout_ms = 5LL * 60 * 1000;
+    uint32_t pbkdf2_iterations = 10000;
 };
 
 class AuthManager
 {
   public:
-    explicit AuthManager(const AuthConfig &config = {});
-    ~AuthManager();
+    static constexpr std::size_t kMaxSessions = 8;
+    static constexpr std::size_t kMaxRateEntries = 16;
 
-    // Initialize NVS namespace and load/create default admin user
+    explicit AuthManager(const AuthConfig &config = {});
+
+    // Load / provision the admin account. Requires NVS initialised.
     esp_err_t init();
 
-    // Authenticate user with username/password
-    // Returns session with token on success
-    AuthResult login(const char *username, const char *password, const char *ip);
+    AuthResult login(const std::string &username, const std::string &password,
+                     const std::string &client_ip);
+    // Validates and touches (idle timeout) a session.
+    AuthResult validate_session(const std::string &token);
+    bool check_csrf(const std::string &token, const std::string &csrf) const;
+    void logout(const std::string &token);
+    PasswordChangeResult change_password(const std::string &username,
+                                         const std::string &current_password,
+                                         const std::string &new_password);
+    void invalidate_all_sessions();
+    void cleanup_expired();
+    std::size_t session_count() const;
+    bool default_password_active() const;
 
-    // Validate session token (from cookie)
-    AuthResult validate_session(const char *token);
+    // Factory recovery: restore admin/admin with forced change.
+    esp_err_t reset_credentials();
 
-    // Create new session for user
-    esp_err_t create_session(const char *username, Session &out_session, bool force_pw_change);
-
-    // Invalidate session (logout)
-    esp_err_t invalidate_session(const char *token);
-
-    // Invalidate all sessions for user
-    esp_err_t invalidate_user_sessions(const char *username);
-
-    // Change password (requires current password)
-    PasswordChangeResult change_password(const char *username,
-                                         const char *current_password,
-                                         const char *new_password);
-
-    // Generate CSRF token for session
-    esp_err_t generate_csrf_token(const char *session_token, std::string &out_token);
-
-    // Validate CSRF token
-    CsrfResult validate_csrf_token(const char *session_token, const char *csrf_token);
-
-    // Get session info (for admin/debug)
-    std::optional<Session> get_session(const char *token) const;
-
-    // Clean up expired sessions (call periodically)
-    esp_err_t cleanup_expired();
-
-    // Check if user exists
-    bool user_exists(const char *username) const;
-
-    // Get user record (for admin)
-    std::optional<UserRecord> get_user(const char *username) const;
+    // Exposed for tests / diagnostics (never logs secrets).
+    esp_err_t hash_password(const std::string &password, const uint8_t *salt,
+                            std::size_t salt_len, uint32_t iterations,
+                            uint8_t out[32]) const;
 
   private:
-    AuthConfig config_;
-
-    // PBKDF2-HMAC-SHA256
-    esp_err_t hash_password(const char *password, const uint8_t *salt, size_t salt_len,
-                            uint8_t *out_hash, size_t hash_len) const;
-
-    // Constant-time comparison
-    bool constant_time_compare(const uint8_t *a, const uint8_t *b, size_t len) const;
-
-    // Generate secure random bytes
-    esp_err_t random_bytes(uint8_t *buf, size_t len) const;
-
-    // Encode binary to hex
-    std::string to_hex(const uint8_t *data, size_t len) const;
-
-    // Decode hex to binary
-    esp_err_t from_hex(const char *hex, uint8_t *out, size_t out_len) const;
-
-    // Current time in ms
-    int64_t now_ms() const;
-
-    // NVS operations
-    esp_err_t nvs_load_user(const char *username, UserRecord &out) const;
-    esp_err_t nvs_save_user(const UserRecord &user) const;
-    esp_err_t nvs_delete_user(const char *username) const;
-
-    // Session store (in-memory with NVS backup)
-    struct SessionEntry
+    struct UserRecord
     {
-        Session session;
-        bool dirty = false; // Needs NVS sync
+        uint8_t version = 1;
+        uint8_t force_pw_change = 0;
+        uint8_t reserved[2] = {};
+        uint32_t iterations = 0;
+        uint8_t salt[16] = {};
+        uint8_t hash[32] = {};
     };
-    mutable std::vector<SessionEntry> sessions_;
-    mutable std::vector<std::pair<std::string, std::string>> csrf_tokens_; // session_token -> csrf_token
-
-    // Rate limiting
-    struct RateLimitEntry
+    struct RateEntry
     {
-        std::string key;        // IP or username
+        std::string ip;
         int count = 0;
         int64_t window_start_ms = 0;
     };
-    std::vector<RateLimitEntry> rate_limits_;
+
+    esp_err_t load_user(const std::string &username, UserRecord &out) const;
+    esp_err_t save_user(const std::string &username, const UserRecord &rec) const;
+    esp_err_t set_password(UserRecord &rec, const std::string &password) const;
+    bool verify(const UserRecord &rec, const std::string &password) const;
+    int64_t now_ms() const;
+    static std::string random_hex(std::size_t bytes);
+
+    AuthConfig config_;
+    mutable std::mutex mutex_;
+    std::array<std::optional<Session>, kMaxSessions> sessions_{};
+    std::array<RateEntry, kMaxRateEntries> rate_{};
+    int consecutive_failures_ = 0;
+    int64_t locked_until_ms_ = 0;
 };
 
 } // namespace lumen

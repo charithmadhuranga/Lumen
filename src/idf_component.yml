@@ -1,0 +1,10 @@
+## Lumen managed ESP-IDF components. Versions are PINNED (AGENTS.md §5/§15):
+## do not upgrade without asking.
+dependencies:
+  idf: ">=6.1.0"
+  # LittleFS VFS driver: /config JSON documents + gzipped web assets (SPEC §19).
+  joltwallet/littlefs: "==1.23.3"
+  # mDNS responder: advertises http://<hostname>.local and _lumen._tcp.
+  espressif/mdns: "==1.15.1"
+  # MQTT client (moved out of ESP-IDF core in v6): MQTT + HA discovery (SPEC §13).
+  espressif/mqtt: "==1.1.0"

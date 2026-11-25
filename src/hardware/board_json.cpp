@@ -60,6 +60,14 @@ std::string board_profile_to_json(const BoardProfile &profile)
         if (r.inverted) cJSON_AddBoolToObject(item, "inverted", true);
         if (!r.pull.empty()) cJSON_AddStringToObject(item, "pull", r.pull.c_str());
         if (r.safe_state_set) cJSON_AddBoolToObject(item, "safe_state", r.safe_state);
+        if (r.port >= 0) cJSON_AddNumberToObject(item, "port", r.port);
+        if (r.frequency > 0) cJSON_AddNumberToObject(item, "frequency", r.frequency);
+        if (!r.pins.empty()) {
+            cJSON *pins = cJSON_AddObjectToObject(item, "pins");
+            for (const auto &pin : r.pins) {
+                cJSON_AddNumberToObject(pins, pin.first.c_str(), pin.second);
+            }
+        }
         cJSON_AddItemToArray(resources, item);
     }
 
@@ -77,6 +85,11 @@ std::string board_profile_to_json(const BoardProfile &profile)
             cJSON_AddBoolToObject(item, "address_verification_required", true);
         }
         add_if_nonempty(item, "unverified_note", p.unverified_note);
+        if (p.active_low) cJSON_AddBoolToObject(item, "active_low", true);
+        if (!p.settings_json.empty()) {
+            cJSON *settings = cJSON_Parse(p.settings_json.c_str());
+            if (settings != nullptr) cJSON_AddItemToObject(item, "settings", settings);
+        }
         cJSON_AddItemToArray(peripherals, item);
     }
 
@@ -98,6 +111,7 @@ const char *validation_reason_code(ValidationReason reason)
 {
     switch (reason) {
         case ValidationReason::kOk: return "kOk";
+        case ValidationReason::kAddressUnverified: return "kAddressUnverified";
         case ValidationReason::kGpioDoesNotExist: return "kGpioDoesNotExist";
         case ValidationReason::kInputOnlyAsOutput: return "kInputOnlyAsOutput";
         case ValidationReason::kStrappingPinMisused: return "kStrappingPinMisused";

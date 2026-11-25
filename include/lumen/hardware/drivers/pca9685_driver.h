@@ -71,6 +71,10 @@ class Pca9685Driver final : public IPwmDriver
     // possible. Returns ESP_OK if all writes succeeded.
     esp_err_t flush();
 
+    // Read a channel's LEDn_ON/OFF registers back from the chip (hardware
+    // verification). `duty` is the effective 0..4095 duty they encode.
+    esp_err_t read_back(uint8_t channel, uint16_t &on_reg, uint16_t &off_reg, uint16_t &duty);
+
     // Number of pending (dirty) updates.
     std::size_t pending_count() const;
 

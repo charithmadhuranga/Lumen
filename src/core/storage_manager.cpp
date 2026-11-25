@@ -13,6 +13,8 @@
 #include <fstream>
 #include <sstream>
 #include <sys/stat.h>
+#include <dirent.h>
+#include <algorithm>
 
 #include "lumen/core/storage.hpp"
 
@@ -200,12 +202,29 @@ class PosixFs final : public IStorage
 
     std::vector<std::string> list(const std::string &dir) override
     {
-        // POSIX directory listing is intentionally minimal here; callers that
-        // need directory enumeration (config manager registry) implement it
-        // on top of read()/exists() per document. Kept for interface
-        // completeness.
-        (void)dir;
-        return {};
+        // Returns "<dir>/<name>" for each regular entry (no backups/temp
+        // files), sorted for deterministic API output.
+        std::vector<std::string> out;
+        std::string rel = dir;
+        while (!rel.empty() && rel.back() == '/') {
+            rel.pop_back();
+        }
+        DIR *d = opendir((root_ + rel).c_str());
+        if (d == nullptr) {
+            return out;
+        }
+        while (struct dirent *e = readdir(d)) {
+            const std::string name = e->d_name;
+            if (name == "." || name == ".." ||
+                (name.size() > 4 && (name.compare(name.size() - 4, 4, ".bak") == 0 ||
+                                     name.compare(name.size() - 4, 4, ".tmp") == 0))) {
+                continue;
+            }
+            out.push_back(rel.empty() ? name : rel + "/" + name);
+        }
+        closedir(d);
+        std::sort(out.begin(), out.end());
+        return out;
     }
 
   private:

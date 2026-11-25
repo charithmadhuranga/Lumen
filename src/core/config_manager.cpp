@@ -258,4 +258,12 @@ ConfigStatus ConfigManager::save_document(const char *path,
     return ConfigStatus::kOk;
 }
 
+bool migrate_additive(std::string &doc, uint16_t from_version, uint16_t to_version,
+                      IJson &json)
+{
+    (void)doc;
+    (void)json;
+    return from_version <= to_version;
+}
+
 } // namespace lumen

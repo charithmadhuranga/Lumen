@@ -92,6 +92,15 @@ void PinValidator::validate_gpios(const BoardProfileIndex &profile,
                      "; changing it may prevent boot",
                  false});
         }
+        {
+            const auto &c = capabilities_.gpio.console;
+            if (std::find(c.begin(), c.end(), static_cast<uint32_t>(use.gpio)) != c.end()) {
+                report.warnings.push_back(
+                    {ValidationReason::kBoardReservedPin, id,
+                     "GPIO " + g + " is the serial console (UART0); using it disables logs and USB flashing",
+                     false});
+            }
+        }
         if (is_flash_reserved(use.gpio)) {
             report.errors.push_back({ValidationReason::kFlashReservedPin, id,
                                      "GPIO " + g + " is reserved for flash/PSRAM on " +
@@ -264,8 +273,11 @@ void PinValidator::validate_resource_limits(const BoardProfileIndex &profile,
 
 bool PinValidator::gpio_exists(int32_t gpio) const
 {
-    return gpio >= 0 &&
-           static_cast<uint32_t>(gpio) < capabilities_.gpio.gpio_count;
+    if (gpio < 0 || static_cast<uint32_t>(gpio) >= capabilities_.gpio.gpio_count) {
+        return false;
+    }
+    const auto &m = capabilities_.gpio.missing;
+    return std::find(m.begin(), m.end(), static_cast<uint32_t>(gpio)) == m.end();
 }
 
 bool PinValidator::is_input_only(int32_t gpio) const

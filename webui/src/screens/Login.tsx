@@ -1,146 +1,87 @@
-"use client";
-
+// Sign in (DESIGN §7.1): never prefilled; rate-limit errors show a countdown.
 import * as React from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Lightbulb, Loader2 } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, Lock, AlertCircle } from "lucide-react";
-import { useAuth } from "@/hooks/useAuth";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Field } from "@/components/common";
+import { errorMessage, isApiError, useAuth } from "@/hooks/useAuth";
 
-/* ================================================================
-   Validation Schema
-   ================================================================ */
-const loginSchema = z.object({
-  username: z.string().min(1, "Username is required"),
-  password: z.string().min(1, "Password is required"),
-});
-
-type LoginForm = z.infer<typeof loginSchema>;
-
-/* ================================================================
-   Login Screen
-   ================================================================ */
-export function Login() {
+export default function Login() {
+  const { status, user, login } = useAuth();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const expired = searchParams.get("expired") === "1";
-  const { login, checkSession, loading: authLoading } = useAuth();
+  const location = useLocation();
+  const [username, setUsername] = React.useState("");
+  const [password, setPassword] = React.useState("");
+  const [error, setError] = React.useState<string | null>(null);
+  const [pending, setPending] = React.useState(false);
+  const [retryIn, setRetryIn] = React.useState(0);
 
-  const [localLoading, setLocalLoading] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(expired ? "Session expired. Please log in again." : null);
+  React.useEffect(() => {
+    if (retryIn <= 0) return;
+    const t = setTimeout(() => setRetryIn((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [retryIn]);
 
-  const form = useForm<LoginForm>({
-    resolver: zodResolver(loginSchema),
-    defaultValues: { username: "admin", password: "" },
-  });
+  if (status === "signed-in" && user) {
+    return <Navigate to={user.forcePasswordChange ? "/setup/password" : "/"} replace />;
+  }
 
-  const onSubmit = async (data: LoginForm) => {
-    setLocalLoading(true);
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
     setError(null);
+    setPending(true);
     try {
-      await login(data.username, data.password);
-      navigate("/");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Login failed");
+      await login(username.trim(), password);
+      const u = useAuth.getState().user;
+      const from = (location.state as { from?: string } | null)?.from;
+      navigate(u?.forcePasswordChange ? "/setup/password" : from && from !== "/login" ? from : "/", { replace: true });
+    } catch (err) {
+      setPassword("");
+      if (isApiError(err) && err.status === 429) setRetryIn(err.retryAfter ?? 60);
+      setError(errorMessage(err, "Sign-in failed"));
     } finally {
-      setLocalLoading(false);
+      setPending(false);
     }
   };
 
-  // Check session on mount (in case already logged in)
-  React.useEffect(() => {
-    checkSession().then(() => {
-      const user = useAuth.getState().user;
-      if (user) navigate("/");
-    });
-  }, []);
-
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary">
-            <Lock className="h-7 w-7 text-primary-foreground" />
-          </div>
-          <CardTitle className="text-2xl">Welcome to Lumen</CardTitle>
-          <CardDescription>Sign in to control your lights</CardDescription>
-        </CardHeader>
-
-        <CardContent>
-          {error && (
-            <Alert variant="destructive" className="mb-4">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
-              <Input
-                id="username"
-                type="text"
-                autoComplete="username"
-                placeholder="admin"
-                {...form.register("username")}
-                disabled={localLoading || authLoading}
-                aria-invalid={!!form.formState.errors.username}
-              />
-              {form.formState.errors.username && (
-                <p className="text-sm text-destructive" role="alert">
-                  {form.formState.errors.username.message}
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                autoComplete="current-password"
-                placeholder="••••••••"
-                {...form.register("password")}
-                disabled={localLoading || authLoading}
-                aria-invalid={!!form.formState.errors.password}
-              />
-              {form.formState.errors.password && (
-                <p className="text-sm text-destructive" role="alert">
-                  {form.formState.errors.password.message}
-                </p>
-              )}
-            </div>
-
-            <Button
-              type="submit"
-              className="w-full"
-              size="lg"
-              disabled={localLoading || authLoading}
-            >
-              {localLoading || authLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Signing in...
-                </>
-              ) : (
-                "Sign in"
-              )}
-            </Button>
-          </form>
-        </CardContent>
-
-        <CardFooter className="flex flex-col items-center gap-2 text-sm text-muted-foreground">
-          <Separator className="w-full" />
-          <p>Default: admin / admin (forced change on first login)</p>
-        </CardFooter>
-      </Card>
+    <div className="grid min-h-dvh place-items-center bg-background px-4">
+      <form onSubmit={submit} className="w-full max-w-sm space-y-5 rounded-2xl border bg-card p-6 shadow-sm" noValidate>
+        <div className="flex flex-col items-center gap-2 text-center">
+          <span className="grid size-12 place-items-center rounded-xl bg-primary text-primary-foreground">
+            <Lightbulb className="size-6" aria-hidden="true" />
+          </span>
+          <h1 className="text-xl font-semibold">Sign in to Lumen</h1>
+          <p className="text-sm text-muted-foreground">Lighting controller</p>
+        </div>
+        <Field label="Username" htmlFor="username">
+          <Input id="username" autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} required />
+        </Field>
+        <Field label="Password" htmlFor="password">
+          <Input
+            id="password"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+        </Field>
+        {error && (
+          <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
+            {retryIn > 0 ? `Too many attempts. Try again in ${retryIn} s.` : error}
+          </p>
+        )}
+        <Button type="submit" className="h-11 w-full" disabled={pending || retryIn > 0 || !username || !password}>
+          {pending && <Loader2 className="size-4 animate-spin" />}
+          Sign in
+        </Button>
+        <p className="text-center text-xs text-muted-foreground">
+          First time? Sign in with <span className="font-mono">admin</span> / <span className="font-mono">admin</span>; you will be asked to choose a new password.
+        </p>
+      </form>
     </div>
   );
 }

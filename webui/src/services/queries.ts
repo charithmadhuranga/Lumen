@@ -1,526 +1,169 @@
-// TanStack Query hooks + queryKeys — single source of truth for REST cache.
-// DESIGN §8.3: staleTime rules; mutations invalidate, light commands rely on WS confirmation.
-import { QueryClient, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  authApi,
-  systemApi,
-  lightsApi,
-  roomsApi,
-  groupsApi,
-  scenesApi,
-  boardsApi,
-  hardwareApi,
-  ApiError,
-} from "@/services/api";
+// TanStack Query hooks (DESIGN §8.3). Config resources: staleTime 30 s;
+// light state stays fresh through WebSocket cache patches. Mutations
+// invalidate what they change; light commands rely on WS confirmation.
+import { QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
-import type {
-  LightChannel,
-  Room,
-  Group,
-  Scene,
-  LightCommandResponse,
-  BoardProfile,
-  ValidationReport,
-  ApplyBoardResult,
-  I2cScanResult,
-} from "@/schemas";
+import { api, ApiError } from "@/services/api";
+import { queryKeys } from "@/services/queryKeys";
+import { errorMessage } from "@/hooks/useAuth";
+import type { Light, LightCommand } from "@/schemas";
 
-/* ================================================================
-   Query Keys (single source of truth)
-   ================================================================ */
-export const queryKeys = {
-  // Auth
-  session: () => ["auth", "session"] as const,
+export { queryKeys };
 
-  // System
-  systemInfo: () => ["system", "info"] as const,
-  health: () => ["system", "health"] as const,
-
-  // Lights
-  lights: () => ["lights"] as const,
-  light: (id: string) => ["lights", id] as const,
-
-  // Rooms
-  rooms: () => ["rooms"] as const,
-  room: (id: string) => ["rooms", id] as const,
-
-  // Groups
-  groups: () => ["groups"] as const,
-  group: (id: string) => ["groups", id] as const,
-
-  // Scenes
-  scenes: () => ["scenes"] as const,
-  scene: (id: string) => ["scenes", id] as const,
-
-  // Boards
-  boards: () => ["boards"] as const,
-  board: (id: string) => ["boards", id] as const,
-  boardActive: () => ["boards", "active"] as const,
-
-  // Hardware
-  hardwareStatus: () => ["hardware", "status"] as const,
-  hardwareInputs: () => ["hardware", "inputs"] as const,
-  i2cScan: () => ["hardware", "i2c", "scan"] as const,
-} as const;
-
-/* ================================================================
-   Query Client (singleton for providers)
-   ================================================================ */
-export function createQueryClient() {
+export function createQueryClient(): QueryClient {
   return new QueryClient({
     defaultOptions: {
       queries: {
-        staleTime: 30_000, // 30s — DESIGN §8.3
+        staleTime: 30_000,
         refetchOnWindowFocus: false,
-        retry: (failureCount: number, error: unknown) => {
-          if (error instanceof ApiError && error.status === 401) return false;
-          return failureCount < 3;
-        },
+        retry: (count, error) => !(error instanceof ApiError && [401, 403, 404].includes(error.status)) && count < 1,
       },
+      mutations: { retry: 0 },
     },
   });
 }
 
-/* ================================================================
-   Auth Hooks
-   ================================================================ */
-export function useSession() {
-  return useQuery({
-    queryKey: queryKeys.session(),
-    queryFn: authApi.session,
-    retry: false,
-    staleTime: 5 * 60 * 1000, // 5 min
-  });
+function onError(title: string) {
+  return (e: unknown) => toast.error(title, { description: errorMessage(e), duration: Infinity });
 }
 
-/* ================================================================
-   System Hooks
-   ================================================================ */
-export function useSystemInfo() {
-  return useQuery({
-    queryKey: queryKeys.systemInfo(),
-    queryFn: systemApi.info,
-    staleTime: 60_000,
-  });
-}
+/* --------------------------------------------------------------- system */
+export const useSystemInfo = () => useQuery({ queryKey: queryKeys.systemInfo(), queryFn: api.systemInfo, staleTime: 10_000 });
+export const useDiagnostics = (enabled: boolean) =>
+  useQuery({ queryKey: queryKeys.diagnostics(), queryFn: api.diagnostics, enabled, refetchInterval: enabled ? 2000 : false });
 
-export function useHealth() {
-  return useQuery({
-    queryKey: queryKeys.health(),
-    queryFn: systemApi.health,
-    staleTime: 30_000,
-  });
-}
-
-/* ================================================================
-   Lights Hooks
-   ================================================================ */
-export function useLights() {
-  return useQuery({
-    queryKey: queryKeys.lights(),
-    queryFn: lightsApi.list,
-    staleTime: 10_000, // 10s — lights change frequently
-  });
-}
-
-export function useLight(id: string) {
-  return useQuery({
-    queryKey: queryKeys.light(id),
-    queryFn: () => lightsApi.get(id),
-    enabled: !!id,
-    staleTime: 5_000,
-  });
-}
-
-interface LightCommandVariables { id: string; command: Record<string, unknown> }
+/* --------------------------------------------------------------- lights */
+export const useLights = () => useQuery({ queryKey: queryKeys.lights(), queryFn: api.lights, staleTime: Infinity });
+export const useEffects = () => useQuery({ queryKey: queryKeys.effects(), queryFn: api.effects, staleTime: Infinity });
 
 export function useLightCommand() {
-  const queryClient = useQueryClient();
-  return useMutation<LightCommandResponse, Error, LightCommandVariables>({
-    mutationFn: ({ id, command }) => lightsApi.command(id, command),
-    onSuccess: (_data, variables) => {
-      // Optimistic update via WS will handle; just invalidate
-      queryClient.invalidateQueries({ queryKey: queryKeys.light(variables.id) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.lights() });
-    },
-  });
-}
-
-interface LightCreateVariables { id: string; name: string; type: LightChannel["type"] }
-interface LightUpdateVariables { id: string; updates: Partial<LightChannel> }
-
-export function useCreateLight() {
-  const queryClient = useQueryClient();
-  return useMutation<LightChannel, Error, LightCreateVariables>({
-    mutationFn: ({ id, name, type }) => lightsApi.create({ id, name, type }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.lights() });
-    },
-  });
-}
-
-export function useUpdateLight() {
-  const queryClient = useQueryClient();
-  return useMutation<LightChannel, Error, LightUpdateVariables>({
-    mutationFn: ({ id, updates }) => lightsApi.update(id, updates),
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.light(variables.id) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.lights() });
-    },
-  });
-}
-
-export function useDeleteLight() {
-  const queryClient = useQueryClient();
-  return useMutation<void, Error, string>({
-    mutationFn: (id) => lightsApi.delete(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.lights() });
-    },
-  });
-}
-
-/* ================================================================
-   Rooms Hooks
-   ================================================================ */
-export function useRooms() {
-  return useQuery({
-    queryKey: queryKeys.rooms(),
-    queryFn: roomsApi.list,
-    staleTime: 30_000,
-  });
-}
-
-export function useRoom(id: string) {
-  return useQuery({
-    queryKey: queryKeys.room(id),
-    queryFn: () => roomsApi.get(id),
-    enabled: !!id,
-  });
-}
-
-export function useCreateRoom() {
-  const queryClient = useQueryClient();
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: roomsApi.create,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.rooms() });
+    mutationFn: ({ id, command }: { id: string; command: LightCommand }) => api.commandLight(id, command),
+    onMutate: ({ id, command }) => {
+      // Optimistic: reflect the target immediately; the WS event reconciles.
+      qc.setQueryData<Light[]>(queryKeys.lights(), (old) =>
+        old?.map((l) => {
+          if (l.id !== id) return l;
+          const s = { ...l.state };
+          if (command.toggle) s.power = !s.power;
+          if (command.power !== undefined) s.power = command.power;
+          if (command.brightness !== undefined) {
+            s.brightness = command.brightness;
+            if (command.power === undefined) s.power = command.brightness > 0;
+          }
+          if (command.red !== undefined) s.red = command.red;
+          if (command.green !== undefined) s.green = command.green;
+          if (command.blue !== undefined) s.blue = command.blue;
+          if (command.white !== undefined) s.white = command.white;
+          if (command.colorTemperature !== undefined) s.colorTemperature = command.colorTemperature;
+          return { ...l, state: s };
+        }),
+      );
+    },
+    onError: (e) => {
+      void qc.invalidateQueries({ queryKey: queryKeys.lights() });
+      onError("Light command failed")(e);
     },
   });
 }
 
-interface UpdateRoomVariables { id: string; updates: Record<string, unknown> }
-interface RoomPowerVariables { id: string; power: boolean; transitionMs?: number }
-interface RoomBrightnessVariables { id: string; brightness: number; transitionMs?: number }
-
-export function useUpdateRoom() {
-  const queryClient = useQueryClient();
-  return useMutation<Room, Error, UpdateRoomVariables>({
-    mutationFn: ({ id, updates }) => roomsApi.update(id, updates),
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.room(variables.id) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.rooms() });
-    },
-  });
-}
-
-export function useDeleteRoom() {
-  const queryClient = useQueryClient();
-  return useMutation<void, Error, string>({
-    mutationFn: (id) => roomsApi.delete(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.rooms() });
-    },
-  });
-}
-
-export function useRoomPower() {
-  const queryClient = useQueryClient();
-  return useMutation<void, Error, RoomPowerVariables>({
-    mutationFn: ({ id, power, transitionMs }) => roomsApi.setPower(id, power, transitionMs),
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.room(variables.id) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.rooms() });
-    },
-  });
-}
-
-export function useRoomBrightness() {
-  const queryClient = useQueryClient();
-  return useMutation<void, Error, RoomBrightnessVariables>({
-    mutationFn: ({ id, brightness, transitionMs }) => roomsApi.setBrightness(id, brightness, transitionMs),
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.room(variables.id) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.rooms() });
-    },
-  });
-}
-
-/* ================================================================
-   Groups Hooks
-   ================================================================ */
-export function useGroups() {
-  return useQuery({
-    queryKey: queryKeys.groups(),
-    queryFn: groupsApi.list,
-    staleTime: 30_000,
-  });
-}
-
-export function useGroup(id: string) {
-  return useQuery({
-    queryKey: queryKeys.group(id),
-    queryFn: () => groupsApi.get(id),
-    enabled: !!id,
-  });
-}
-
-export function useCreateGroup() {
-  const queryClient = useQueryClient();
+function useInvalidating<TArgs, TResult>(
+  fn: (args: TArgs) => Promise<TResult>,
+  keys: readonly (readonly unknown[])[],
+  messages: { success?: string; error: string },
+) {
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: groupsApi.create,
+    mutationFn: fn,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.groups() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.rooms() });
+      keys.forEach((k) => void qc.invalidateQueries({ queryKey: k }));
+      if (messages.success) toast.success(messages.success, { duration: 2500 });
     },
+    onError: onError(messages.error),
   });
 }
 
-interface UpdateGroupVariables { id: string; updates: Record<string, unknown> }
-interface GroupCommandVariables { id: string; command: Record<string, unknown> }
-interface GroupPowerVariables { id: string; power: boolean; transitionMs?: number }
-interface GroupBrightnessVariables { id: string; brightness: number; transitionMs?: number }
-
-interface UpdateSceneVariables { id: string; updates: Record<string, unknown> }
-interface SceneActivateVariables { id: string; params?: Record<string, unknown> }
-
-export function useUpdateGroup() {
-  const queryClient = useQueryClient();
-  return useMutation<Group, Error, UpdateGroupVariables>({
-    mutationFn: ({ id, updates }) => groupsApi.update(id, updates),
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.group(variables.id) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.groups() });
-    },
+export const useCreateLight = () =>
+  useInvalidating(api.createLight, [queryKeys.lights(), queryKeys.rooms(), queryKeys.hardwareOutputs()], {
+    success: "Light added",
+    error: "Could not add the light",
   });
-}
+export const useUpdateLight = () =>
+  useInvalidating(
+    ({ id, patch }: { id: string; patch: Parameters<typeof api.updateLight>[1] }) => api.updateLight(id, patch),
+    [queryKeys.lights(), queryKeys.rooms(), queryKeys.hardwareOutputs()],
+    { success: "Light saved", error: "Could not save the light" },
+  );
+export const useDeleteLight = () =>
+  useInvalidating(api.deleteLight, [queryKeys.lights(), queryKeys.rooms(), queryKeys.scenes(), queryKeys.groups()], {
+    success: "Light removed",
+    error: "Could not remove the light",
+  });
 
-export function useDeleteGroup() {
-  const queryClient = useQueryClient();
-  return useMutation<void, Error, string>({
-    mutationFn: (id) => groupsApi.delete(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.groups() });
-    },
+/* ---------------------------------------------------------------- rooms */
+export const useRooms = () => useQuery({ queryKey: queryKeys.rooms(), queryFn: api.rooms });
+export const useCreateRoom = () =>
+  useInvalidating(api.createRoom, [queryKeys.rooms(), queryKeys.lights()], { success: "Room created", error: "Could not create the room" });
+export const useUpdateRoom = () =>
+  useInvalidating(
+    ({ id, room }: { id: string; room: Parameters<typeof api.updateRoom>[1] }) => api.updateRoom(id, room),
+    [queryKeys.rooms(), queryKeys.lights()],
+    { success: "Room saved", error: "Could not save the room" },
+  );
+export const useDeleteRoom = () =>
+  useInvalidating(api.deleteRoom, [queryKeys.rooms(), queryKeys.lights()], { success: "Room deleted", error: "Could not delete the room" });
+export const useRoomPower = () =>
+  useMutation({
+    mutationFn: ({ id, power }: { id: string; power: boolean }) => api.roomPower(id, power),
+    onError: onError("Room command failed"),
   });
-}
+export const useRoomBrightness = () =>
+  useMutation({
+    mutationFn: ({ id, brightness }: { id: string; brightness: number }) => api.roomBrightness(id, brightness, 150),
+    onError: onError("Room command failed"),
+  });
 
-export function useGroupCommand() {
-  const queryClient = useQueryClient();
-  return useMutation<{ accepted: boolean; commandId?: string }, Error, GroupCommandVariables>({
-    mutationFn: ({ id, command }) => groupsApi.command(id, command),
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.group(variables.id) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.groups() });
-    },
-  });
-}
+/* --------------------------------------------------------------- groups */
+export const useGroups = () => useQuery({ queryKey: queryKeys.groups(), queryFn: api.groups });
 
-export function useGroupPower() {
-  const queryClient = useQueryClient();
-  return useMutation<void, Error, GroupPowerVariables>({
-    mutationFn: ({ id, power, transitionMs }) => groupsApi.setPower(id, power, transitionMs),
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.group(variables.id) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.groups() });
-    },
+/* --------------------------------------------------------------- scenes */
+export const useScenes = () => useQuery({ queryKey: queryKeys.scenes(), queryFn: api.scenes });
+export const useActivateScene = () =>
+  useMutation({
+    mutationFn: (id: string) => api.activateScene(id),
+    onError: onError("Scene could not be activated"),
   });
-}
+export const useCaptureScene = () =>
+  useInvalidating(({ name, lightIds }: { name: string; lightIds?: string[] }) => api.captureScene(name, lightIds), [queryKeys.scenes()], {
+    success: "Scene saved",
+    error: "Could not save the scene",
+  });
+export const useCreateScene = () =>
+  useInvalidating(api.createScene, [queryKeys.scenes()], { success: "Scene created", error: "Could not create the scene" });
+export const useUpdateScene = () =>
+  useInvalidating(
+    ({ id, scene }: { id: string; scene: Parameters<typeof api.updateScene>[1] }) => api.updateScene(id, scene),
+    [queryKeys.scenes()],
+    { success: "Scene saved", error: "Could not save the scene" },
+  );
+export const useDeleteScene = () =>
+  useInvalidating(api.deleteScene, [queryKeys.scenes()], { success: "Scene deleted", error: "Could not delete the scene" });
+export const useDuplicateScene = () =>
+  useInvalidating(api.duplicateScene, [queryKeys.scenes()], { success: "Scene duplicated", error: "Could not duplicate the scene" });
 
-export function useGroupBrightness() {
-  const queryClient = useQueryClient();
-  return useMutation<void, Error, GroupBrightnessVariables>({
-    mutationFn: ({ id, brightness, transitionMs }) => groupsApi.setBrightness(id, brightness, transitionMs),
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.group(variables.id) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.groups() });
-    },
-  });
-}
+/* ------------------------------------------------------------- hardware */
+export const useBoards = () => useQuery({ queryKey: queryKeys.boards(), queryFn: api.boards });
+export const useBoard = (id: string | null) =>
+  useQuery({ queryKey: queryKeys.board(id ?? ""), queryFn: () => api.board(id ?? ""), enabled: !!id });
+export const useBoardPins = (id: string | null) =>
+  useQuery({ queryKey: queryKeys.boardPins(id ?? ""), queryFn: () => api.boardPins(id ?? ""), enabled: !!id });
+export const useHardwareStatus = (poll = false) =>
+  useQuery({ queryKey: queryKeys.hardwareStatus(), queryFn: api.hardwareStatus, refetchInterval: poll ? 3000 : false });
+export const useHardwareOutputs = () => useQuery({ queryKey: queryKeys.hardwareOutputs(), queryFn: api.hardwareOutputs });
 
-/* ================================================================
-   Scenes Hooks
-   ================================================================ */
-export function useScenes() {
-  return useQuery({
-    queryKey: queryKeys.scenes(),
-    queryFn: scenesApi.list,
-    staleTime: 30_000,
-  });
-}
-
-export function useScene(id: string) {
-  return useQuery({
-    queryKey: queryKeys.scene(id),
-    queryFn: () => scenesApi.get(id),
-    enabled: !!id,
-  });
-}
-
-export function useCreateScene() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: scenesApi.create,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.scenes() });
-    },
-  });
-}
-
-export function useUpdateScene() {
-  const queryClient = useQueryClient();
-  return useMutation<Scene, Error, UpdateSceneVariables>({
-    mutationFn: ({ id, updates }) => scenesApi.update(id, updates),
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.scene(variables.id) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.scenes() });
-    },
-  });
-}
-
-export function useDeleteScene() {
-  const queryClient = useQueryClient();
-  return useMutation<void, Error, string>({
-    mutationFn: (id) => scenesApi.delete(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.scenes() });
-    },
-  });
-}
-
-export function useActivateScene() {
-  const queryClient = useQueryClient();
-  return useMutation<void, Error, SceneActivateVariables>({
-    mutationFn: ({ id, params }) => scenesApi.activate(id, params),
-    onSuccess: () => {
-      // Scene activation updates light states via WS
-      queryClient.invalidateQueries({ queryKey: queryKeys.lights() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.groups() });
-    },
-  });
-}
-
-export function useDuplicateScene() {
-  const queryClient = useQueryClient();
-  return useMutation<Scene, Error, string>({
-    mutationFn: (id) => scenesApi.duplicate(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.scenes() });
-    },
-  });
-}
-/* ================================================================
-   Boards Hooks (Phase 7)
-   ================================================================ */
-export function useBoards() {
-  return useQuery({
-    queryKey: queryKeys.boards(),
-    queryFn: boardsApi.list,
-    staleTime: 60_000,
-  });
-}
-
-export function useBoard(id: string) {
-  return useQuery({
-    queryKey: queryKeys.board(id),
-    queryFn: () => boardsApi.get(id),
-    enabled: !!id,
-    staleTime: 30_000,
-  });
-}
-
-export function useActiveBoard() {
-  return useQuery({
-    queryKey: queryKeys.boardActive(),
-    queryFn: boardsApi.active,
-    staleTime: 30_000,
-  });
-}
-
-export function useValidateBoard() {
-  return useMutation<ValidationReport, Error, BoardProfile>({
-    mutationFn: (profile) => boardsApi.validate(profile),
-  });
-}
-
-export function useCreateBoard() {
-  const queryClient = useQueryClient();
-  return useMutation<BoardProfile, Error, BoardProfile>({
-    mutationFn: (profile) => boardsApi.create(profile),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.boards() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.boardActive() });
-    },
-  });
-}
-
-export function useUpdateBoard() {
-  const queryClient = useQueryClient();
-  return useMutation<BoardProfile, Error, { id: string; profile: Partial<BoardProfile> }>({
-    mutationFn: ({ id, profile }) => boardsApi.update(id, profile),
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.board(variables.id) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.boards() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.boardActive() });
-    },
-  });
-}
-
-export function useDeleteBoard() {
-  const queryClient = useQueryClient();
-  return useMutation<void, Error, string>({
-    mutationFn: (id) => boardsApi.remove(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.boards() });
-    },
-  });
-}
-
-export function useApplyBoard() {
-  const queryClient = useQueryClient();
-  return useMutation<ApplyBoardResult, Error, string>({
-    mutationFn: (id) => boardsApi.apply(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.boardActive() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.boards() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.hardwareStatus() });
-    },
-  });
-}
-
-/* ================================================================
-   Hardware Hooks (Phase 7)
-   ================================================================ */
-export function useHardwareStatus() {
-  return useQuery({
-    queryKey: queryKeys.hardwareStatus(),
-    queryFn: hardwareApi.status,
-    staleTime: 5_000,
-    refetchInterval: 10_000,
-  });
-}
-
-export function useHardwareInputs() {
-  return useQuery({
-    queryKey: queryKeys.hardwareInputs(),
-    queryFn: hardwareApi.inputs,
-    staleTime: 5_000,
-    refetchInterval: 10_000,
-  });
-}
-
-export function useI2cScan() {
-  return useMutation<I2cScanResult, Error, void>({
-    mutationFn: () => hardwareApi.i2cScan(),
-  });
-}
+/* -------------------------------------------------------------- network */
+export const useNetwork = () => useQuery({ queryKey: queryKeys.network(), queryFn: api.network });
+export const useNetworkStatus = () =>
+  useQuery({ queryKey: queryKeys.networkStatus(), queryFn: api.networkStatus, refetchInterval: 5000 });

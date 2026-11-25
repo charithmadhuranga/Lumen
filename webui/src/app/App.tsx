@@ -1,159 +1,142 @@
-"use client";
-
+// Routes (DESIGN §6.2): lazy screens, auth gate, forced password change gate,
+// WebSocket lifecycle tied to a fully authenticated session.
 import * as React from "react";
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from "react-router-dom";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MotionConfig, AnimatePresence } from "motion/react";
-import { Toaster } from "@/components/ui/sonner";
-import { Providers } from "./providers";
-import { Sidebar } from "@/components/layout/Sidebar";
-import { TopBar } from "@/components/layout/TopBar";
-import { MobileDrawer } from "@/components/layout/MobileDrawer";
-import { Login } from "@/screens/Login";
-import { SetupPassword } from "@/screens/SetupPassword";
-import { Overview } from "@/screens/Overview";
-import { Rooms } from "@/screens/Rooms";
-import { Scenes } from "@/screens/Scenes";
-import { FloorPlans } from "@/screens/FloorPlans";
-import { Devices } from "@/screens/Devices";
-import { Settings } from "@/screens/Settings";
-import { Hardware } from "@/screens/Hardware";
-import { ConnectionBanner } from "@/components/ui/ConnectionBanner";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
+import { Loader2 } from "lucide-react";
+
+import { AppShell } from "@/components/layout/AppShell";
 import { useAuth } from "@/hooks/useAuth";
-import { useEffect } from "react";
+import { createQueryClient } from "@/services/queries";
+import { LumenSocket } from "@/services/ws";
+import { Providers } from "./providers";
 
-/* ================================================================
-   Query Client
-   ================================================================ */
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 30_000,
-      refetchOnWindowFocus: false,
-      retry: (failureCount, error: any) => {
-        if (error?.status === 401) return false;
-        return failureCount < 3;
-      },
-    },
-  },
-});
+const Login = React.lazy(() => import("@/screens/Login"));
+const SetupPassword = React.lazy(() => import("@/screens/SetupPassword"));
+const Overview = React.lazy(() => import("@/screens/Overview"));
+const Rooms = React.lazy(() => import("@/screens/Rooms"));
+const Scenes = React.lazy(() => import("@/screens/Scenes"));
+const Devices = React.lazy(() => import("@/screens/Devices"));
+const Hardware = React.lazy(() => import("@/screens/Hardware"));
+const NetworkScreen = React.lazy(() => import("@/screens/Network"));
+const Settings = React.lazy(() => import("@/screens/Settings"));
+const FloorPlans = React.lazy(() => import("@/screens/FloorPlans"));
+const Automations = React.lazy(() => import("@/screens/Automations"));
+const Integrations = React.lazy(() => import("@/screens/Integrations"));
 
-/* ================================================================
-   Auth Guard
-   ================================================================ */
-function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
-
-  useEffect(() => {
-    // Check session on mount
-  }, []);
-
-  if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-      </div>
-    );
-  }
-
-  if (!user) {
-    return <Navigate to="/login" replace />;
-  }
-
-  return <>{children}</>;
-}
-
-/* ================================================================
-   Setup Password Guard
-   ================================================================ */
-function SetupPasswordGuard({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
-
-  if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-      </div>
-    );
-  }
-
-  if (user?.forcePasswordChange) {
-    return <Navigate to="/setup/password" replace />;
-  }
-
-  return <>{children}</>;
-}
-
-/* ================================================================
-   Main Layout
-   ================================================================ */
-function MainLayout() {
-  const [mobileOpen, setMobileOpen] = React.useState(false);
+function Spinner() {
   return (
-    <div className="flex h-screen bg-background">
-      <Sidebar />
-      <MobileDrawer open={mobileOpen} onOpenChange={setMobileOpen} />
-      <div className="flex-1 flex flex-col overflow-hidden lg:pl-64">
-        <TopBar />
-        <ConnectionBanner />
-        <main className="flex-1 overflow-auto p-4 lg:p-6">
-          <AnimatePresence mode="wait">
-            <Outlet />
-          </AnimatePresence>
-        </main>
-      </div>
+    <div className="grid min-h-[50vh] place-items-center" role="status" aria-label="Loading">
+      <Loader2 className="size-6 animate-spin text-muted-foreground" />
     </div>
   );
 }
 
-/* ================================================================
-   Public Layout (Login, Setup)
-   ================================================================ */
-function PublicLayout() {
+class RouteErrorBoundary extends React.Component<{ children: React.ReactNode }, { error: Error | null }> {
+  override state = { error: null as Error | null };
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  override render() {
+    if (this.state.error) {
+      return (
+        <div className="mx-auto max-w-md py-16 text-center">
+          <p className="font-medium">This screen failed to load.</p>
+          <p className="mt-1 text-sm text-muted-foreground">{this.state.error.message}</p>
+          <button className="mt-4 text-sm text-link underline" onClick={() => window.location.reload()}>
+            Reload
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function Gate({ children }: { children: React.ReactNode }) {
+  const { status, user } = useAuth();
+  const location = useLocation();
+  const qc = useQueryClient();
+  const socket = React.useRef<LumenSocket | null>(null);
+  const ready = status === "signed-in" && user?.forcePasswordChange === false;
+
+  React.useEffect(() => {
+    if (ready) {
+      socket.current ??= new LumenSocket(qc);
+      socket.current.start();
+    } else {
+      socket.current?.stop();
+      if (status === "signed-out") qc.clear();
+    }
+    return () => socket.current?.stop();
+  }, [ready, status, qc]);
+
+  if (status === "unknown") return <Spinner />;
+  if (status === "signed-out") return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  if (user?.forcePasswordChange) return <Navigate to="/setup/password" replace />;
+  return <>{children}</>;
+}
+
+function AppRoutes() {
+  const checkSession = useAuth((s) => s.checkSession);
+  React.useEffect(() => {
+    void checkSession();
+  }, [checkSession]);
+
   return (
-    <div className="flex min-h-screen bg-background">
-      <main className="flex-1 flex items-center justify-center p-4">
-        <AnimatePresence mode="wait">
-          <Outlet />
-        </AnimatePresence>
-      </main>
-    </div>
+    <React.Suspense fallback={<Spinner />}>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/setup/password" element={<SetupPassword />} />
+        <Route
+          element={
+            <Gate>
+              <AppShell />
+            </Gate>
+          }
+        >
+          {(
+            [
+              ["/", Overview],
+              ["/rooms/*", Rooms],
+              ["/scenes", Scenes],
+              ["/devices", Devices],
+              ["/hardware/*", Hardware],
+              ["/network", NetworkScreen],
+              ["/settings", Settings],
+              ["/floorplans/*", FloorPlans],
+              ["/automations/*", Automations],
+              ["/integrations/*", Integrations],
+            ] as const
+          ).map(([path, Screen]) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <RouteErrorBoundary>
+                  <React.Suspense fallback={<Spinner />}>
+                    <Screen />
+                  </React.Suspense>
+                </RouteErrorBoundary>
+              }
+            />
+          ))}
+        </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </React.Suspense>
   );
 }
 
-/* ================================================================
-   App
-   ================================================================ */
+const queryClient = createQueryClient();
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <Providers>
-        <MotionConfig reducedMotion="user">
-          <BrowserRouter>
-            <Toaster position="top-center" closeButton richColors />
-            <Routes>
-              {/* Public routes */}
-              <Route element={<PublicLayout />}>
-                <Route path="/login" element={<Login />} />
-                <Route path="/setup/password" element={<SetupPassword />} />
-              </Route>
-
-              {/* Protected routes */}
-              <Route element={<AuthGuard><SetupPasswordGuard><MainLayout /></SetupPasswordGuard></AuthGuard>}>
-                <Route path="/" element={<Overview />} />
-                <Route path="/rooms" element={<Rooms />} />
-                <Route path="/scenes" element={<Scenes />} />
-                <Route path="/floorplans" element={<FloorPlans />} />
-                <Route path="/devices" element={<Devices />} />
-                <Route path="/hardware" element={<Hardware />} />
-                <Route path="/settings" element={<Settings />} />
-              </Route>
-
-              {/* Fallback */}
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </BrowserRouter>
-        </MotionConfig>
+        <BrowserRouter>
+          <AppRoutes />
+        </BrowserRouter>
       </Providers>
     </QueryClientProvider>
   );

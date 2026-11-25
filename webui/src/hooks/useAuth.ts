@@ -1,111 +1,75 @@
-// Auth state management — session, user, forced password change.
-// DESIGN §13: HTTP-only cookies only, never localStorage for tokens.
+// Auth state (DESIGN §13): the session token lives only in an HttpOnly
+// cookie; the UI keeps the username, the forced-password-change flag and
+// the CSRF token in memory. Nothing auth-related is written to storage.
 import { create } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
 
-import { authApi, ApiError } from "@/services/api";
-
-/* ================================================================
-   Types
-   ================================================================ */
-interface User {
-  username: string;
-  forcePasswordChange: boolean;
-}
+import { api, ApiError, setCsrfToken, setUnauthorizedHandler } from "@/services/api";
+import type { SessionInfo } from "@/schemas";
 
 interface AuthState {
-  user: User | null;
-  loading: boolean;
-  error: string | null;
-
-  // Actions
+  status: "unknown" | "signed-out" | "signed-in";
+  user: { username: string; forcePasswordChange: boolean } | null;
+  checkSession: () => Promise<void>;
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
-  checkSession: () => Promise<void>;
   changePassword: (current: string, next: string) => Promise<void>;
-  clearError: () => void;
+  expire: () => void;
 }
 
-/* ================================================================
-   Store
-   ================================================================ */
-export const useAuth = create<AuthState>()(
-  persist(
-    (set, get) => ({
-      user: null,
-      loading: true,
-      error: null,
+function applySession(s: SessionInfo) {
+  setCsrfToken(s.csrfToken);
+  return { status: "signed-in" as const, user: { username: s.username, forcePasswordChange: s.forcePasswordChange } };
+}
 
-      login: async (username: string, password: string) => {
-        set({ loading: true, error: null });
-        try {
-          const data = await authApi.login(username, password);
-          set({
-            user: { username: data.username, forcePasswordChange: data.forcePasswordChange },
-            loading: false,
-            error: null,
-          });
-        } catch (e) {
-          const message = e instanceof ApiError ? e.message : "Login failed";
-          set({ loading: false, error: message, user: null });
-          throw e;
-        }
-      },
+export const useAuth = create<AuthState>()((set, get) => ({
+  status: "unknown",
+  user: null,
 
-      logout: async () => {
-        set({ loading: true });
-        try {
-          await authApi.logout();
-        } catch {
-          // Ignore logout errors
-        } finally {
-          set({ user: null, loading: false });
-        }
-      },
-
-      checkSession: async () => {
-        set({ loading: true });
-        try {
-          const data = await authApi.session();
-          set({
-            user: { username: data.username, forcePasswordChange: data.forcePasswordChange },
-            loading: false,
-          });
-        } catch {
-          set({ user: null, loading: false });
-        }
-      },
-
-      changePassword: async (current: string, next: string) => {
-        set({ loading: true, error: null });
-        try {
-          await authApi.changePassword(current, next);
-          const user = get().user;
-          if (user) {
-            set({ user: { ...user, forcePasswordChange: false }, loading: false });
-          } else {
-            set({ loading: false });
-          }
-        } catch (e) {
-          const message = e instanceof ApiError ? e.message : "Password change failed";
-          set({ loading: false, error: message });
-          throw e;
-        }
-      },
-
-      clearError: () => set({ error: null }),
-    }),
-    {
-      name: "lumen-auth",
-      storage: createJSONStorage(() => sessionStorage),
-      partialize: (state) => ({ user: state.user }), // Only persist user, not loading/error
+  checkSession: async () => {
+    try {
+      set(applySession(await api.session()));
+    } catch {
+      setCsrfToken(null);
+      set({ status: "signed-out", user: null });
     }
-  )
-);
+  },
 
-/* ================================================================
-   Initialization helper
-   ================================================================ */
-export function initAuth() {
-  useAuth.getState().checkSession();
+  login: async (username, password) => {
+    const s = await api.login(username, password);
+    set(applySession(s));
+  },
+
+  logout: async () => {
+    try {
+      await api.logout();
+    } catch {
+      // the session may already be gone; sign out locally regardless
+    }
+    setCsrfToken(null);
+    set({ status: "signed-out", user: null });
+  },
+
+  changePassword: async (current, next) => {
+    const s = await api.changePassword(current, next);
+    if (s) {
+      set(applySession(s)); // firmware issues a fresh session after the change
+    } else {
+      await get().checkSession();
+    }
+  },
+
+  expire: () => {
+    setCsrfToken(null);
+    set({ status: "signed-out", user: null });
+  },
+}));
+
+setUnauthorizedHandler(() => useAuth.getState().expire());
+
+export function isApiError(e: unknown): e is ApiError {
+  return e instanceof ApiError;
+}
+
+export function errorMessage(e: unknown, fallback = "Something went wrong"): string {
+  return e instanceof ApiError ? e.message : e instanceof Error ? e.message : fallback;
 }

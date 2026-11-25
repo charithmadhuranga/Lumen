@@ -20,6 +20,8 @@ struct McuGpioInfo
     std::vector<uint32_t> input_only; // GPIOs that can only be inputs
     std::vector<uint32_t> strapping;  // boot-strapping pins (use with care)
     std::vector<uint32_t> flash_reserved; // flash/PSRAM reserved pins
+    std::vector<uint32_t> missing;    // numbers inside 0..count-1 with no pad
+    std::vector<uint32_t> console;    // default UART0 console TX/RX
 };
 
 struct McuLedcInfo
@@ -64,8 +66,11 @@ inline const McuCapabilities kEsp32Capabilities{
     "esp32",
     {/* gpio */ 40, /* input_only */ {34, 35, 36, 39},
      /* strapping */ {0, 2, 12, 15},
-     /* flash_reserved */ {6, 7, 8, 9, 10, 11}},
-    {/* ledc */ 8, /* timer */ 16, /* channel */ 80'000000, /* max res */ 20},
+     /* flash_reserved */ {6, 7, 8, 9, 10, 11},
+     /* missing (D0WD) */ {20, 24, 28, 29, 30, 31, 37, 38},
+     /* console */ {1, 3}},
+    // Low-speed LEDC group only (the driver's pool): 4 timers, 8 channels.
+    {/* timers */ 4, /* channels */ 8, /* max Hz */ 40'000000, /* max res */ 20},
     {/* rmt */ 8, /* tx */ 8},
     {/* i2c */ 2},
     {/* uart */ 3},
@@ -80,8 +85,10 @@ inline const McuCapabilities kEsp32S3Capabilities{
     // octal-PSRAM modules — profiles must avoid them there).
     {/* gpio */ 49, /* input_only */ {},
      /* strapping */ {0, 3, 45, 46},
-     /* flash_reserved */ {26, 27, 28, 29, 30, 31, 32}},
-    {/* ledc */ 8, /* timer */ 4, /* channel */ 80'000000, /* max res */ 14},
+     /* flash_reserved */ {26, 27, 28, 29, 30, 31, 32},
+     /* missing */ {22, 23, 24, 25},
+     /* console */ {43, 44}},
+    {/* timers */ 4, /* channels */ 8, /* max Hz */ 40'000000, /* max res */ 14},
     {/* rmt */ 8, /* tx */ 4},
     {/* i2c */ 2},
     {/* uart */ 3},

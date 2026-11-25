@@ -113,6 +113,8 @@ class WebServer
     static esp_err_t api_trampoline(httpd_req_t *req);
     static esp_err_t static_trampoline(httpd_req_t *req);
     static esp_err_t ws_trampoline(httpd_req_t *req);
+    static esp_err_t ws_pre_handshake(httpd_req_t *req);
+    static esp_err_t ws_post_handshake(httpd_req_t *req);
     static esp_err_t options_trampoline(httpd_req_t *req);
 
     esp_err_t handle_api(httpd_req_t *req);

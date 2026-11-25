@@ -258,6 +258,10 @@ esp_err_t WebServer::start()
     ws.user_ctx = this;
     ws.is_websocket = true;
     ws.handle_ws_control_frames = false;
+    // ESP-IDF 6 performs the handshake itself and never calls the handler
+    // for it: authenticate BEFORE the upgrade, register the client after.
+    ws.ws_pre_handshake_cb = ws_pre_handshake;
+    ws.ws_post_handshake_cb = ws_post_handshake;
     httpd_register_uri_handler(server_, &ws);
 
     const httpd_method_t methods[] = {HTTP_GET, HTTP_POST, HTTP_PUT, HTTP_DELETE};
@@ -316,26 +320,32 @@ esp_err_t WebServer::options_trampoline(httpd_req_t *req)
     return httpd_resp_send(req, nullptr, 0);
 }
 
-esp_err_t WebServer::ws_trampoline(httpd_req_t *req)
+esp_err_t WebServer::ws_pre_handshake(httpd_req_t *req)
 {
+    // Runs before the 101 upgrade: require a valid, password-changed session.
     auto *self = static_cast<WebServer *>(req->user_ctx);
-    if (self->ws_ == nullptr) {
-        httpd_resp_send_404(req);
+    const std::string token = cookie_token(req);
+    AuthResult res = self->auth_.validate_session(token);
+    if (self->ws_ == nullptr || res.code != AuthResult::kOk || res.session->force_pw_change) {
+        ESP_LOGW(TAG, "WS handshake rejected (no valid session)");
+        httpd_resp_set_status(req, "401 Unauthorized");
+        httpd_resp_send(req, nullptr, 0);
         return ESP_FAIL;
     }
-    if (req->method == HTTP_GET) {
-        // Handshake: require a valid, password-changed session cookie.
-        const std::string token = cookie_token(req);
-        AuthResult res = self->auth_.validate_session(token);
-        if (res.code != AuthResult::kOk || res.session->force_pw_change) {
-            ESP_LOGW(TAG, "WS handshake rejected (no valid session)");
-            httpd_resp_set_status(req, "401 Unauthorized");
-            httpd_resp_send(req, nullptr, 0);
-            return ESP_FAIL;
-        }
-        return self->ws_->on_open(req, token);
-    }
-    return self->ws_->on_frame(req);
+    return ESP_OK;
+}
+
+esp_err_t WebServer::ws_post_handshake(httpd_req_t *req)
+{
+    auto *self = static_cast<WebServer *>(req->user_ctx);
+    return self->ws_ != nullptr ? self->ws_->on_open(req, cookie_token(req)) : ESP_FAIL;
+}
+
+esp_err_t WebServer::ws_trampoline(httpd_req_t *req)
+{
+    // Data frames only (IDF 6 never routes the handshake here).
+    auto *self = static_cast<WebServer *>(req->user_ctx);
+    return self->ws_ != nullptr ? self->ws_->on_frame(req) : ESP_FAIL;
 }
 
 std::string WebServer::cookie_token(httpd_req_t *req)
@@ -481,7 +491,9 @@ bool WebServer::serve_file(httpd_req_t *req, const std::string &path, bool is_in
     const bool accepts_gzip =
         httpd_req_get_hdr_value_str(req, "Accept-Encoding", enc, sizeof(enc)) == ESP_OK &&
         std::strstr(enc, "gzip") != nullptr;
-    if (accepts_gzip && file_exists(path + ".gz")) {
+    // The UI image stores assets gzip-only; every browser accepts gzip, so
+    // the .gz copy is served even when the header is missing.
+    if (file_exists(path + ".gz") && (accepts_gzip || !file_exists(path))) {
         file = path + ".gz";
         gz = true;
     } else if (!file_exists(path)) {

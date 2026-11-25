@@ -1,202 +1,113 @@
-"use client";
-
+// Forced password change (DESIGN §7.1, SPEC §16.1). Blocks every other route
+// until the default credential is replaced.
 import * as React from "react";
+import { Navigate, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { cn } from "@/lib/utils";
+import { KeyRound, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, Lock, AlertCircle } from "lucide-react";
-import { useAuth } from "@/hooks/useAuth";
-import { useNavigate } from "react-router-dom";
+import { Field } from "@/components/common";
+import { errorMessage, useAuth } from "@/hooks/useAuth";
+import { PasswordChangeForm } from "@/schemas";
+import type { z } from "zod";
 
-const passwordSchema = z
-  .object({
-    currentPassword: z.string().min(1, "Current password is required"),
-    newPassword: z.string().min(10, "Password must be at least 10 characters"),
-    confirmPassword: z.string().min(1, "Please confirm your password"),
-  })
-  .refine((data) => data.newPassword !== data.currentPassword, {
-    message: "New password must be different from current password",
-    path: ["newPassword"],
-  })
-  .refine((data) => data.newPassword === data.confirmPassword, {
-    message: "Passwords do not match",
-    path: ["confirmPassword"],
-  });
+type Form = z.infer<typeof PasswordChangeForm>;
 
-type PasswordForm = z.infer<typeof passwordSchema>;
-
-function getPasswordStrength(password: string): { score: number; label: string; color: string } {
+export function passwordStrength(p: string): { score: number; label: string } {
   let score = 0;
-  if (password.length >= 10) score++;
-  if (password.length >= 14) score++;
-  if (/[A-Z]/.test(password)) score++;
-  if (/[a-z]/.test(password)) score++;
-  if (/[0-9]/.test(password)) score++;
-  if (/[^A-Za-z0-9]/.test(password)) score++;
-
-  if (score <= 2) return { score, label: "Weak", color: "text-destructive" };
-  if (score <= 4) return { score, label: "Fair", color: "text-warning" };
-  return { score, label: "Strong", color: "text-success" };
+  if (p.length >= 10) score++;
+  if (p.length >= 14) score++;
+  if (/[a-z]/.test(p) && /[A-Z]/.test(p)) score++;
+  if (/\d/.test(p)) score++;
+  if (/[^A-Za-z0-9]/.test(p)) score++;
+  const label = score <= 1 ? "Weak" : score <= 3 ? "Fair" : "Strong";
+  return { score, label };
 }
 
-export function SetupPassword() {
+export function PasswordFields({ form, includeCurrent = true }: { form: ReturnType<typeof useForm<Form>>; includeCurrent?: boolean }) {
+  const next = form.watch("newPassword") ?? "";
+  const strength = passwordStrength(next);
+  const e = form.formState.errors;
+  return (
+    <>
+      {includeCurrent && (
+        <Field label="Current password" htmlFor="current" error={e.currentPassword?.message}>
+          <Input id="current" type="password" autoComplete="current-password" {...form.register("currentPassword")} />
+        </Field>
+      )}
+      <Field label="New password" htmlFor="new" error={e.newPassword?.message} hint="At least 10 characters">
+        <Input id="new" type="password" autoComplete="new-password" {...form.register("newPassword")} />
+      </Field>
+      {next && (
+        <div aria-live="polite" className="space-y-1">
+          <div className="flex h-1.5 gap-1" aria-hidden="true">
+            {[0, 1, 2, 3, 4].map((i) => (
+              <span
+                key={i}
+                className={`flex-1 rounded-full ${i < strength.score ? (strength.score <= 1 ? "bg-destructive" : strength.score <= 3 ? "bg-warning" : "bg-success") : "bg-muted"}`}
+              />
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">Strength: {strength.label}</p>
+        </div>
+      )}
+      <Field label="Confirm new password" htmlFor="confirm" error={e.confirmPassword?.message}>
+        <Input id="confirm" type="password" autoComplete="new-password" {...form.register("confirmPassword")} />
+      </Field>
+    </>
+  );
+}
+
+export default function SetupPassword() {
+  const { status, user, changePassword } = useAuth();
   const navigate = useNavigate();
-  const { changePassword, loading: authLoading } = useAuth();
-
-  const [localLoading, setLocalLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [strength, setStrength] = React.useState<{ score: number; label: string; color: string }>({ score: 0, label: "", color: "" });
-
-  const form = useForm<PasswordForm>({
-    resolver: zodResolver(passwordSchema),
-    defaultValues: { currentPassword: "admin", newPassword: "", confirmPassword: "" },
-    mode: "onChange",
+  const form = useForm<Form>({
+    resolver: zodResolver(PasswordChangeForm),
+    defaultValues: { currentPassword: "", newPassword: "", confirmPassword: "" },
   });
 
-  // eslint-disable-next-line react-hooks/incompatible-library
-  const newPassword = form.watch("newPassword");
-  React.useEffect(() => {
-    setStrength(getPasswordStrength(newPassword));
-  }, [newPassword]);
+  if (status === "unknown") return null;
+  if (status === "signed-out") return <Navigate to="/login" replace />;
+  if (user && !user.forcePasswordChange) return <Navigate to="/" replace />;
 
-  const onSubmit = async (data: PasswordForm) => {
-    setLocalLoading(true);
+  const submit = form.handleSubmit(async (v) => {
     setError(null);
     try {
-      await changePassword(data.currentPassword, data.newPassword);
-      navigate("/");
-    } catch {
-      setError("Password change failed");
-    } finally {
-      setLocalLoading(false);
+      await changePassword(v.currentPassword, v.newPassword);
+      toast.success("Password changed", { duration: 2500 });
+      navigate("/", { replace: true });
+    } catch (e) {
+      setError(errorMessage(e));
     }
-  };
+  });
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary">
-            <Lock className="h-7 w-7 text-primary-foreground" />
-          </div>
-          <CardTitle className="text-2xl">Change Default Password</CardTitle>
-          <CardDescription>
-            The default password must be changed before continuing.
-            Your new password must be at least 10 characters and different from "admin".
-          </CardDescription>
-        </CardHeader>
-
-        <CardContent>
-          {error && (
-            <Alert variant="destructive" className="mb-4">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="currentPassword">Current Password</Label>
-              <Input
-                id="currentPassword"
-                type="password"
-                autoComplete="current-password"
-                placeholder="admin"
-                {...form.register("currentPassword")}
-                disabled={localLoading || authLoading}
-                aria-invalid={!!form.formState.errors.currentPassword}
-              />
-              {form.formState.errors.currentPassword && (
-                <p className="text-sm text-destructive" role="alert">
-                  {form.formState.errors.currentPassword.message}
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="newPassword">New Password</Label>
-              <Input
-                id="newPassword"
-                type="password"
-                autoComplete="new-password"
-                placeholder="At least 10 characters"
-                {...form.register("newPassword")}
-                disabled={localLoading || authLoading}
-                aria-invalid={!!form.formState.errors.newPassword}
-              />
-              {form.formState.errors.newPassword && (
-                <p className="text-sm text-destructive" role="alert">
-                  {form.formState.errors.newPassword.message}
-                </p>
-              )}
-
-              {/* Strength indicator */}
-              {newPassword && (
-                <div className="space-y-1">
-                  <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
-                    <div
-                      className={cn(
-                        "h-full rounded-full transition-all duration-300",
-                        strength.color.replace("text-", "bg-")
-                      )}
-                      style={{ width: `${(strength.score / 6) * 100}%` }}
-                    />
-                  </div>
-                  <p className={cn("text-xs", strength.color)}>
-                    {strength.label} ({strength.score}/6)
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirm New Password</Label>
-              <Input
-                id="confirmPassword"
-                type="password"
-                autoComplete="new-password"
-                placeholder="Confirm new password"
-                {...form.register("confirmPassword")}
-                disabled={localLoading || authLoading}
-                aria-invalid={!!form.formState.errors.confirmPassword}
-              />
-              {form.formState.errors.confirmPassword && (
-                <p className="text-sm text-destructive" role="alert">
-                  {form.formState.errors.confirmPassword.message}
-                </p>
-              )}
-            </div>
-
-            <Button
-              type="submit"
-              className="w-full"
-              size="lg"
-              disabled={localLoading || authLoading}
-            >
-              {localLoading || authLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Updating...
-                </>
-              ) : (
-                "Update Password"
-              )}
-            </Button>
-          </form>
-        </CardContent>
-
-        <CardFooter className="flex flex-col items-center gap-2 text-sm text-muted-foreground">
-          <Separator className="w-full" />
-          <p>Use a strong, unique password. Minimum 10 characters.</p>
-        </CardFooter>
-      </Card>
+    <div className="grid min-h-dvh place-items-center bg-background px-4">
+      <form onSubmit={submit} className="w-full max-w-sm space-y-5 rounded-2xl border bg-card p-6 shadow-sm" noValidate>
+        <div className="flex flex-col items-center gap-2 text-center">
+          <span className="grid size-12 place-items-center rounded-xl bg-primary text-primary-foreground">
+            <KeyRound className="size-6" aria-hidden="true" />
+          </span>
+          <h1 className="text-xl font-semibold">Choose a new password</h1>
+          <p className="text-sm text-muted-foreground">
+            The default password must be replaced before the controller can be used.
+          </p>
+        </div>
+        <PasswordFields form={form} />
+        {error && (
+          <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
+            {error}
+          </p>
+        )}
+        <Button type="submit" className="h-11 w-full" disabled={form.formState.isSubmitting}>
+          {form.formState.isSubmitting && <Loader2 className="size-4 animate-spin" />}
+          Save password
+        </Button>
+      </form>
     </div>
   );
 }

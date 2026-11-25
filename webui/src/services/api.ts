@@ -1,488 +1,205 @@
-// Single typed fetch client — unwraps {success, data, error} envelope once,
-// throws typed ApiError, credentials: "same-origin", CSRF header on mutations.
-// SPEC §17.1, DESIGN §8.1.
+// Single typed API client (DESIGN §8.1, SPEC §17.1).
+// - unwraps {success, data, error} once and throws a typed ApiError
+// - same-origin cookies; X-CSRF-Token on every mutating request
+// - 401 -> session cleared + redirect to /login
+// - every response parsed with its Zod schema
 import { z } from "zod";
 
-/* ================================================================
-   Error types
-   ================================================================ */
+import * as S from "@/schemas";
+
 export class ApiError extends Error {
   constructor(
     public readonly code: string,
-    public override readonly message: string,
+    message: string,
     public readonly status: number,
-    public readonly response?: Response
+    public readonly data?: unknown,
+    public readonly retryAfter?: number,
   ) {
-    super(`${code}: ${message}`);
+    super(message);
     this.name = "ApiError";
   }
 }
 
-export class NetworkError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "NetworkError";
-  }
-}
-
-/* ================================================================
-   CSRF token handling
-   ================================================================ */
 let csrfToken: string | null = null;
+let onUnauthorized: (() => void) | null = null;
 
-export function setCsrfToken(token: string | null) {
+export function setCsrfToken(token: string | null): void {
   csrfToken = token;
 }
 
-function getCsrfToken(): string | null {
-  return csrfToken;
+/** Called when any request returns 401 (session expired / logged out). */
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+  onUnauthorized = handler;
 }
 
-/* ================================================================
-   Fetch wrapper
-   ================================================================ */
-async function fetchJson<T>(
-  url: string,
-  options: RequestInit & { schema?: z.ZodType<T> } = {}
+const Envelope = z.object({
+  success: z.boolean(),
+  data: z.unknown().optional(),
+  error: z.object({ code: z.string(), message: z.string() }).nullable().optional(),
+});
+
+type Method = "GET" | "POST" | "PUT" | "DELETE";
+
+async function request<T>(
+  method: Method,
+  path: string,
+  schema: z.ZodType<T>,
+  body?: unknown,
+  options: { raw?: BodyInit; contentType?: string; timeoutMs?: number } = {},
 ): Promise<T> {
-  const { schema, headers, ...init } = options;
-
-  const requestHeaders = new Headers(headers);
-  requestHeaders.set("Accept", "application/json");
-  requestHeaders.set("Content-Type", "application/json");
-
-  // CSRF token for mutating requests
-  const method = init.method?.toUpperCase() ?? "GET";
-  if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
-    const token = getCsrfToken();
-    if (token) requestHeaders.set("X-CSRF-Token", token);
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (method !== "GET") {
+    if (csrfToken) headers["X-CSRF-Token"] = csrfToken;
+    headers["Content-Type"] = options.contentType ?? "application/json";
   }
-
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 15000);
   let response: Response;
   try {
-    response = await fetch(url, {
-      ...init,
-      headers: requestHeaders,
+    response = await fetch(`/api/v1${path}`, {
+      method,
+      headers,
       credentials: "same-origin",
+      body: options.raw ?? (body === undefined ? (method === "GET" ? undefined : "{}") : JSON.stringify(body)),
+      signal: controller.signal,
     });
   } catch (e) {
-    throw new NetworkError(`Network error: ${(e as Error).message}`);
+    const aborted = e instanceof DOMException && e.name === "AbortError";
+    throw new ApiError(
+      aborted ? "TIMEOUT" : "NETWORK_ERROR",
+      aborted ? "The controller did not respond in time" : "Cannot reach the controller",
+      0,
+    );
+  } finally {
+    clearTimeout(timer);
   }
 
-  // 401 → clear session, redirect to login
-  if (response.status === 401) {
-    setCsrfToken(null);
-    if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
-      window.location.href = "/login?expired=1";
-    }
-    throw new ApiError("UNAUTHORIZED", "Session expired", 401, response);
-  }
-
-  // Parse JSON envelope
   let json: unknown;
   try {
     json = await response.json();
   } catch {
-    throw new ApiError("INVALID_RESPONSE", "Response is not valid JSON", response.status, response);
+    throw new ApiError("INVALID_RESPONSE", `Unexpected response (HTTP ${response.status})`, response.status);
   }
-
-  // Validate envelope structure
-  const envelope = z.object({
-    success: z.boolean(),
-    data: z.unknown().optional(),
-    error: z.object({ code: z.string(), message: z.string() }).optional(),
-  }).safeParse(json);
-
-  if (!envelope.success) {
-    throw new ApiError("INVALID_RESPONSE", "Response envelope validation failed", response.status, response);
+  const env = Envelope.safeParse(json);
+  if (!env.success) {
+    throw new ApiError("INVALID_RESPONSE", "Malformed response envelope", response.status);
   }
-
-  const { success, data, error } = envelope.data;
-
-  if (!success) {
-    throw new ApiError(
-      error?.code ?? "UNKNOWN_ERROR",
-      error?.message ?? "Unknown error",
-      response.status,
-      response
-    );
-  }
-
-  // Validate data against schema if provided
-  if (schema && data !== undefined) {
-    const parsed = schema.safeParse(data);
-    if (!parsed.success) {
-      throw new ApiError("INVALID_RESPONSE", `Data validation failed: ${parsed.error.message}`, response.status, response);
+  if (!env.data.success) {
+    const err = env.data.error ?? { code: "UNKNOWN_ERROR", message: "Request failed" };
+    if (response.status === 401 && path !== "/auth/login" && path !== "/auth/session") {
+      setCsrfToken(null);
+      onUnauthorized?.();
     }
-    return parsed.data;
+    const retryAfter = Number(response.headers.get("Retry-After") ?? "") || undefined;
+    throw new ApiError(err.code, err.message, response.status, env.data.data, retryAfter);
   }
-
-  return data as T;
+  const parsed = schema.safeParse(env.data.data ?? null);
+  if (!parsed.success) {
+    console.error(`[api] ${method} ${path}: response failed validation`, parsed.error.issues);
+    throw new ApiError("INVALID_RESPONSE", "The controller sent data this UI does not understand", response.status);
+  }
+  return parsed.data;
 }
 
-/* ================================================================
-   Auth API
-   ================================================================ */
-import { LoginRequest, LoginResponse, PasswordChangeRequest, SessionInfo } from "@/schemas";
+const Null = z.unknown();
+const IdOnly = z.object({ id: z.string() });
 
-export const authApi = {
-  login(username: string, password: string) {
-    return fetchJson<LoginResponse>("/api/v1/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ username, password } as LoginRequest),
-      schema: LoginResponse,
-    });
-  },
+export const api = {
+  /* auth */
+  login: (username: string, password: string) =>
+    request("POST", "/auth/login", S.SessionInfo, { username, password }),
+  logout: () => request("POST", "/auth/logout", Null),
+  session: () => request("GET", "/auth/session", S.SessionInfo),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    request("PUT", "/auth/password", S.SessionInfo.nullable(), { currentPassword, newPassword }, { timeoutMs: 30000 }),
 
-  logout() {
-    return fetchJson<void>("/api/v1/auth/logout", {
-      method: "POST",
-    });
-  },
+  /* system */
+  systemInfo: () => request("GET", "/system/info", S.SystemInfo),
+  health: () => request("GET", "/system/health", S.Health),
+  diagnostics: () => request("GET", "/system/diagnostics", z.record(z.string(), z.unknown())),
+  restart: () => request("POST", "/system/restart", z.object({ restarting: z.boolean() })),
+  factoryReset: () => request("POST", "/system/factory-reset", z.object({ resetting: z.boolean() }), { confirm: "RESET" }),
 
-  session() {
-    return fetchJson<SessionInfo>("/api/v1/auth/session", {
-      schema: SessionInfo,
-    });
-  },
+  /* lights */
+  lights: () => request("GET", "/lights", z.array(S.Light)),
+  light: (id: string) => request("GET", `/lights/${encodeURIComponent(id)}`, S.Light),
+  createLight: (light: S.LightCreate) => request("POST", "/lights", S.Light, light),
+  updateLight: (id: string, patch: Partial<S.LightCreate>) =>
+    request("PUT", `/lights/${encodeURIComponent(id)}`, S.Light, patch),
+  deleteLight: (id: string) => request("DELETE", `/lights/${encodeURIComponent(id)}`, IdOnly),
+  commandLight: (id: string, cmd: S.LightCommand) =>
+    request("POST", `/lights/${encodeURIComponent(id)}/command`, S.Accepted, cmd),
+  effects: () => request("GET", "/lights/effects", z.array(z.string())),
 
-  changePassword(currentPassword: string, newPassword: string) {
-    return fetchJson<void>("/api/v1/auth/password", {
-      method: "POST",
-      body: JSON.stringify({ currentPassword, newPassword } as PasswordChangeRequest),
-    });
-  },
+  /* rooms */
+  rooms: () => request("GET", "/rooms", z.array(S.Room)),
+  createRoom: (room: S.RoomForm) => request("POST", "/rooms", S.Room, room),
+  updateRoom: (id: string, room: Partial<S.RoomForm>) =>
+    request("PUT", `/rooms/${encodeURIComponent(id)}`, S.Room, room),
+  deleteRoom: (id: string) => request("DELETE", `/rooms/${encodeURIComponent(id)}`, IdOnly),
+  roomPower: (id: string, power: boolean, transitionMs?: number) =>
+    request("POST", `/rooms/${encodeURIComponent(id)}/power`, S.Accepted, { power, transitionMs }),
+  roomBrightness: (id: string, brightness: number, transitionMs?: number) =>
+    request("POST", `/rooms/${encodeURIComponent(id)}/brightness`, S.Accepted, { brightness, transitionMs }),
+
+  /* groups */
+  groups: () => request("GET", "/groups", z.array(S.Group)),
+  createGroup: (g: { name: string; roomId?: string; channelIds: string[]; policy: S.AggregationPolicy }) =>
+    request("POST", "/groups", S.Group, g),
+  updateGroup: (id: string, g: Partial<{ name: string; roomId: string; channelIds: string[]; policy: S.AggregationPolicy }>) =>
+    request("PUT", `/groups/${encodeURIComponent(id)}`, S.Group, g),
+  deleteGroup: (id: string) => request("DELETE", `/groups/${encodeURIComponent(id)}`, IdOnly),
+  commandGroup: (id: string, cmd: S.LightCommand) =>
+    request("POST", `/groups/${encodeURIComponent(id)}/command`, S.Accepted, cmd),
+
+  /* scenes */
+  scenes: () => request("GET", "/scenes", z.array(S.Scene)),
+  createScene: (s: { name: string; transitionMs: number; states: S.SceneLightState[] }) =>
+    request("POST", "/scenes", S.Scene, s),
+  captureScene: (name: string, lightIds?: string[], transitionMs = 500) =>
+    request("POST", "/scenes/capture", S.Scene, { name, lightIds, transitionMs }),
+  updateScene: (id: string, s: Partial<{ name: string; transitionMs: number; states: S.SceneLightState[] }>) =>
+    request("PUT", `/scenes/${encodeURIComponent(id)}`, S.Scene, s),
+  deleteScene: (id: string) => request("DELETE", `/scenes/${encodeURIComponent(id)}`, IdOnly),
+  activateScene: (id: string, transitionMs?: number) =>
+    request("POST", `/scenes/${encodeURIComponent(id)}/activate`, S.Accepted, transitionMs ? { transitionMs } : {}),
+  duplicateScene: (id: string) => request("POST", `/scenes/${encodeURIComponent(id)}/duplicate`, S.Scene),
+
+  /* boards / hardware */
+  boards: () => request("GET", "/boards", z.array(S.BoardCandidate)),
+  board: (id: string) => request("GET", `/boards/${encodeURIComponent(id)}`, S.BoardProfile),
+  activeBoard: () => request("GET", "/boards/active", S.BoardProfile),
+  boardPins: (id: string) => request("GET", `/boards/${encodeURIComponent(id)}/pins`, z.array(S.PinInfo)),
+  validateBoard: (profile: S.BoardProfile) => request("POST", "/boards/validate", S.ValidationReport, profile),
+  createBoard: (profile: S.BoardProfile) => request("POST", "/boards", S.BoardProfile, profile),
+  updateBoard: (id: string, profile: S.BoardProfile) =>
+    request("PUT", `/boards/${encodeURIComponent(id)}`, S.BoardProfile, profile),
+  deleteBoard: (id: string) => request("DELETE", `/boards/${encodeURIComponent(id)}`, IdOnly),
+  duplicateBoard: (id: string, newId?: string, name?: string) =>
+    request("POST", `/boards/${encodeURIComponent(id)}/duplicate`, S.BoardProfile, { id: newId, name }),
+  applyBoard: (id: string, force = false) =>
+    request("POST", `/boards/${encodeURIComponent(id)}/apply`, S.ApplyResult, { force }, { timeoutMs: 30000 }),
+  hardwareStatus: () => request("GET", "/hardware/status", S.HardwareStatus),
+  hardwareInputs: () => request("GET", "/hardware/inputs", z.array(S.HardwareInput)),
+  hardwareOutputs: () => request("GET", "/hardware/outputs", z.array(S.HardwareOutput)),
+  testOutput: (id: string, level: number) =>
+    request("POST", `/hardware/outputs/${encodeURIComponent(id)}/test`, z.object({ id: z.string(), level: z.number() }), { level }),
+  i2cScan: (bus?: string) =>
+    request("GET", `/hardware/i2c/scan${bus ? `?bus=${encodeURIComponent(bus)}` : ""}`, S.I2cScan, undefined, { timeoutMs: 20000 }),
+
+  /* network */
+  network: () => request("GET", "/network", S.NetworkSettings),
+  networkStatus: () => request("GET", "/network/status", S.NetworkStatus),
+  wifiScan: () => request("GET", "/network/scan", z.array(S.WifiNetwork), undefined, { timeoutMs: 20000 }),
+  apPassword: () => request("GET", "/network/ap-password", z.object({ password: z.string() })),
+  updateWifi: (w: { ssid: string; password?: string; staticIp?: S.NetworkSettings["wifi"]["staticIp"] }) =>
+    request("PUT", "/network/wifi", z.object({ applying: z.boolean() }), w),
+  updateAp: (a: { ssid?: string; password?: string; policy: S.NetworkSettings["ap"]["policy"]; channel?: number }) =>
+    request("PUT", "/network/ap", z.object({ applying: z.boolean() }), a),
+  updateEthernet: (enabled: boolean) =>
+    request("PUT", "/network/ethernet", z.object({ enabled: z.boolean(), restartRequired: z.boolean() }), { enabled }),
+  updateNetworkSystem: (s: { hostname?: string; timezone?: string; ntpServer?: string }) =>
+    request("PUT", "/network/system", S.NetworkSettings, s),
 };
 
-/* ================================================================
-   System API
-   ================================================================ */
-import { SystemInfo, HealthResponse } from "@/schemas";
-
-export const systemApi = {
-  info() {
-    return fetchJson<SystemInfo>("/api/v1/system/info", {
-      schema: SystemInfo,
-    });
-  },
-
-  health() {
-    return fetchJson<HealthResponse>("/api/v1/system/health", {
-      schema: HealthResponse,
-    });
-  },
-};
-
-/* ================================================================
-   Lights API
-   ================================================================ */
-import { LightChannel, LightCommand, LightCommandResponse } from "@/schemas";
-
-export const lightsApi = {
-  list() {
-    return fetchJson<LightChannel[]>("/api/v1/lights", {
-      schema: z.array(LightChannel),
-    });
-  },
-
-  get(id: string) {
-    return fetchJson<LightChannel>(`/api/v1/lights/${id}`, {
-      schema: LightChannel,
-    });
-  },
-
-  create(channel: Omit<LightChannel, "state" | "requested">) {
-    return fetchJson<LightChannel>("/api/v1/lights", {
-      method: "POST",
-      body: JSON.stringify(channel),
-      schema: LightChannel,
-    });
-  },
-
-  update(id: string, updates: Partial<LightChannel>) {
-    return fetchJson<LightChannel>(`/api/v1/lights/${id}`, {
-      method: "PUT",
-      body: JSON.stringify(updates),
-      schema: LightChannel,
-    });
-  },
-
-  delete(id: string) {
-    return fetchJson<void>(`/api/v1/lights/${id}`, {
-      method: "DELETE",
-    });
-  },
-
-  command(id: string, cmd: LightCommand) {
-    return fetchJson<LightCommandResponse>(`/api/v1/lights/${id}/command`, {
-      method: "POST",
-      body: JSON.stringify(cmd),
-      schema: LightCommandResponse,
-    });
-  },
-};
-
-/* ================================================================
-   Rooms API
-   ================================================================ */
-import { Room, RoomCreate, RoomUpdate } from "@/schemas";
-
-export const roomsApi = {
-  list() {
-    return fetchJson<Room[]>("/api/v1/rooms", {
-      schema: z.array(Room),
-    });
-  },
-
-  get(id: string) {
-    return fetchJson<Room>(`/api/v1/rooms/${id}`, {
-      schema: Room,
-    });
-  },
-
-  create(room: RoomCreate) {
-    return fetchJson<Room>("/api/v1/rooms", {
-      method: "POST",
-      body: JSON.stringify(room),
-      schema: Room,
-    });
-  },
-
-  update(id: string, updates: RoomUpdate) {
-    return fetchJson<Room>(`/api/v1/rooms/${id}`, {
-      method: "PUT",
-      body: JSON.stringify(updates),
-      schema: Room,
-    });
-  },
-
-  delete(id: string) {
-    return fetchJson<void>(`/api/v1/rooms/${id}`, {
-      method: "DELETE",
-    });
-  },
-
-  setPower(id: string, power: boolean, transitionMs?: number) {
-    return fetchJson<void>(`/api/v1/rooms/${id}/power`, {
-      method: "POST",
-      body: JSON.stringify({ power, transitionMs }),
-    });
-  },
-
-  setBrightness(id: string, brightness: number, transitionMs?: number) {
-    return fetchJson<void>(`/api/v1/rooms/${id}/brightness`, {
-      method: "POST",
-      body: JSON.stringify({ brightness, transitionMs }),
-    });
-  },
-};
-
-/* ================================================================
-   Groups API
-   ================================================================ */
-import { Group, GroupCreate, GroupUpdate } from "@/schemas";
-
-export const groupsApi = {
-  list() {
-    return fetchJson<Group[]>("/api/v1/groups", {
-      schema: z.array(Group),
-    });
-  },
-
-  get(id: string) {
-    return fetchJson<Group>(`/api/v1/groups/${id}`, {
-      schema: Group,
-    });
-  },
-
-  create(group: GroupCreate) {
-    return fetchJson<Group>("/api/v1/groups", {
-      method: "POST",
-      body: JSON.stringify(group),
-      schema: Group,
-    });
-  },
-
-  update(id: string, updates: GroupUpdate) {
-    return fetchJson<Group>(`/api/v1/groups/${id}`, {
-      method: "PUT",
-      body: JSON.stringify(updates),
-      schema: Group,
-    });
-  },
-
-  delete(id: string) {
-    return fetchJson<void>(`/api/v1/groups/${id}`, {
-      method: "DELETE",
-    });
-  },
-
-  command(id: string, cmd: LightCommand) {
-    return fetchJson<LightCommandResponse>(`/api/v1/groups/${id}/command`, {
-      method: "POST",
-      body: JSON.stringify(cmd),
-      schema: LightCommandResponse,
-    });
-  },
-
-  setPower(id: string, power: boolean, transitionMs?: number) {
-    return fetchJson<void>(`/api/v1/groups/${id}/power`, {
-      method: "POST",
-      body: JSON.stringify({ power, transitionMs }),
-    });
-  },
-
-  setBrightness(id: string, brightness: number, transitionMs?: number) {
-    return fetchJson<void>(`/api/v1/groups/${id}/brightness`, {
-      method: "POST",
-      body: JSON.stringify({ brightness, transitionMs }),
-    });
-  },
-};
-
-/* ================================================================
-   Scenes API
-   ================================================================ */
-import { Scene, SceneCreate, SceneActivate } from "@/schemas";
-
-export const scenesApi = {
-  list() {
-    return fetchJson<Scene[]>("/api/v1/scenes", {
-      schema: z.array(Scene),
-    });
-  },
-
-  get(id: string) {
-    return fetchJson<Scene>(`/api/v1/scenes/${id}`, {
-      schema: Scene,
-    });
-  },
-
-  create(scene: SceneCreate) {
-    return fetchJson<Scene>("/api/v1/scenes", {
-      method: "POST",
-      body: JSON.stringify(scene),
-      schema: Scene,
-    });
-  },
-
-  update(id: string, updates: Partial<Scene>) {
-    return fetchJson<Scene>(`/api/v1/scenes/${id}`, {
-      method: "PUT",
-      body: JSON.stringify(updates),
-      schema: Scene,
-    });
-  },
-
-  delete(id: string) {
-    return fetchJson<void>(`/api/v1/scenes/${id}`, {
-      method: "DELETE",
-    });
-  },
-
-  activate(id: string, params?: SceneActivate) {
-    return fetchJson<void>(`/api/v1/scenes/${id}/activate`, {
-      method: "POST",
-      body: JSON.stringify(params ?? {}),
-    });
-  },
-
-  duplicate(id: string) {
-    return fetchJson<Scene>(`/api/v1/scenes/${id}/duplicate`, {
-      method: "POST",
-      schema: Scene,
-    });
-  },
-};
-
-/* ================================================================
-   Boards API (Phase 7)
-   ================================================================ */
-import {
-  BoardProfile,
-  BoardCandidate,
-  ValidationReport,
-  ApplyBoardResult,
-} from "@/schemas";
-
-export const boardsApi = {
-  list() {
-    return fetchJson<BoardCandidate[]>("/api/v1/boards", {
-      schema: z.array(BoardCandidate),
-    });
-  },
-
-  active() {
-    return fetchJson<BoardProfile>("/api/v1/boards/active", {
-      schema: BoardProfile,
-    });
-  },
-
-  get(id: string) {
-    return fetchJson<BoardProfile>(`/api/v1/boards/${id}`, {
-      schema: BoardProfile,
-    });
-  },
-
-  validate(profile: BoardProfile) {
-    return fetchJson<ValidationReport>("/api/v1/boards/validate", {
-      method: "POST",
-      body: JSON.stringify(profile),
-      schema: ValidationReport,
-    });
-  },
-
-  create(profile: BoardProfile) {
-    return fetchJson<BoardProfile>("/api/v1/boards", {
-      method: "POST",
-      body: JSON.stringify(profile),
-      schema: BoardProfile,
-    });
-  },
-
-  update(id: string, profile: Partial<BoardProfile>) {
-    return fetchJson<BoardProfile>(`/api/v1/boards/${id}`, {
-      method: "PUT",
-      body: JSON.stringify(profile),
-      schema: BoardProfile,
-    });
-  },
-
-  remove(id: string) {
-    return fetchJson<void>(`/api/v1/boards/${id}`, {
-      method: "DELETE",
-    });
-  },
-
-  apply(id: string) {
-    return fetchJson<ApplyBoardResult>(`/api/v1/boards/${id}/apply`, {
-      method: "POST",
-      schema: ApplyBoardResult,
-    });
-  },
-};
-
-/* ================================================================
-   Hardware API (Phase 7)
-   ================================================================ */
-import { HardwareStatus, HardwareInput, I2cScanResult } from "@/schemas";
-
-export const hardwareApi = {
-  status() {
-    return fetchJson<HardwareStatus>("/api/v1/hardware/status", {
-      schema: HardwareStatus,
-    });
-  },
-
-  inputs() {
-    return fetchJson<HardwareStatus["inputs"]>("/api/v1/hardware/inputs", {
-      schema: z.array(HardwareInput).optional(),
-    });
-  },
-
-  i2cScan() {
-    return fetchJson<I2cScanResult>("/api/v1/hardware/i2c/scan", {
-      schema: I2cScanResult,
-    });
-  },
-};
+export type Api = typeof api;

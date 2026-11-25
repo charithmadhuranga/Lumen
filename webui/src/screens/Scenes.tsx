@@ -1,469 +1,313 @@
-"use client";
-
+// Scenes (DESIGN §7.4): card grid with Activate; "Save current state as
+// scene" is the primary action; editor with per-light state, transition and
+// live preview; JSON export/import validated with Zod.
 import * as React from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
+import { Copy, Download, MoreVertical, Pencil, Play, Plus, Sparkles, Trash2, Upload } from "lucide-react";
+import { toast } from "sonner";
 import { z } from "zod";
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Slider } from "@/components/ui/slider";
-import {
-  Plus,
-  Grid,
-  Play,
-  Copy,
-  Edit,
-  Trash2,
-} from "lucide-react";
-import { useScenes, useLights, useCreateScene, useUpdateScene, useDeleteScene, useActivateScene, useDuplicateScene } from "@/services/queries";
-import { Scene, LightChannel, SceneCreate } from "@/schemas";
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogFooter,
-} from "@/components/ui/alert-dialog";
 
-/* ================================================================
-   Scene Card Component
-   ================================================================ */
-interface SceneCardProps {
-  scene: Scene;
-  lights: LightChannel[];
-  onEdit: (scene: Scene) => void;
-  onDelete: (id: string) => void;
-  onDuplicate: (id: string) => void;
-  onActivate: (id: string) => void;
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ConfirmDialog, EmptyState, Field, PageHeader } from "@/components/common";
+import {
+  useActivateScene,
+  useCaptureScene,
+  useCreateScene,
+  useDeleteScene,
+  useDuplicateScene,
+  useLightCommand,
+  useLights,
+  useScenes,
+  useUpdateScene,
+} from "@/services/queries";
+import { Scene, type Light, type SceneLightState } from "@/schemas";
+import { hexToRgb, rgbToHex } from "@/lib/color";
+
+function sceneTint(scene: Scene): string {
+  const coloured = scene.states.filter((s) => s.power && (s.red || s.green || s.blue));
+  if (coloured.length) {
+    const c = coloured[0];
+    return `linear-gradient(135deg, rgb(${c.red} ${c.green} ${c.blue} / 0.35), transparent)`;
+  }
+  const on = scene.states.filter((s) => s.power).length;
+  return on ? "linear-gradient(135deg, color-mix(in oklch, var(--light-on-glow) 35%, transparent), transparent)" : "none";
 }
 
-function SceneCard({ scene, lights, onEdit, onDelete, onDuplicate, onActivate }: SceneCardProps) {
-  const activateScene = useActivateScene();
+function download(name: string, data: unknown) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
-  const lightCount = scene.states?.length ?? 0;
-  const hasTransition = (scene.transitionMs ?? 0) > 0;
-
+function CaptureDialog({ open, onOpenChange, lights }: { open: boolean; onOpenChange: (o: boolean) => void; lights: Light[] }) {
   return (
-    <Card className="group">
-      <CardHeader>
-        <div className="flex items-start justify-between">
-          <div>
-            <CardTitle className="text-lg">{scene.name}</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              {lightCount} light{lightCount !== 1 ? "s" : ""}
-              {hasTransition && ` • ${scene.transitionMs}ms transition`}
-            </p>
-          </div>
-          <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" onClick={() => onEdit(scene)}>
-              <Edit className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="icon" onClick={() => onDuplicate(scene.id)}>
-              <Copy className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="icon" onClick={() => onDelete(scene.id)} className="text-destructive">
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {/* Activate Button */}
-        <Button
-          onClick={() => onActivate(scene.id)}
-          disabled={activateScene.isPending}
-          className="w-full"
-          size="lg"
-        >
-          <Play className="mr-2 h-4 w-4" />
-          {activateScene.isPending ? "Activating..." : "Activate Scene"}
-        </Button>
-
-        {/* Transition */}
-        {hasTransition && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span>Transition: {scene.transitionMs}ms</span>
-          </div>
-        )}
-
-        {/* Light States Preview */}
-        <div className="space-y-2">
-          <p className="text-xs font-medium text-muted-foreground">Light States</p>
-          <div className="grid gap-2 sm:grid-cols-2 max-h-48 overflow-y-auto">
-            {scene.states?.map((state) => {
-              const light = lights.find((l) => l.id === state.lightId);
-              return (
-                <div key={state.lightId} className="flex items-center justify-between p-2 rounded-lg bg-muted/50">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <div className={cn(
-                      "relative flex h-8 w-8 items-center justify-center rounded",
-                      state.power ? "bg-yellow-100 dark:bg-yellow-900" : "bg-muted"
-                    )}>
-                      <span className="text-sm">{state.power ? "☀️" : "🌙"}</span>
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">{light?.name ?? state.lightId}</p>
-                      <p className="text-xs text-muted-foreground capitalize">{light?.type}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                    {state.brightness > 0 && <span>🔆 {state.brightness}%</span>}
-                    {(state.red || state.green || state.blue) && (
-                      <span>🎨 RGB({state.red},{state.green},{state.blue})</span>
-                    )}
-                    {state.colorTemperature && <span>🌡 {state.colorTemperature}K</span>}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      {open && <CaptureForm lights={lights} onOpenChange={onOpenChange} />}
+    </Dialog>
   );
 }
 
-/* ================================================================
-   Scene Dialog
-   ================================================================ */
-interface SceneDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  scene?: Scene | null;
-  lights: LightChannel[];
-  onSubmit: (data: Record<string, unknown>) => Promise<void>;
-  loading: boolean;
+function CaptureForm({ onOpenChange, lights }: { onOpenChange: (o: boolean) => void; lights: Light[] }) {
+  const capture = useCaptureScene();
+  const [name, setName] = React.useState("");
+  const [ids, setIds] = React.useState<string[]>(() => lights.map((l) => l.id));
+  return (
+    <>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Save current state as scene</DialogTitle>
+          <DialogDescription>Captures what the selected lights are doing right now.</DialogDescription>
+        </DialogHeader>
+        <Field label="Scene name" htmlFor="scene-name">
+          <Input id="scene-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Movie night" autoFocus maxLength={64} />
+        </Field>
+        <fieldset className="max-h-56 space-y-1 overflow-y-auto">
+          <legend className="mb-1 text-sm font-medium">Include lights</legend>
+          {lights.map((l) => (
+            <label key={l.id} className="flex min-h-11 items-center gap-3 rounded-md px-2 hover:bg-muted">
+              <input
+                type="checkbox"
+                className="size-4 accent-[var(--primary)]"
+                checked={ids.includes(l.id)}
+                onChange={(e) => setIds(e.target.checked ? [...ids, l.id] : ids.filter((x) => x !== l.id))}
+              />
+              <span className="flex-1 text-sm">{l.name}</span>
+              <span className="text-xs text-muted-foreground">{l.state.power ? `${l.state.brightness}%` : "off"}</span>
+            </label>
+          ))}
+        </fieldset>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button
+            disabled={!name.trim() || ids.length === 0 || capture.isPending}
+            onClick={() => capture.mutate({ name: name.trim(), lightIds: ids }, { onSuccess: () => onOpenChange(false) })}
+          >
+            Save scene
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </>
+  );
 }
 
-function SceneDialog({ open, onOpenChange, scene, lights, onSubmit, loading }: SceneDialogProps) {
-  const form = useForm({
-    resolver: zodResolver(z.object({
-      id: z.string().min(1).optional(),
-      name: z.string().min(1),
-      transitionMs: z.number().int().min(0).optional(),
-      states: z.array(z.object({
-        lightId: z.string(),
-        power: z.boolean(),
-        brightness: z.number().int().min(0).max(100),
-        red: z.number().int().min(0).max(255),
-        green: z.number().int().min(0).max(255),
-        blue: z.number().int().min(0).max(255),
-        white: z.number().int().min(0).max(255),
-        colorTemperature: z.number().int().min(1500).max(6500),
-      })).optional(),
-    })),
-    defaultValues: scene ? {
-      id: scene.id,
-      name: scene.name,
-      transitionMs: scene.transitionMs,
-      states: scene.states,
-    } : { name: "", transitionMs: 0, states: [] },
-  });
+function StateRow({ light, value, onChange }: { light: Light; value: SceneLightState; onChange: (v: SceneLightState) => void }) {
+  const colour = ["rgb", "rgbw", "addressable_rgb", "addressable_rgbw"].includes(light.type);
+  return (
+    <div className="space-y-2 rounded-lg border p-3">
+      <div className="flex items-center gap-3">
+        <Switch checked={value.power} onCheckedChange={(power) => onChange({ ...value, power })} aria-label={`${light.name} on in this scene`} />
+        <span className="flex-1 text-sm font-medium">{light.name}</span>
+        {colour && (
+          <input
+            type="color"
+            aria-label={`${light.name} colour`}
+            className="h-8 w-10 cursor-pointer rounded border bg-transparent"
+            value={rgbToHex({ r: value.red, g: value.green, b: value.blue })}
+            onChange={(e) => {
+              const c = hexToRgb(e.target.value);
+              if (c) onChange({ ...value, red: c.r, green: c.g, blue: c.b });
+            }}
+          />
+        )}
+      </div>
+      {light.type !== "switch" && value.power && (
+        <div className="flex items-center gap-3">
+          <Slider value={[value.brightness]} min={1} max={100} step={1} className="py-3" aria-label={`${light.name} brightness`}
+            onValueChange={([b]) => onChange({ ...value, brightness: b })} />
+          <span className="w-10 text-right text-xs tabular-nums text-muted-foreground">{value.brightness}%</span>
+        </div>
+      )}
+      {light.type === "cct" && value.power && (
+        <div className="flex items-center gap-3">
+          <Slider value={[value.colorTemperature || light.limits.colorTemperatureMin]} min={light.limits.colorTemperatureMin} max={light.limits.colorTemperatureMax} step={50} className="py-3" aria-label={`${light.name} colour temperature`}
+            onValueChange={([k]) => onChange({ ...value, colorTemperature: k })} />
+          <span className="w-14 text-right text-xs tabular-nums text-muted-foreground">{value.colorTemperature} K</span>
+        </div>
+      )}
+    </div>
+  );
+}
 
-  const onSubmitHandler = async (data: Record<string, unknown>) => {
-    try {
-      await onSubmit(data);
-      onOpenChange(false);
-    } catch {
-      // Error handled by mutation
-    }
-  };
+function SceneEditor({ scene, lights, open, onOpenChange }: { scene: Scene | null; lights: Light[]; open: boolean; onOpenChange: (o: boolean) => void }) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      {open && <SceneEditorForm key={scene?.id ?? "new"} scene={scene} lights={lights} onOpenChange={onOpenChange} />}
+    </Dialog>
+  );
+}
 
-  const addLightState = () => {
-    const current = form.getValues("states") ?? [];
-    form.setValue("states", [...current, {
-      lightId: lights[0]?.id ?? "",
-      power: true,
-      brightness: 100,
-      red: 255,
-      green: 255,
-      blue: 255,
-      white: 0,
-      colorTemperature: 4000,
-    }]);
-  };
+function SceneEditorForm({ scene, lights, onOpenChange }: { scene: Scene | null; lights: Light[]; onOpenChange: (o: boolean) => void }) {
+  const update = useUpdateScene();
+  const create = useCreateScene();
+  const command = useLightCommand();
+  const [name, setName] = React.useState(scene?.name ?? "");
+  const [transition, setTransition] = React.useState(scene?.transitionMs ?? 500);
+  const [states, setStates] = React.useState<SceneLightState[]>(
+    () =>
+      scene?.states ??
+      lights.map((l) => ({ lightId: l.id, power: l.state.power, brightness: l.state.brightness || 100, red: l.state.red, green: l.state.green, blue: l.state.blue, white: l.state.white, colorTemperature: l.state.colorTemperature })),
+  );
+  const [snapshot] = React.useState<Light[]>(lights);
 
-  const removeLightState = (index: number) => {
-    const current = form.getValues("states") ?? [];
-    form.setValue("states", current.filter((_: unknown, i: number) => i !== index));
+  const included = new Set(states.map((s) => s.lightId));
+  const preview = () =>
+    states.forEach((s) =>
+      command.mutate({ id: s.lightId, command: { power: s.power, ...(s.power ? { brightness: s.brightness } : {}), ...(s.red || s.green || s.blue ? { red: s.red, green: s.green, blue: s.blue } : {}), transitionMs: 300 } }),
+    );
+  const revert = () =>
+    snapshot.forEach((l) => command.mutate({ id: l.id, command: { power: l.state.power, ...(l.type !== "switch" && l.state.power ? { brightness: l.state.brightness } : {}), transitionMs: 300 } }));
+
+  const save = async () => {
+    const body = { name: name.trim(), transitionMs: transition, states };
+    if (scene) await update.mutateAsync({ id: scene.id, scene: body });
+    else await create.mutateAsync(body);
+    onOpenChange(false);
   };
 
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-        <AlertDialogHeader>
-          <AlertDialogTitle>{scene ? "Edit Scene" : "Create Scene"}</AlertDialogTitle>
-          <AlertDialogDescription>
-            {scene ? "Update scene details and light states" : "Create a new scene with custom light states"}
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <form onSubmit={form.handleSubmit(onSubmitHandler)} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="name">Name</Label>
-            <Input id="name" {...form.register("name")} placeholder="Movie Night" disabled={loading} />
-            {form.formState.errors.name && (
-              <p className="text-sm text-destructive">{form.formState.errors.name.message}</p>
-            )}
-          </div>
+    <>
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>{scene ? `Edit “${scene.name}”` : "New scene"}</DialogTitle>
+          <DialogDescription>Set each light, preview it live, then save.</DialogDescription>
+        </DialogHeader>
+        <Field label="Name" htmlFor="scene-edit-name">
+          <Input id="scene-edit-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={64} />
+        </Field>
+        <Field label={`Transition: ${(transition / 1000).toFixed(1)} s`}>
+          <Slider value={[transition]} min={0} max={10000} step={100} className="py-3" aria-label="Transition duration" onValueChange={([t]) => setTransition(t)} />
+        </Field>
+        <div className="space-y-2">
+          {states.map((st, i) => {
+            const light = lights.find((l) => l.id === st.lightId);
+            if (!light) return null;
+            return (
+              <div key={st.lightId} className="flex items-start gap-2">
+                <div className="flex-1">
+                  <StateRow light={light} value={st} onChange={(v) => setStates(states.map((x, j) => (j === i ? v : x)))} />
+                </div>
+                <Button variant="ghost" size="icon" aria-label={`Remove ${light.name} from scene`} onClick={() => setStates(states.filter((_, j) => j !== i))}>
+                  <Trash2 className="size-4" />
+                </Button>
+              </div>
+            );
+          })}
+          {lights.filter((l) => !included.has(l.id)).length > 0 && (
+            <div className="flex flex-wrap gap-2 pt-1">
+              {lights.filter((l) => !included.has(l.id)).map((l) => (
+                <Button key={l.id} size="sm" variant="outline" onClick={() => setStates([...states, { lightId: l.id, power: true, brightness: 100, red: 255, green: 255, blue: 255, white: 0, colorTemperature: l.limits.colorTemperatureMin }])}>
+                  <Plus className="size-3" /> {l.name}
+                </Button>
+              ))}
+            </div>
+          )}
+        </div>
+        <DialogFooter className="flex-wrap gap-2">
+          <Button variant="outline" onClick={preview}><Play className="size-4" /> Preview</Button>
+          <Button variant="outline" onClick={revert}>Revert</Button>
+          <Button onClick={() => void save()} disabled={!name.trim() || states.length === 0 || update.isPending || create.isPending}>Save scene</Button>
+        </DialogFooter>
+      </DialogContent>
+    </>
+  );
+}
 
-          <div className="space-y-2">
-            <Label htmlFor="transitionMs">Transition (ms)</Label>
-            <Input
-              id="transitionMs"
-              type="number"
-              {...form.register("transitionMs", { valueAsNumber: true })}
-              placeholder="0"
-              min={0}
-              disabled={loading}
-            />
-          </div>
+const SceneImport = z.object({ name: z.string().min(1).max(64), transitionMs: z.number().int().min(0).max(600000), states: Scene.shape.states });
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>Light States</Label>
-              <Button type="button" variant="outline" size="sm" onClick={addLightState} disabled={loading}>
-                <Plus className="mr-1 h-3 w-3" />
-                Add Light
+export default function Scenes() {
+  const scenes = useScenes();
+  const lights = useLights();
+  const activate = useActivateScene();
+  const duplicate = useDuplicateScene();
+  const del = useDeleteScene();
+  const create = useCreateScene();
+  const [capturing, setCapturing] = React.useState(false);
+  const [editing, setEditing] = React.useState<Scene | null | undefined>(undefined);
+  const [deleting, setDeleting] = React.useState<Scene | null>(null);
+  const fileInput = React.useRef<HTMLInputElement>(null);
+
+  const importFile = async (file: File) => {
+    try {
+      const parsed = SceneImport.safeParse(JSON.parse(await file.text()));
+      if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Invalid scene file");
+      const known = new Set((lights.data ?? []).map((l) => l.id));
+      const missing = parsed.data.states.filter((s) => !known.has(s.lightId)).map((s) => s.lightId);
+      const states = parsed.data.states.filter((s) => known.has(s.lightId));
+      if (states.length === 0) throw new Error("None of the scene's lights exist on this controller");
+      await create.mutateAsync({ ...parsed.data, states });
+      if (missing.length) toast.warning(`Skipped unknown lights: ${missing.join(", ")}`);
+    } catch (e) {
+      toast.error("Import failed", { description: e instanceof Error ? e.message : String(e) });
+    }
+  };
+
+  return (
+    <>
+      <PageHeader
+        title="Scenes"
+        actions={
+          <>
+            <input ref={fileInput} type="file" accept="application/json" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void importFile(f); e.target.value = ""; }} />
+            <Button variant="outline" onClick={() => fileInput.current?.click()}><Upload className="size-4" /> Import</Button>
+            <Button variant="outline" onClick={() => setEditing(null)}><Plus className="size-4" /> New</Button>
+            <Button onClick={() => setCapturing(true)} disabled={(lights.data ?? []).length === 0}><Sparkles className="size-4" /> Save current state</Button>
+          </>
+        }
+      />
+      {scenes.isLoading ? (
+        <div className="grid items-start gap-3 sm:grid-cols-2 xl:grid-cols-3">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-32 rounded-xl" />)}</div>
+      ) : (scenes.data ?? []).length === 0 ? (
+        <EmptyState icon={Sparkles} title="No scenes yet" description="Set your lights the way you like, then save that as a scene." action={<Button onClick={() => setCapturing(true)}>Save current state</Button>} />
+      ) : (
+        <div className="grid items-start gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {(scenes.data ?? []).map((s) => (
+            <div key={s.id} className="flex flex-col justify-between gap-4 rounded-xl border bg-card p-4" style={{ backgroundImage: sceneTint(s) }}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="truncate font-medium">{s.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {s.states.length} light{s.states.length === 1 ? "" : "s"} · {(s.transitionMs / 1000).toFixed(1)} s fade
+                  </p>
+                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" aria-label={`More actions for ${s.name}`}><MoreVertical className="size-4" /></Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onSelect={() => setEditing(s)}><Pencil className="size-4" /> Edit</DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => duplicate.mutate(s.id)}><Copy className="size-4" /> Duplicate</DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => download(`${s.id}.scene.json`, { name: s.name, transitionMs: s.transitionMs, states: s.states })}><Download className="size-4" /> Export</DropdownMenuItem>
+                    <DropdownMenuItem className="text-destructive" onSelect={() => setDeleting(s)}><Trash2 className="size-4" /> Delete</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+              <Button size="lg" onClick={() => activate.mutate(s.id, { onSuccess: () => toast.success(`“${s.name}” activated`, { duration: 2000 }) })}>
+                <Play className="size-4" /> Activate
               </Button>
             </div>
-
-            {form.getValues("states")?.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                No lights added yet. Click "Add Light" to include lights in this scene.
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {form.getValues("states")?.map((state: any, index: number) => (
-                  <div key={index} className="border rounded-lg p-3 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <h4 className="font-medium">Light {index + 1}</h4>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => removeLightState(index)}
-                        className="text-destructive"
-                        disabled={loading}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label htmlFor={`lightId-${index}`}>Light</Label>
-                        <select
-                          {...form.register(`states.${index}.lightId`)}
-                          disabled={loading}
-                          className="w-full rounded border p-2"
-                        >
-                          {lights.map((l) => (
-                            <option key={l.id} value={l.id}>{l.name} ({l.type})</option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor={`power-${index}`}>Power</Label>
-                        <select
-                          {...form.register(`states.${index}.power`)}
-                          disabled={loading}
-                          className="w-full rounded border p-2"
-                        >
-                          <option value="true">On</option>
-                          <option value="false">Off</option>
-                        </select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor={`brightness-${index}`}>Brightness</Label>
-                        <Slider
-                          value={[(form.watch as any)(`states.${index}.brightness`) ?? 100]}
-                          onValueChange={([v]: number[]) => form.setValue(`states.${index}.brightness`, v as any)}
-                          min={0}
-                          max={100}
-                          step={1}
-                          disabled={loading}
-                        />
-                        <div className="flex justify-between text-xs text-muted-foreground">
-                          <span>0%</span>
-                          <span>{form.watch(`states.${index}.brightness`) ?? 100}%</span>
-                          <span>100%</span>
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor={`colorTemperature-${index}`}>Color Temp (K)</Label>
-                        <Slider
-                          value={[(form.watch as any)(`states.${index}.colorTemperature`) ?? 4000]}
-                          onValueChange={([v]: number[]) => form.setValue(`states.${index}.colorTemperature`, v as any)}
-                          min={2700}
-                          max={6500}
-                          step={100}
-                          disabled={loading}
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>RGB</Label>
-                        <div className="grid gap-2 grid-cols-3">
-                          {["red", "green", "blue"].map((channel) => (
-                            <div key={channel} className="space-y-1">
-                              <Label htmlFor={`${channel}-${index}`}>{channel.toUpperCase()}</Label>
-                              <Slider
-                                value={[(form.getValues() as any).states?.[index]?.[channel] ?? 255]}
-                                onValueChange={([v]: number[]) => (form.setValue as any)(`states.${index}.${channel}`, v)}
-                                min={0}
-                                max={255}
-                                step={1}
-                                disabled={loading}
-                              />
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor={`white-${index}`}>White</Label>
-                        <Slider
-                          value={[(form.watch as any)(`states.${index}.white`) ?? 0]}
-                          onValueChange={([v]: number[]) => form.setValue(`states.${index}.white`, v as any)}
-                          min={0}
-                          max={255}
-                          step={1}
-                          disabled={loading}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <AlertDialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={loading}>
-              {loading ? "Saving..." : scene ? "Update" : "Create"}
-            </Button>
-          </AlertDialogFooter>
-        </form>
-      </AlertDialogContent>
-    </AlertDialog>
-  );
-}
-
-/* ================================================================
-   Scenes Screen
-   ================================================================ */
-export function Scenes() {
-  const { data: scenes, isLoading: scenesLoading } = useScenes();
-  const { data: lights, isLoading: lightsLoading } = useLights();
-  const [dialogOpen, setDialogOpen] = React.useState(false);
-  const [editingScene, setEditingScene] = React.useState<Scene | null>(null);
-  const createScene = useCreateScene();
-  const updateScene = useUpdateScene();
-  const deleteScene = useDeleteScene();
-  const activateScene = useActivateScene();
-  const duplicateScene = useDuplicateScene();
-
-  const handleSubmit = async (data: Record<string, unknown>) => {
-    if (data.id) {
-      const { id, ...updates } = data as Record<string, unknown>;
-      const updatesTyped = updates as Partial<Scene>;
-      await updateScene.mutateAsync({ id: id as string, updates: updatesTyped as Record<string, unknown> });
-    } else {
-      await createScene.mutateAsync(data as unknown as SceneCreate);
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (confirm("Delete this scene?")) {
-      await deleteScene.mutateAsync(id);
-    }
-  };
-
-  const handleActivate = async (id: string) => {
-    await activateScene.mutateAsync({ id });
-  };
-
-  const handleDuplicate = async (id: string) => {
-    await duplicateScene.mutateAsync(id);
-  };
-
-  const handleEdit = (scene: Scene) => {
-    setEditingScene(scene);
-    setDialogOpen(true);
-  };
-
-  const handleCreate = () => {
-    setEditingScene(null);
-    setDialogOpen(true);
-  };
-
-  if (scenesLoading || lightsLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Scenes</h1>
-          <p className="text-muted-foreground">Save and activate lighting presets</p>
-        </div>
-        <Button onClick={handleCreate}>
-          <Plus className="mr-2 h-4 w-4" />
-          Create Scene
-        </Button>
-      </div>
-
-      {scenes && scenes.length === 0 ? (
-        <Card className="py-12 text-center">
-          <CardContent className="py-8">
-            <Grid className="mx-auto h-12 w-12 text-muted-foreground" />
-            <p className="mt-4 text-muted-foreground">No scenes yet</p>
-            <p className="text-sm text-muted-foreground">Create your first scene to save lighting presets</p>
-            <Button onClick={handleCreate} className="mt-4">
-              <Plus className="mr-2 h-4 w-4" />
-              Create Scene
-            </Button>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {scenes?.map((scene) => (
-            <SceneCard
-              key={scene.id}
-              scene={scene}
-              lights={lights ?? []}
-              onEdit={handleEdit}
-              onDelete={handleDelete}
-              onDuplicate={handleDuplicate}
-              onActivate={handleActivate}
-            />
           ))}
         </div>
       )}
-
-      <SceneDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        scene={editingScene}
-        lights={lights ?? []}
-        onSubmit={handleSubmit}
-        loading={createScene.isPending || updateScene.isPending}
+      <CaptureDialog open={capturing} onOpenChange={setCapturing} lights={lights.data ?? []} />
+      <SceneEditor scene={editing ?? null} lights={lights.data ?? []} open={editing !== undefined} onOpenChange={(o) => !o && setEditing(undefined)} />
+      <ConfirmDialog
+        open={deleting !== null}
+        onOpenChange={(o) => !o && setDeleting(null)}
+        destructive
+        title={`Delete “${deleting?.name}”?`}
+        description="This cannot be undone."
+        confirmLabel="Delete scene"
+        onConfirm={() => deleting && del.mutate(deleting.id)}
       />
-    </div>
+    </>
   );
 }

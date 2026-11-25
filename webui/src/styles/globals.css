@@ -24,6 +24,8 @@
 
   --primary: oklch(0.72 0.16 65); /* warm amber */
   --primary-foreground: oklch(0.2 0.02 65);
+  /* Text-on-background accent (links): amber darkened to >= 4.5:1. */
+  --link: oklch(0.5 0.13 60);
   --secondary: oklch(0.96 0.005 90);
   --secondary-foreground: var(--foreground);
 
@@ -36,7 +38,7 @@
   --input: oklch(0.91 0.005 90);
   --ring: oklch(0.72 0.16 65);
 
-  --destructive: oklch(0.58 0.22 27);
+  --destructive: oklch(0.52 0.21 27); /* >= 4.5:1 on its 10% tint */
   --success: oklch(0.65 0.16 150);
   --warning: oklch(0.78 0.15 80);
   --info: oklch(0.62 0.13 245);
@@ -78,6 +80,7 @@
 
   --primary: oklch(0.78 0.15 70);
   --primary-foreground: oklch(0.2 0.02 65);
+  --link: oklch(0.8 0.14 70);
   --secondary: oklch(0.25 0.012 260);
   --secondary-foreground: var(--foreground);
 
@@ -90,7 +93,7 @@
   --input: oklch(0.3 0.012 260);
   --ring: oklch(0.78 0.15 70);
 
-  --destructive: oklch(0.65 0.2 25);
+  --destructive: oklch(0.72 0.17 25); /* >= 4.5:1 on dark tint */
   --success: oklch(0.72 0.16 150);
   --warning: oklch(0.82 0.14 85);
   --info: oklch(0.7 0.12 245);
@@ -120,6 +123,7 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-link: var(--link);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
@@ -184,5 +188,17 @@
   /* Live numbers (brightness %, kelvin) use tabular figures (DESIGN §4.3). */
   .tabular-live {
     font-variant-numeric: tabular-nums;
+  }
+}
+
+/* DESIGN §11.4 / AGENTS §9: honour prefers-reduced-motion everywhere. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

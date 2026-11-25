@@ -75,11 +75,13 @@ cJSON *pin_map_json(const BoardProfile &profile, const ValidationReport *report)
     const std::vector<PinAssignment> uses = collect_pin_assignments(profile);
     for (uint32_t g = 0; g < caps->gpio.gpio_count; ++g) {
         const int32_t gpio = static_cast<int32_t>(g);
+        if (contains(caps->gpio.missing, gpio)) continue; // no such pad
         std::vector<const PinAssignment *> mine;
         for (const auto &u : uses) {
             if (u.gpio == gpio) mine.push_back(&u);
         }
         const bool flash = contains(caps->gpio.flash_reserved, gpio);
+        const bool console = contains(caps->gpio.console, gpio);
         cJSON *o = cJSON_CreateObject();
         cJSON_AddNumberToObject(o, "gpio", gpio);
         std::string role = "free";
@@ -94,6 +96,8 @@ cJSON *pin_map_json(const BoardProfile &profile, const ValidationReport *report)
             else dir = mine.front()->outputish ? "output" : "input";
         } else if (flash) {
             role = "flash";
+        } else if (console) {
+            role = "console";
         }
         std::string reason;
         bool conflict = mine.size() > 1;
@@ -113,7 +117,7 @@ cJSON *pin_map_json(const BoardProfile &profile, const ValidationReport *report)
         cJSON_AddStringToObject(o, "dir", dir.c_str());
         cJSON_AddBoolToObject(o, "strapping", contains(caps->gpio.strapping, gpio));
         cJSON_AddBoolToObject(o, "input_only", contains(caps->gpio.input_only, gpio));
-        cJSON_AddBoolToObject(o, "reserved", flash);
+        cJSON_AddBoolToObject(o, "reserved", flash || (console && mine.empty()));
         cJSON_AddBoolToObject(o, "conflict", conflict);
         if (!reason.empty()) cJSON_AddStringToObject(o, "reason", reason.c_str());
         cJSON_AddItemToArray(arr, o);

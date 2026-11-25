@@ -1,20 +1,33 @@
-import { describe, expect, it } from "vitest";
-import { renderToStaticMarkup } from "react-dom/server";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
 
 import App from "./App";
-import { Providers } from "./providers";
 
-// Phase 0 render smoke: providers (theme, Motion, tooltips, toaster) must
-// mount without throwing and the landing must actually render.
-describe("App", () => {
-  it("renders the Phase 0 landing inside providers", () => {
-    const html = renderToStaticMarkup(
-      <Providers>
-        <App />
-      </Providers>,
+function envelope(status: number, body: unknown) {
+  return Promise.resolve(new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } }));
+}
+
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+  window.history.pushState({}, "", "/");
+});
+
+describe("App auth gate", () => {
+  it("redirects to sign-in when there is no session", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => envelope(401, { success: false, data: null, error: { code: "UNAUTHORIZED", message: "Not signed in" } })));
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: /sign in to lumen/i })).toBeTruthy();
+    expect(window.location.pathname).toBe("/login");
+  });
+
+  it("forces the password change before anything else", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => envelope(200, { success: true, data: { username: "admin", forcePasswordChange: true, csrfToken: "c" }, error: null })),
     );
-    expect(html).toContain("Lumen");
-    expect(html).toContain("Phase 0");
-    expect(html).toContain("Theme:");
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: /choose a new password/i })).toBeTruthy();
+    expect(window.location.pathname).toBe("/setup/password");
   });
 });

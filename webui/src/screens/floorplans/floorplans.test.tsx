@@ -8,6 +8,7 @@ import { fit, gridFor, screenToSvg, snap, svgToScreen, zoomAt, type ViewBox } fr
 import { align, distribute, isDirty, useEditorStore } from "./editorStore";
 import { glowFor, kelvinToRgb } from "./glow";
 import type { FloorPlanT } from "./api";
+import { handleRadius } from "./FloorPlanEditor";
 
 describe("coords (shared by viewer and editor)", () => {
   const vb: ViewBox = [-50, 20, 800, 500];
@@ -50,6 +51,15 @@ const L = (over: Partial<Light>): Light => ({
   limits: { minBrightness: 0, maxBrightness: 100, colorTemperatureMin: 2700, colorTemperatureMax: 6500 }, calibration: { red: 1, green: 1, blue: 1, white: 1 },
   state: { power: false, brightness: 0, red: 0, green: 0, blue: 0, white: 0, colorTemperature: 0 },
   output: { power: false, brightness: 0, red: 0, green: 0, blue: 0, white: 0, colorTemperature: 0 }, available: true, ...over,
+});
+
+describe("glow-radius handle", () => {
+  it("turns the handle's offset into a radius, clamped to the slider range", () => {
+    expect(handleRadius(30, 0, 200)).toBe(30);
+    expect(handleRadius(-30, 40, 200)).toBe(50); // any direction
+    expect(handleRadius(900, 0, 200)).toBe(200);
+    expect(handleRadius(0, 0, 200)).toBe(2);
+  });
 });
 
 describe("glow mapping", () => {

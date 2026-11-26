@@ -74,6 +74,7 @@ namespace
 const char *TAG = "lumen";
 constexpr uint32_t kLightingPeriodMs = 20;   // 50 Hz output updates
 constexpr uint32_t kStateSaveDebounceMs = 5000;
+constexpr uint32_t kHeapLowWarnBytes = 24576; // warn when the heap minimum falls below 24 KB
 
 void remove_tree(const std::string &path)
 {
@@ -380,9 +381,21 @@ void Controller::housekeeping_loop()
 {
     esp_task_wdt_add(nullptr);
     uint32_t last_net = 0, last_cleanup = 0, last_status = 0, last_ota = 0;
+    uint32_t heap_warned_below = kHeapLowWarnBytes; // log each new 4 KB step below the threshold
     for (;;) {
         esp_task_wdt_reset();
         const uint32_t now = uptime_ms();
+
+        // Low-memory early warning: timestamps a falling heap minimum in the
+        // log ring so diagnostics can correlate it with other events.
+        {
+            const uint32_t min_free = esp_get_minimum_free_heap_size();
+            if (min_free + 4096 <= heap_warned_below) {
+                heap_warned_below = min_free;
+                ESP_LOGW(TAG, "heap minimum fell to %lu bytes (free %lu, largest block %u)", static_cast<unsigned long>(min_free),
+                         static_cast<unsigned long>(esp_get_free_heap_size()), static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT)));
+            }
+        }
 
         // Debounced last-state persistence (restore after power loss).
         {
@@ -615,10 +628,30 @@ std::string Controller::diagnostics_json()
         }
     }
     {
-        // Multi-controller (ESP-NOW, Phase 11) is not implemented yet.
         cJSON *peers = cJSON_AddObjectToObject(o, "peers");
-        cJSON_AddBoolToObject(peers, "supported", false);
-        cJSON_AddNumberToObject(peers, "count", 0);
+        int online = 0, known = 0;
+        for (const auto &p : espnow_->peers()) {
+            if (p.id.empty()) continue;
+            ++known;
+            if (p.online) ++online;
+        }
+        cJSON_AddBoolToObject(peers, "supported", true);
+        cJSON_AddBoolToObject(peers, "running", espnow_->running());
+        cJSON_AddNumberToObject(peers, "count", known);
+        cJSON_AddNumberToObject(peers, "online", online);
+    }
+    {
+        cJSON *fails = cJSON_AddObjectToObject(o, "allocFailures");
+        cJSON_AddNumberToObject(fails, "total", alloc_failures_total());
+        cJSON *recent = cJSON_AddArrayToObject(fails, "recent");
+        for (const auto &f : alloc_failures_recent()) {
+            cJSON *e = cJSON_CreateObject();
+            cJSON_AddNumberToObject(e, "uptimeSec", f.uptime_s);
+            cJSON_AddNumberToObject(e, "size", f.size);
+            cJSON_AddNumberToObject(e, "caps", f.caps);
+            cJSON_AddStringToObject(e, "task", f.task.c_str());
+            cJSON_AddItemToArray(recent, e);
+        }
     }
 
     cJSON *tasks = cJSON_AddArrayToObject(o, "tasks");

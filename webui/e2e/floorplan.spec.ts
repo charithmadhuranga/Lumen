@@ -78,3 +78,50 @@ test("floor plan: upload, place, save, control real hardware", async ({ page, re
   await api("DELETE", "/floorplans/e2e-plan");
   await api("DELETE", "/lights/e2e_fp");
 });
+
+// Drag a light from the tray onto a chosen spot, then resize its glow with
+// the radius handle; both land in viewBox coordinates on the controller.
+test("floor plan editor: drag from tray and glow-radius handle", async ({ page, request, isMobile }) => {
+  test.skip(isMobile, "HTML5 drag-and-drop needs a mouse; touch uses click-to-place");
+  const api = await apiSession(request);
+  await api("DELETE", "/floorplans/e2e-drag");
+  await api("DELETE", "/lights/e2e_drag");
+  expect((await api("POST", "/lights", { id: "e2e_drag", name: "E2E Drag", type: "dimmer", driver: { type: "pca9685", deviceId: "pca9685_0", channel: 12 }, transitionMs: 0 })).success).toBe(true);
+  expect((await api("POST", "/floorplans", { id: "e2e-drag", name: "E2E drag" })).success).toBe(true);
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await signIn(page);
+  await page.goto("/floorplans/e2e-drag/edit");
+  await page.getByLabel("SVG drawing").first().setInputFiles({ name: "plan.svg", mimeType: "image/svg+xml", buffer: Buffer.from(SVG) });
+  await expect(page.getByText("Drawing uploaded")).toBeVisible({ timeout: 10000 });
+
+  const stage = page.locator(".konvajs-content");
+  let box = (await stage.boundingBox())!;
+  // Same maths as coords.fit() for viewBox 0 0 400 300.
+  const scale = Math.min(box.width / 400, box.height / 300);
+  const ox = (box.width - 400 * scale) / 2, oy = (box.height - 300 * scale) / 2;
+  const toScreen = (x: number, y: number) => ({ x: ox + x * scale, y: oy + y * scale });
+
+  await page.getByRole("button", { name: "E2E Drag" }).dragTo(stage, { targetPosition: toScreen(100, 80) });
+  await expect(page.getByRole("heading", { name: "E2E Drag", exact: true, level: 2 })).toBeVisible(); // placed and selected
+  const radius = Number(await page.getByLabel("Glow radius").inputValue());
+  box = (await stage.boundingBox())!; // dragTo may have scrolled the page
+
+  // Handle sits on the ring at (x + radius, y); pull it out by 40 units.
+  const h = toScreen(100 + radius, 80);
+  await page.mouse.move(box.x + h.x, box.y + h.y);
+  await page.mouse.down();
+  for (let i = 1; i <= 8; i++) await page.mouse.move(box.x + h.x + (40 * scale * i) / 8, box.y + h.y);
+  await page.mouse.up();
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("Floor plan saved")).toBeVisible();
+
+  const saved = (await api("GET", "/floorplans/e2e-drag")).data as { lights: { lightId: string; x: number; y: number; radius: number }[] };
+  const pin = saved.lights.find((l) => l.lightId === "e2e_drag")!;
+  expect(Math.abs(pin.x - 100)).toBeLessThanOrEqual(8); // snap grid is 10 units
+  expect(Math.abs(pin.y - 80)).toBeLessThanOrEqual(8);
+  expect(Math.abs(pin.radius - (radius + 40))).toBeLessThanOrEqual(2);
+  expect(errors).toEqual([]);
+  await api("DELETE", "/floorplans/e2e-drag");
+  await api("DELETE", "/lights/e2e_drag");
+});

@@ -20,7 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import type { Light, Room } from "@/schemas";
-import { clampToViewBox, fit, gridFor, snap, zoomAt, type View, type ViewBox } from "./coords";
+import { clampToViewBox, fit, gridFor, screenToSvg, snap, zoomAt, type View, type ViewBox } from "./coords";
 import { align, distribute, useEditorStore, type Draft } from "./editorStore";
 import type { FloorPlanT } from "./api";
 
@@ -69,6 +69,20 @@ function useSvgImage(svg: string | null, vb: ViewBox) {
   return img;
 }
 
+/** MIME type carried by a light dragged from the "Place lights" tray. */
+export const LIGHT_DRAG_TYPE = "application/x-lumen-light";
+
+/**
+ * Glow radius from the resize handle's offset from the pin (drawing units),
+ * clamped to the slider's range. (A dedicated handle instead of
+ * Konva.Transformer: the Transformer adds 7 KB gz and would put the editor
+ * chunk at its 90 KB budget.)
+ */
+export function handleRadius(dx: number, dy: number, maxRadius: number) {
+  const r = Math.hypot(dx, dy);
+  return Math.round(Math.min(maxRadius, Math.max(maxRadius / 100, r)) * 100) / 100;
+}
+
 export default function FloorPlanEditor({ plan, svg, lights, rooms }: { plan: FloorPlanT; svg: string | null; lights: Light[]; rooms: Room[] }) {
   const vb = plan.viewBox as ViewBox;
   const wrap = React.useRef<HTMLDivElement>(null);
@@ -80,6 +94,10 @@ export default function FloorPlanEditor({ plan, svg, lights, rooms }: { plan: Fl
   const [snapOn, setSnapOn] = React.useState(true);
   const [view, setView] = React.useState<View>({ scale: 1, panX: 0, panY: 0 });
   const [roomToAdd, setRoomToAdd] = React.useState<string>("");
+  const [dropping, setDropping] = React.useState(false);
+  const stageRef = React.useRef<Konva.Stage>(null);
+  const resizing = React.useRef(false);
+  const maxRadius = Math.max(vb[2], vb[3]) / 2;
   const grid = gridFor(vb);
   const unit = Math.max(vb[2], vb[3]) / 100;
   const f = fit(vb, width || 1, height || 1);
@@ -92,8 +110,9 @@ export default function FloorPlanEditor({ plan, svg, lights, rooms }: { plan: Fl
   const selectedPins = draft.lights.filter((l) => selected.includes(l.lightId));
   const selectedRoom = selected.find((s) => s.startsWith("room:"))?.slice(5);
 
-  const addLight = (id: string) => {
-    const at = place(vb[0] + vb[2] / 2, vb[1] + vb[3] / 2);
+  const addLight = (id: string, where?: { x: number; y: number }) => {
+    if (!byId.has(id) || draft.lights.some((p) => p.lightId === id)) return;
+    const at = place(where?.x ?? vb[0] + vb[2] / 2, where?.y ?? vb[1] + vb[3] / 2);
     change((d) => ({ ...d, lights: [...d.lights, { lightId: id, ...at, radius: Math.round(unit * 8) }] }));
     select([id]);
   };
@@ -119,6 +138,27 @@ export default function FloorPlanEditor({ plan, svg, lights, rooms }: { plan: Fl
     else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") (e.shiftKey ? redo : undo)();
     else return;
     e.preventDefault();
+  };
+  // The glow-radius handle is shown on the single selected pin.
+  const handleId = selectedPins.length === 1 ? selectedPins[0].lightId : null;
+  const setRadius = (id: string, radius: number) => {
+    change((d) => ({ ...d, lights: d.lights.map((x) => (x.lightId === id ? { ...x, radius } : x)) }), resizing.current);
+    resizing.current = true; // later moves of the same drag coalesce into one undo step
+  };
+  const onDragOver = (e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes(LIGHT_DRAG_TYPE)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    setDropping(true);
+  };
+  const onDrop = (e: React.DragEvent) => {
+    setDropping(false);
+    const id = e.dataTransfer.getData(LIGHT_DRAG_TYPE);
+    const box = stageRef.current?.container().getBoundingClientRect();
+    if (!id || !box) return;
+    e.preventDefault();
+    addLight(id, screenToSvg({ x: e.clientX - box.left, y: e.clientY - box.top }, vb, { width, height }, view));
+    wrap.current?.focus();
   };
   const toggleSelect = (id: string, additive: boolean) => select(additive ? (selected.includes(id) ? selected.filter((s) => s !== id) : [...selected, id]) : [id]);
   const onWheel = (e: Konva.KonvaEventObject<WheelEvent>) => {
@@ -150,11 +190,15 @@ export default function FloorPlanEditor({ plan, svg, lights, rooms }: { plan: Fl
           tabIndex={0}
           role="application"
           onKeyDown={onKey}
+          onDragOver={onDragOver}
+          onDragLeave={() => setDropping(false)}
+          onDrop={onDrop}
           aria-label="Floor plan editing canvas. Arrow keys move the selection, Delete removes it."
-          className="overflow-hidden rounded-xl border-2 border-dashed border-primary bg-muted/40 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className={`overflow-hidden rounded-xl border-2 border-dashed border-primary bg-muted/40 outline-none focus-visible:ring-2 focus-visible:ring-ring ${dropping ? "ring-2 ring-primary" : ""}`}
         >
           {width > 0 && (
             <Stage
+              ref={stageRef}
               width={width}
               height={height}
               scaleX={f.scale * view.scale}
@@ -234,6 +278,35 @@ export default function FloorPlanEditor({ plan, svg, lights, rooms }: { plan: Fl
                       <Circle radius={p.radius} fill={p.color ?? t.warning} opacity={0.18} listening={false} />
                       <Circle radius={p.radius} stroke={sel ? t.primary : t.warning} strokeWidth={unit * (sel ? 0.4 : 0.15)} dash={[unit, unit]} listening={false} />
                       <Circle radius={unit * 1.4} fill={l ? t.warning : t.muted} stroke={t.background} strokeWidth={unit * 0.35} />
+                      {handleId === p.lightId && (
+                        <Circle
+                          name="radius-handle"
+                          x={p.radius}
+                          y={0}
+                          radius={unit * 1.1}
+                          fill={t.background}
+                          stroke={t.primary}
+                          strokeWidth={unit * 0.35}
+                          hitStrokeWidth={unit * 2}
+                          draggable
+                          onMouseDown={(e) => (e.cancelBubble = true)}
+                          onTouchStart={(e) => (e.cancelBubble = true)}
+                          onClick={(e) => (e.cancelBubble = true)}
+                          onDragStart={(e) => {
+                            e.cancelBubble = true;
+                            resizing.current = false;
+                          }}
+                          onDragMove={(e) => {
+                            e.cancelBubble = true;
+                            setRadius(p.lightId, handleRadius(e.target.x(), e.target.y(), maxRadius));
+                            e.target.position({ x: handleRadius(e.target.x(), e.target.y(), maxRadius), y: 0 });
+                          }}
+                          onDragEnd={(e) => {
+                            e.cancelBubble = true;
+                            resizing.current = false;
+                          }}
+                        />
+                      )}
                       <Text text={l?.name ?? `${p.lightId} (deleted)`} y={unit * 2} fontSize={unit * 2.2} fill={t.foreground} align="center" width={unit * 30} offsetX={unit * 15} listening={false} />
                     </Group>
                   );
@@ -242,19 +315,28 @@ export default function FloorPlanEditor({ plan, svg, lights, rooms }: { plan: Fl
             </Stage>
           )}
         </div>
-        <p className="text-xs text-muted-foreground">Drag lights and room corners. Shift-click to select several. Scroll to zoom. Arrow keys nudge, Delete removes, Ctrl+Z undoes.</p>
+        <p className="text-xs text-muted-foreground">Drag lights and room corners; drag the handle on the selected light's ring to resize its glow. Shift-click to select several. Scroll to zoom. Arrow keys nudge, Delete removes, Ctrl+Z undoes.</p>
       </div>
 
       <aside className="space-y-4">
         <section className="space-y-2 rounded-xl border bg-card p-3">
           <h2 className="text-sm font-semibold">Place lights</h2>
+          {unplaced.length > 0 && <p className="text-xs text-muted-foreground">Drag a light onto the plan, or click it to place it in the middle.</p>}
           {unplaced.length === 0 ? (
             <p className="text-sm text-muted-foreground">All lights are on the plan.</p>
           ) : (
             <ul className="max-h-56 space-y-1 overflow-auto">
               {unplaced.map((l) => (
                 <li key={l.id}>
-                  <button type="button" onClick={() => addLight(l.id)} className="flex min-h-11 w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-muted">
+                  <button
+                    type="button"
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData(LIGHT_DRAG_TYPE, l.id);
+                      e.dataTransfer.effectAllowed = "copy";
+                    }}
+                    onClick={() => addLight(l.id)} className="flex min-h-11 w-full cursor-grab items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-muted active:cursor-grabbing"
+                  >
                     <MapPin className="size-4" aria-hidden="true" /> {l.name}
                   </button>
                 </li>
@@ -272,7 +354,7 @@ export default function FloorPlanEditor({ plan, svg, lights, rooms }: { plan: Fl
             <Button variant="outline" onClick={() => roomToAdd && addRoom(roomToAdd)} disabled={!roomToAdd} aria-label="Add room region"><Square className="size-4" /></Button>
           </div>
         </section>
-        {selectedPins.length === 1 && <PinPanel pin={selectedPins[0]} light={byId.get(selectedPins[0].lightId)} max={Math.max(vb[2], vb[3]) / 2} />}
+        {selectedPins.length === 1 && <PinPanel pin={selectedPins[0]} light={byId.get(selectedPins[0].lightId)} max={maxRadius} />}
       </aside>
     </div>
   );

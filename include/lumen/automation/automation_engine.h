@@ -64,6 +64,7 @@ struct AutoEvent
     LightState prev{};   // previous light state (kLight)
     std::string payload; // MQTT payload
     std::string origin;  // command origin that caused it ("rest", "auto:x:1", ...)
+    uint64_t posted_us = 0; // stamped by post() when a clock is set
 };
 
 // Local wall-clock context supplied each tick (valid only once SNTP synced).
@@ -138,6 +139,10 @@ class AutomationEngine
     const std::map<std::string, double> &variables() const { return variables_; }
     bool set_variable(const std::string &name, double value);
     uint32_t dropped_events() const { return dropped_events_; }
+    // Event wait (post -> dispatch), microseconds; clock optional (host tests).
+    void set_clock_us(uint64_t (*clock)()) { clock_us_ = clock; }
+    uint32_t event_latency_last_us() const { return ev_lat_last_; }
+    uint32_t event_latency_max_us() const { return ev_lat_max_; }
 
     using ExecutedListener = void (*)(const HistoryEntry &entry, void *user);
     void set_listener(ExecutedListener l, void *user)
@@ -205,6 +210,8 @@ class AutomationEngine
     std::map<std::string, Button> buttons_;
     bool started_ = false;
     uint32_t dropped_events_ = 0;
+    uint64_t (*clock_us_)() = nullptr;
+    uint32_t ev_lat_last_ = 0, ev_lat_max_ = 0;
     ExecutedListener listener_ = nullptr;
     void *listener_user_ = nullptr;
 };

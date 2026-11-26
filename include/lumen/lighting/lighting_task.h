@@ -38,6 +38,7 @@ struct LightCommandEnvelope
 {
     LightCommand command;
     uint32_t posted_ms = 0; // uptime when posted
+    uint64_t posted_us = 0; // stamped by enqueue() (latency measurement)
 };
 
 enum class EnqueueResult : uint8_t
@@ -65,6 +66,12 @@ struct LightingStats
     uint32_t hardware_errors = 0;
     uint32_t ticks = 0;
     uint32_t max_tick_us = 0;
+    uint32_t tick_overruns = 0;          // ticks longer than the loop period
+    // Command latency: enqueue -> hardware flush that applied it (SPEC §24).
+    uint32_t cmd_latency_last_us = 0;
+    uint32_t cmd_latency_max_us = 0;
+    uint64_t cmd_latency_sum_us = 0;
+    uint32_t cmd_latency_count = 0;
 };
 
 class LightingTask
@@ -119,8 +126,12 @@ class LightingTask
     bool take_state_dirty();
 
     const LightingStats &stats() const { return stats_; }
-    void record_tick_us(uint32_t us)
+    // Microsecond clock for latency stamps (nullptr on host tests = off).
+    void set_clock_us(uint64_t (*clock)()) { clock_us_ = clock; }
+
+    void record_tick_us(uint32_t us, uint32_t period_us = 0)
     {
+        if (period_us != 0 && us > period_us) stats_.tick_overruns++;
         if (us > stats_.max_tick_us) stats_.max_tick_us = us;
     }
 
@@ -155,6 +166,8 @@ class LightingTask
     std::size_t queue_count_ = 0;
 
     LightListener listener_ = nullptr;
+    uint64_t (*clock_us_)() = nullptr;
+    uint64_t oldest_pending_us_ = 0; // oldest command applied since the last flush
     void *listener_user_ = nullptr;
     bool state_dirty_ = false;
     LightingStats stats_{};

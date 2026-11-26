@@ -4,6 +4,8 @@
 // hardware writes via driver adapters. No FreeRTOS dependency.
 #include "lumen/lighting/lighting_task.h"
 
+#include <algorithm>
+
 #include <cstring>
 #include <utility>
 
@@ -136,6 +138,7 @@ EnqueueResult LightingTask::enqueue(const LightCommandEnvelope &cmd)
         return EnqueueResult::kQueueFull;
     }
     queue_[queue_tail_] = cmd;
+    if (clock_us_ != nullptr && cmd.posted_us == 0) queue_[queue_tail_].posted_us = clock_us_();
     queue_tail_ = (queue_tail_ + 1) % queue_.size();
     queue_count_++;
     return EnqueueResult::kOk;
@@ -162,6 +165,9 @@ std::size_t LightingTask::process(uint32_t now_ms, std::size_t max_commands)
             queue_count_--;
         }
         apply_command(env.command, now_ms);
+        if (env.posted_us != 0 && (oldest_pending_us_ == 0 || env.posted_us < oldest_pending_us_)) {
+            oldest_pending_us_ = env.posted_us;
+        }
         processed++;
     }
     return processed;
@@ -348,6 +354,15 @@ void LightingTask::tick(uint32_t now_ms)
                 }
             }
         }
+    }
+    if (oldest_pending_us_ != 0 && clock_us_ != nullptr) {
+        const uint64_t now = clock_us_();
+        const uint32_t lat = now > oldest_pending_us_ ? static_cast<uint32_t>(std::min<uint64_t>(now - oldest_pending_us_, UINT32_MAX)) : 0;
+        stats_.cmd_latency_last_us = lat;
+        if (lat > stats_.cmd_latency_max_us) stats_.cmd_latency_max_us = lat;
+        stats_.cmd_latency_sum_us += lat;
+        stats_.cmd_latency_count++;
+        oldest_pending_us_ = 0;
     }
 }
 

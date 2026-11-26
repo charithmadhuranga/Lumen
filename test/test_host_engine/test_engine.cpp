@@ -441,6 +441,35 @@ static void test_remove_channel_notifies_config_and_releases_output(void)
     TEST_ASSERT_EQUAL_UINT16(pca12(80), hw.pwm.duty[1]);
 }
 
+
+namespace
+{
+uint64_t g_fake_us = 0;
+uint64_t fake_clock() { return g_fake_us; }
+} // namespace
+
+static void test_command_latency_is_measured_enqueue_to_flush(void)
+{
+    MockHw hw;
+    LightingTask t;
+    t.register_channel(make("d", LightType::kDimmer, "pca9685", "pca", 0));
+    t.attach_hardware(&hw);
+    t.set_clock_us(&fake_clock);
+    g_fake_us = 1000;
+    LightState s{};
+    s.brightness = 40;
+    cmd(t, "d", s, kFieldBrightness);   // stamped at 1000 us
+    g_fake_us = 1000 + 7500;             // applied 7.5 ms later
+    t.run_once(0);
+    TEST_ASSERT_EQUAL_UINT32(7500, t.stats().cmd_latency_last_us);
+    TEST_ASSERT_EQUAL_UINT32(1, t.stats().cmd_latency_count);
+    t.run_once(20);                      // no new command: nothing recorded
+    TEST_ASSERT_EQUAL_UINT32(1, t.stats().cmd_latency_count);
+    t.record_tick_us(25000, 20000);
+    t.record_tick_us(5000, 20000);
+    TEST_ASSERT_EQUAL_UINT32(1, t.stats().tick_overruns);
+}
+
 static void test_light_store_validation_and_round_trip(void)
 {
     BoardProfile profile;
@@ -606,6 +635,7 @@ int main(int, char **)
     RUN_TEST(test_cct_mixes_warm_and_cool);
     RUN_TEST(test_room_group_scene_fan_out_reaches_hardware);
     RUN_TEST(test_remove_channel_notifies_config_and_releases_output);
+    RUN_TEST(test_command_latency_is_measured_enqueue_to_flush);
     RUN_TEST(test_light_store_validation_and_round_trip);
     RUN_TEST(test_hardware_manager_builds_kc868_profile);
     RUN_TEST(test_builtin_profiles_validate_with_bus_pins);

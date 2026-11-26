@@ -674,7 +674,7 @@ def udp_discovery_unicast_and_broadcast(c):
     time.sleep(1)
     for msg in (b"LUMEN?", b'{"v":1,"type":"discover"}'):
         r = udp_send(c.host, msg)
-        assert r and r["type"] == "announce" and r["ip"] == c.host, r
+        assert r and r["type"] == "announce" and r["ip"] == socket.gethostbyname(c.host), r
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
     s.settimeout(3)
@@ -685,7 +685,7 @@ def udp_discovery_unicast_and_broadcast(c):
             found.append(json.loads(s.recv(512)))
     except socket.timeout:
         pass
-    assert any(f.get("ip") == c.host for f in found), found
+    assert any(f.get("ip") == socket.gethostbyname(c.host) for f in found), found
     assert udp_send(c.host, b"garbage", timeout=1) is None
 
 

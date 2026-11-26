@@ -53,7 +53,7 @@ Route access levels: **public** (`/auth/login`, `/auth/session`, `/system/health
 |---|---|---|
 | GET | `/system/health` | public liveness probe |
 | GET | `/system/info` | firmware version, board, chip, uptime |
-| GET | `/system/diagnostics` | heap, tasks, lighting tick timing, storage use |
+| GET | `/system/diagnostics` | firmware version, MCU (target, revision, cores, flash, IDF), reset reason + boot count, heap (free/min/largest), task stack watermarks, lighting stats (ticks, worst tick, overruns, queue drops, hardware errors, on-device command latency, automation event wait), peripherals health (I²C devices), automations (total/enabled/running/dropped events), storage, network, WebSocket/web counters, recent warnings/errors (16-line ring), peers (ESP-NOW: not supported yet) |
 | POST | `/system/restart` | restarts after 1.5 s; pending light state is saved and MQTT publishes `offline` first |
 | POST | `/system/factory-reset` | erases configuration and credentials (confirm in UI) |
 
@@ -160,11 +160,11 @@ or a firmware image. It is also served for `/` when no UI is installed.
 ## 4. WebSocket — `/api/v1/ws`
 
 The upgrade request must carry a valid session cookie (refused with 401
-otherwise). Server → client messages are `{"type": "...", "data": {...}}`:
+otherwise). Server → client messages are `{"version": 1, "event": "...", "timestamp": <ms>, "data": {...}}`:
 
-| Type | Data |
+| `event` | Data |
 |---|---|
-| `light_state_changed` | light id, requested and applied state (coalesced per light) |
+| `light_state_changed` | `{channelId, state (requested), output (applied), available, effect}`, coalesced per light |
 | `group_state_changed` | `{groupId}` |
 | `scene_activated` | `{sceneId}` |
 | `input_state_changed` | input id, name, state |

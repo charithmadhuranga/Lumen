@@ -210,7 +210,9 @@ bool AutomationEngine::post(const AutoEvent &e)
         ++dropped_events_;
         return false;
     }
-    events_[(ev_head_ + ev_count_) % kMaxEvents] = e;
+    AutoEvent &slot = events_[(ev_head_ + ev_count_) % kMaxEvents];
+    slot = e;
+    if (clock_us_ != nullptr && slot.posted_us == 0) slot.posted_us = clock_us_();
     ++ev_count_;
     return true;
 }
@@ -691,6 +693,11 @@ void AutomationEngine::tick(uint32_t now_ms, const AutoClock &clock)
         const AutoEvent e = events_[ev_head_];
         ev_head_ = (ev_head_ + 1) % kMaxEvents;
         --ev_count_;
+        if (clock_us_ != nullptr && e.posted_us != 0) {
+            const uint64_t t = clock_us_();
+            ev_lat_last_ = t > e.posted_us ? static_cast<uint32_t>(t - e.posted_us) : 0;
+            if (ev_lat_last_ > ev_lat_max_) ev_lat_max_ = ev_lat_last_;
+        }
         dispatch(e, now_ms, clock);
     }
     // 2. Button gestures (long press, single-vs-double decisions).

@@ -6,6 +6,9 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "esp_chip_info.h"
+#include "esp_flash.h"
+#include "esp_idf_version.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_system.h"
@@ -15,6 +18,7 @@
 #include "freertos/task.h"
 #include "nvs_flash.h"
 
+#include "lumen/core/log_capture.hpp"
 #include "lumen/core/model_lock.hpp"
 #include "lumen/automation/automation_store.h"
 #include "lumen/lighting/light_store.h"
@@ -28,6 +32,37 @@ namespace lumen
 namespace
 {
 Controller *g_controller = nullptr; // for the esp_restart() shutdown handler
+uint32_t g_boot_count = 0;
+const char *reset_reason_name(esp_reset_reason_t r)
+{
+    switch (r) {
+    case ESP_RST_POWERON: return "power_on";
+    case ESP_RST_EXT: return "external_pin";
+    case ESP_RST_SW: return "software";
+    case ESP_RST_PANIC: return "panic";
+    case ESP_RST_INT_WDT: return "interrupt_watchdog";
+    case ESP_RST_TASK_WDT: return "task_watchdog";
+    case ESP_RST_WDT: return "other_watchdog";
+    case ESP_RST_DEEPSLEEP: return "deep_sleep";
+    case ESP_RST_BROWNOUT: return "brownout";
+    case ESP_RST_SDIO: return "sdio";
+    default: return "unknown";
+    }
+}
+
+// Boot counter in NVS ("sys"/"boots"): lets a soak test spot every reboot.
+uint32_t count_boot()
+{
+    nvs_handle_t h;
+    uint32_t boots = 0;
+    if (nvs_open("sys", NVS_READWRITE, &h) != ESP_OK) return 0;
+    nvs_get_u32(h, "boots", &boots); // missing on first boot
+    ++boots;
+    if (nvs_set_u32(h, "boots", boots) == ESP_OK) nvs_commit(h);
+    nvs_close(h);
+    return boots;
+}
+
 }
 
 
@@ -80,6 +115,9 @@ void Controller::start()
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "NVS init failed: %s (credentials unavailable)", esp_err_to_name(err));
     }
+    log_capture_install(); // before anything else logs
+    g_boot_count = count_boot();
+    ESP_LOGI(TAG, "boot #%lu, reset reason: %s", static_cast<unsigned long>(g_boot_count), reset_reason_name(esp_reset_reason()));
     bool formatted = false;
     fs_ok_ = platform_mount_fs(formatted) == ESP_OK;
     if (formatted) {
@@ -118,6 +156,7 @@ void Controller::start()
 
     // 3. Lighting model: lights, last state, rooms/groups/scenes.
     lighting_ = std::make_unique<LightingTask>();
+    lighting_->set_clock_us([]() { return static_cast<uint64_t>(esp_timer_get_time()); });
     {
         ModelLock lock(model_mutex());
         light_store::load_lights(*config_, *lighting_);
@@ -185,6 +224,7 @@ void Controller::start()
     // Automations (Phase 9): engine + persisted definitions + location.
     auto_host_ = std::make_unique<AppAutomationHost>(ctx_);
     automation_ = std::make_unique<AutomationEngine>(*auto_host_);
+    automation_->set_clock_us([]() { return static_cast<uint64_t>(esp_timer_get_time()); });
     ctx_.automation = automation_.get();
     ctx_.automation_clock = [this]() { return auto_host_->clock(); };
     ctx_.set_location = [this](double lat, double lon) { return save_location(lat, lon); };
@@ -320,12 +360,11 @@ void Controller::lighting_loop()
                                "{\"id\":\"" + in.id + "\",\"name\":\"" + in.name +
                                    "\",\"state\":" + (events[i].state ? "true" : "false") + "}");
             }
-            if (++auto_divider_ >= 3) { // ~60 ms automation resolution
-                auto_divider_ = 0;
-                automation_->tick(now, auto_host_->clock());
-            }
+            // Every lighting tick (20 ms): event -> action stays well under
+            // the 100 ms automation target (SPEC §24).
+            automation_->tick(now, auto_host_->clock());
             const uint32_t took = static_cast<uint32_t>(esp_timer_get_time() - t0);
-            lighting_->record_tick_us(took);
+            lighting_->record_tick_us(took, kLightingPeriodMs * 1000);
         }
         vTaskDelayUntil(&last, pdMS_TO_TICKS(kLightingPeriodMs));
     }
@@ -515,6 +554,64 @@ std::string Controller::diagnostics_json()
     cJSON_AddNumberToObject(heap, "minFree", esp_get_minimum_free_heap_size());
     cJSON_AddNumberToObject(heap, "largestBlock", heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
     cJSON_AddNumberToObject(o, "uptimeSec", static_cast<double>(esp_timer_get_time() / 1000000));
+    cJSON_AddStringToObject(o, "resetReason", reset_reason_name(esp_reset_reason()));
+    cJSON_AddNumberToObject(o, "bootCount", g_boot_count);
+    cJSON_AddStringToObject(o, "firmwareVersion", kVersion);
+    {
+        esp_chip_info_t chip{};
+        esp_chip_info(&chip);
+        uint32_t flash = 0;
+        esp_flash_get_size(nullptr, &flash);
+        cJSON *mcu = cJSON_AddObjectToObject(o, "mcu");
+        cJSON_AddStringToObject(mcu, "target", CONFIG_IDF_TARGET);
+        cJSON_AddNumberToObject(mcu, "revision", chip.revision);
+        cJSON_AddNumberToObject(mcu, "cores", chip.cores);
+        cJSON_AddNumberToObject(mcu, "flashBytes", flash);
+        cJSON_AddStringToObject(mcu, "idf", esp_get_idf_version());
+    }
+    {
+        // Stack high-water marks of every Lumen task (ARCHITECTURE §3).
+        cJSON *stacks = cJSON_AddArrayToObject(o, "taskStacks");
+        for (const char *name : {"lighting", "housekeeping", "httpd", "ctrl", "mqtt_task", "tiT", "sys_evt"}) {
+            TaskHandle_t t = xTaskGetHandle(name);
+            if (t == nullptr) continue;
+            cJSON *e = cJSON_CreateObject();
+            cJSON_AddStringToObject(e, "name", name);
+            cJSON_AddNumberToObject(e, "freeMinBytes", uxTaskGetStackHighWaterMark(t) * sizeof(StackType_t));
+            cJSON_AddItemToArray(stacks, e);
+        }
+    }
+    {
+        cJSON *a = cJSON_AddObjectToObject(o, "automations");
+        int enabled = 0, running = 0;
+        for (const auto &au : automation_->automations()) {
+            if (au.enabled) ++enabled;
+            const AutomationRuntime *rt = automation_->runtime(au.id);
+            if (rt != nullptr && rt->running) ++running;
+        }
+        cJSON_AddNumberToObject(a, "total", static_cast<double>(automation_->automations().size()));
+        cJSON_AddNumberToObject(a, "enabled", enabled);
+        cJSON_AddNumberToObject(a, "running", running);
+        cJSON_AddNumberToObject(a, "droppedEvents", automation_->dropped_events());
+    }
+    {
+        cJSON *errs = cJSON_AddObjectToObject(o, "recentLog");
+        cJSON_AddNumberToObject(errs, "warningsAndErrorsSinceBoot", log_capture_total());
+        cJSON *lines = cJSON_AddArrayToObject(errs, "lines");
+        for (const auto &l : log_capture_recent()) {
+            cJSON *e = cJSON_CreateObject();
+            cJSON_AddNumberToObject(e, "uptimeSec", l.uptime_s);
+            cJSON_AddStringToObject(e, "level", l.level == 'E' ? "error" : "warning");
+            cJSON_AddStringToObject(e, "text", l.text.c_str());
+            cJSON_AddItemToArray(lines, e);
+        }
+    }
+    {
+        // Multi-controller (ESP-NOW, Phase 11) is not implemented yet.
+        cJSON *peers = cJSON_AddObjectToObject(o, "peers");
+        cJSON_AddBoolToObject(peers, "supported", false);
+        cJSON_AddNumberToObject(peers, "count", 0);
+    }
 
     cJSON *tasks = cJSON_AddArrayToObject(o, "tasks");
     auto task = [&](const char *name, void *handle, uint32_t stack) {
@@ -542,6 +639,15 @@ std::string Controller::diagnostics_json()
         cJSON_AddNumberToObject(l, "hardwareErrors", ls.hardware_errors);
         cJSON_AddNumberToObject(l, "ticks", ls.ticks);
         cJSON_AddNumberToObject(l, "maxTickUs", ls.max_tick_us);
+        cJSON_AddNumberToObject(l, "tickOverruns", ls.tick_overruns);
+        cJSON *lat = cJSON_AddObjectToObject(l, "commandLatencyUs");
+        cJSON_AddNumberToObject(lat, "last", ls.cmd_latency_last_us);
+        cJSON_AddNumberToObject(lat, "avg", ls.cmd_latency_count ? static_cast<double>(ls.cmd_latency_sum_us / ls.cmd_latency_count) : 0);
+        cJSON_AddNumberToObject(lat, "max", ls.cmd_latency_max_us);
+        cJSON_AddNumberToObject(lat, "count", ls.cmd_latency_count);
+        cJSON *al = cJSON_AddObjectToObject(l, "automationEventWaitUs");
+        cJSON_AddNumberToObject(al, "last", automation_->event_latency_last_us());
+        cJSON_AddNumberToObject(al, "max", automation_->event_latency_max_us());
         cJSON *hw = cJSON_AddArrayToObject(o, "peripherals");
         for (const auto &h : hardware_->health()) {
             cJSON *e = cJSON_CreateObject();

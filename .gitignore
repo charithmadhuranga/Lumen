@@ -49,3 +49,4 @@ test/integration/ha/.ha_token
 test/integration/ha/ha-config/
 test/integration/ha/mosquitto/passwd
 test/integration/ha/mosquitto/data/
+test/soak/results/

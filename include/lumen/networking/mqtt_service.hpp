@@ -128,6 +128,7 @@ class MqttService
     static constexpr std::size_t kInbox = 16;
     std::vector<Inbound> inbox_;
     bool resubscribe_ = false;
+    std::string logged_error_; // last error written to the log (guarded by mutex_)
     // esp-mqtt's enqueue() outbox drains ~1 message per task loop (about 1/s),
     // so poll() writes directly instead, outside the model lock.
     static constexpr std::size_t kAsync = 16;     // event/automation queue

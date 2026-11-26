@@ -87,7 +87,6 @@ class Controller
     bool state_pending_ = false;
     bool config_frozen_ = false; // factory reset / restore: never write config back
     bool network_dirty_ = false;
-    uint8_t auto_divider_ = 0;
 };
 
 } // namespace lumen

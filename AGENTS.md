@@ -57,6 +57,7 @@ Environment names: `esp32` (KC868-AP reference board + flash/monitor ports), `es
 | Firmware / UI update over the network | Settings → Firmware / Web interface, or `POST /api/v1/ota/upload` / `/system/ui/upload` with the raw file; `/recovery` if the UI is missing |
 | OTA / backup drills on the device | `python3 test/device/maintenance_test.py <url> <password> <dir with ok.bin crash.bin unhealthy.bin>` (images: `LUMEN_VERSION=… LUMEN_OTA_SELFTEST=2 pio run -e esp32`) |
 | Security suite (real device) | `python3 test/integration/security_test.py http://<controller-ip> '<password>' --secrets 'wifi,mqtt,…'` (rate-limit check last; locks this IP out for ≤ 5 min) |
+| Performance / soak (real device) | `python3 test/integration/perf_test.py <url> '<password>'`; `python3 test/integration/soak_test.py <url> '<password>' --hours 24` (CSV + summary in `test/soak/results/`) |
 | Device test helpers | `test/device/setup_demo.py <url> <password>` (demo rooms/lights), `test/device/lumen_udp.py` (signed UDP client) |
 | Validate schemas | `npm run validate:schemas` (repo root; first `npm ci` at root installs ajv) |
 

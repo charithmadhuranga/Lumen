@@ -141,6 +141,9 @@ esp_err_t MqttService::start()
     cfg.task.stack_size = 6144;
     cfg.outbox.limit = 16 * 1024; // bounded outbox
 
+    // esp-mqtt / esp-tls log three error lines on every failed retry; the
+    // service reports the reason itself (status.lastError + one warning).
+    for (const char *tag : {"mqtt_client", "esp-tls", "transport_base", "transport"}) esp_log_level_set(tag, ESP_LOG_NONE);
     esp_mqtt_client_handle_t c = esp_mqtt_client_init(&cfg);
     if (c == nullptr) {
         std::lock_guard<std::mutex> l(mutex_);
@@ -296,6 +299,8 @@ void MqttService::handle_event(int32_t id, void *data)
         {
             std::lock_guard<std::mutex> l(mutex_);
             status_.connected = true;
+            if (!logged_error_.empty()) ESP_LOGI(TAG, "connected to %s", uri_.c_str());
+            logged_error_.clear();
             status_.last_error.clear();
             b = base();
         }
@@ -323,6 +328,11 @@ void MqttService::handle_event(int32_t id, void *data)
             status_.last_error = std::string("TLS/transport error: ") + esp_err_to_name(ev->error_handle->esp_tls_last_esp_err);
         } else {
             status_.last_error = "Cannot reach the broker";
+        }
+        // One line per distinct problem (esp-mqtt's own per-retry lines are muted).
+        if (status_.last_error != logged_error_) {
+            logged_error_ = status_.last_error;
+            ESP_LOGW(TAG, "%s (%s); retrying every 5 s", status_.last_error.c_str(), uri_.c_str());
         }
         break;
     }

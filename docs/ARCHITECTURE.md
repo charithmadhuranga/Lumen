@@ -65,7 +65,7 @@ stack, core. No other task is created; per-request work never spawns tasks.
 | Task | Owner module | Prio | Stack | Core | Role |
 |---|---|---|---|---|---|
 | `main` (ESP-IDF) | `src/main.cpp` | 1 | 8192 B (`CONFIG_ESP_MAIN_TASK_STACK_SIZE`) | 0 | Runs `Controller::start()` (boot sequence) and returns. |
-| `lighting` | `src/app/controller.cpp` | 6 | 6144 B | 1 | 20 ms tick: drain command queue, transitions/effects, batched PCA9685 flush, input polling; automation tick every 3rd iteration (60 ms). Watched by the task WDT. Never blocks on network. |
+| `lighting` | `src/app/controller.cpp` | 6 | 6144 B | 1 | 20 ms tick: drain command queue, transitions/effects, batched PCA9685 flush, input polling; automation engine tick every iteration (20 ms; event → action ≤ ~35 ms measured). Watched by the task WDT. Never blocks on network. |
 | `housekeeping` | `src/app/controller.cpp` | 2 | 6144 B | 0 | 250 ms: debounced state save, outbound UDP/TCP actions (`NetSender`), MQTT `poll()` (inbound commands, coalesced state/discovery publishing outside the model lock), network supervision, WS status. Watched by the task WDT (MQTT network timeout 2 s < WDT 5 s). |
 | `httpd` | `src/web/web_server.cpp` (esp_http_server) | 5 | 10240 B | any | REST API, static `web.pack`, WebSocket. Handlers only validate and enqueue. |
 | `ctrl` | `src/networking/control_servers.cpp` | 3 | 5120 B | 0 | `select()` loop (100 ms) for the TCP control server (≤4 clients) and the UDP discovery/control socket; pushes coalesced state lines. Created once at boot. |

@@ -229,13 +229,22 @@ Legend: `[x]` done · `[ ]` not done · **HW** = verified on physical hardware.
 - [x] Backup / restore (full and partial, transactional, streamed, no secrets) — **HW** + host tests (hostile input, interrupted swap)
 - [x] Settings → Firmware, Web interface, Backup & restore screens (unit tests; axe in e2e)
 - [ ] Signed images / secure boot / flash encryption / anti-rollback: not enabled (owner decision, irreversible eFuses)
-- [ ] Long soak test (heap ≈ 80 KB free after boot with MQTT — watch)
-- [ ] Performance/reliability audit
+- [x] Performance measured on the device (`test/integration/perf_test.py`, on-device clock): command enqueue → hardware
+      avg 13 ms / max 27 ms (target < 100 ms); automation event → action ≤ 35 ms worst case (target < 100 ms; engine now
+      ticks every 20 ms); WebSocket propagation over the phone-hotspot Wi-Fi p95 165–200 ms (target < 250 ms);
+      transitions ≈ 37 hardware updates/s (target ≥ 30); worst lighting tick 10 ms of 20, 0 overruns
+- [x] Diagnostics complete per SPEC §21 (firmware/MCU, reset reason + boot count, task stacks, heap, lighting and
+      latency stats, peripherals/I²C health, automations, network, recent warnings/errors ring, peers placeholder)
+- [x] MQTT reconnect logging: one warning per distinct problem (esp-mqtt/esp-tls per-retry lines muted); broker may be
+      given as a `.local` name (mDNS resolution) so a changing PC address does not break it
+- [ ] 24 h soak (`test/integration/soak_test.py`) — running; result to be recorded here
+- [ ] Reliability suite items not yet automated: I²C peripheral failure (needs unplugging the PCA9685), low-memory injection, ESP-NOW peer loss (Phase 11)
 
 ## Known limitations
 
 - RS485, Ethernet, relay polarity on the KC868-AP: **unverified on hardware**.
 - Addressable LED strips: no RMT driver yet (see Phase 4).
+- Wi-Fi/HTTP round trips through the phone hotspot are 60 ms median with spikes to 300 ms; on-device latency is the SPEC metric.
 - Floor-plan drawings are not part of backups (overlay positions are); re-upload the SVG after restoring onto another controller.
 - Moving the partition table (as on 2026-11-26) needs a serial flash; OTA cannot change it. Configuration was carried over with backup/restore.
 - The automation "send TCP" action opens a short-lived connection per action; there is no persistent outbound session.
@@ -271,3 +280,4 @@ not belong in this section.
 | 2026-11-26 | same | Repartition (1.5 MB slots, 896 KB LittleFS) by serial flash; configuration restored from backup; NVS secrets kept | PASS |
 | 2026-11-26 | same | Floor plans: API + unsafe-SVG rejection; e2e desktop + mobile (upload, place, save, glow follows output, tap → PCA read-back, axe) | PASS |
 | 2026-11-26 | same | Security suite 29/29; HA/MQTT/HTTP/TCP/UDP suite 34/34; e2e 14/14 | PASS |
+| 2026-11-26 | same | Performance (perf_test.py): all on-device targets met; reset reason / boot counter / log ring live in diagnostics | PASS |

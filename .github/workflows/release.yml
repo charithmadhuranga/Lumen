@@ -124,14 +124,27 @@ jobs:
         run: |
           npm ci
           npm run build:fs
+      # On a fresh checkout the buildfs run can clear the firmware images from
+      # the build directory, so each step's outputs are kept aside right away
+      # and put back before packaging.
       - name: Firmware
-        run: pio run -e ${{ matrix.env }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          pio run -e ${{ matrix.env }}
+          mkdir -p images
+          cp .pio/build/${{ matrix.env }}/{bootloader,partitions,ota_data_initial,firmware}.bin images/
       - name: LittleFS image
-        run: pio run -e ${{ matrix.env }} -t buildfs
+        shell: bash
+        run: |
+          set -euo pipefail
+          pio run -e ${{ matrix.env }} -t buildfs
+          cp .pio/build/${{ matrix.env }}/littlefs.bin images/
       - name: Package
         shell: bash
         run: |
           set -euo pipefail
+          cp images/*.bin .pio/build/${{ matrix.env }}/
           ls -l .pio/build/${{ matrix.env }}/*.bin
           python3 scripts/package_release.py ${{ matrix.env }} "$VERSION" dist | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v7

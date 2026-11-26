@@ -68,9 +68,9 @@ stack, core. No other task is created; per-request work never spawns tasks.
 | `lighting` | `src/app/controller.cpp` | 6 | 6144 B | 1 | 20 ms tick: drain command queue, transitions/effects, batched PCA9685 flush, input polling; automation engine tick every iteration (20 ms; event → action ≤ ~35 ms measured). Watched by the task WDT. Never blocks on network. |
 | `housekeeping` | `src/app/controller.cpp` | 2 | 6144 B | 0 | 250 ms: debounced state save, outbound UDP/TCP actions (`NetSender`), MQTT `poll()` (inbound commands, coalesced state/discovery publishing outside the model lock), network supervision, WS status. Watched by the task WDT (MQTT network timeout 2 s < WDT 5 s). |
 | `httpd` | `src/web/web_server.cpp` (esp_http_server) | 5 | 10240 B | any | REST API, static `web.pack`, WebSocket. Handlers only validate and enqueue. |
-| `ctrl` | `src/networking/control_servers.cpp` | 3 | 5120 B | 0 | `select()` loop (100 ms) for the TCP control server (≤4 clients) and the UDP discovery/control socket; pushes coalesced state lines. Created once at boot. |
+| `ctrl` | `src/networking/control_servers.cpp` | 3 | 5120 B | 0 | `select()` loop (100 ms) for the TCP control server (≤4 clients) and the UDP discovery/control socket; pushes coalesced state lines. Created once at boot. Watched by the task WDT. |
 | `mqtt_task` | esp-mqtt (`src/networking/mqtt_service.cpp`) | 5 (`CONFIG_MQTT_TASK_PRIORITY`) | 6144 B | any | Broker connection. Its event handler only queues inbound messages (bounded inbox of 16) — it never takes the model lock. Exists only while MQTT is enabled. |
-| `espnow` | `src/networking/espnow_manager.cpp` | 3 | 6144 B | 0 | ESP-NOW: decodes/validates frames from its bounded receive queue (16), applies remote commands through the lighting enqueue path, sends HELLO (5 s) and coalesced STATE frames. Exists from boot; the radio is initialised only when enabled. |
+| `espnow` | `src/networking/espnow_manager.cpp` | 3 | 6144 B | 0 | ESP-NOW: decodes/validates frames from its bounded receive queue (16), applies remote commands through the lighting enqueue path, sends HELLO (5 s) and coalesced STATE frames. Exists from boot; the radio is initialised only when enabled. Watched by the task WDT (loop wakes every ≤ 50 ms). |
 | `restart` | `Controller::schedule_restart` | 1 | 6144 B | any | One-shot: waits, then `esp_restart()`; the shutdown handler persists pending light state and publishes MQTT `offline`. |
 | ESP-IDF system tasks | `tiT` (lwIP), `sys_evt`, `wifi`, `ipc0/1`, `esp_timer`, mDNS | IDF defaults | IDF defaults | — | Platform services. |
 
@@ -152,6 +152,28 @@ generates change events.
 
 PCA9685 batching and PCF8574 debounce/change detection are proven by host
 tests against a mock I2C bus simulator with error injection.
+
+**PCA9685 fault handling.** A failed write marks the chip *lost*. While lost,
+`flush()` returns at once without bus traffic (a missing chip cannot stall
+the 20 ms lighting tick with 50 ms I²C timeouts) and retries every 50 flushes
+(~1 s): MODE2, prescale, wake, then all 16 channels rewritten from the
+driver's shadow registers, which always hold the latest requested duty. Every
+250 flushes (~5 s) MODE1 is read back. A chip that power-cycled wakes up
+asleep with its registers reset and is recovered the same way; a failed read
+marks it lost. Health (`/system/diagnostics` → `peripherals`) shows
+`not responding` or `ok (recovered Nx)` and an error count. Host tests cover
+this, and so do the on-device fault-injection runs (below).
+
+**Task watchdog.** `lighting`, `housekeeping`, `espnow` and `ctrl` subscribe
+to the 5 s task watchdog. `CONFIG_ESP_TASK_WDT_PANIC` is off: a hang is
+reported (backtrace, log ring) but does not reset the device.
+
+**Test images.** `LUMEN_TEST_HOOKS=1` (scripts/pio_version.py) compiles
+`src/web/api_test_hooks.cpp` (heap reservation, I²C fault injection in
+`I2cManager`, raw register access, ESP-NOW receive delay) for
+`test/integration/reliability_test.py`. Release images do not contain it.
+`scripts/package_release.py` refuses any image that does, and diagnostics
+report `testHooks`.
 
 ## 8. Board profiles and PinValidator (implemented in Phase 2)
 

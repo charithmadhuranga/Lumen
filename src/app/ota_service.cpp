@@ -59,6 +59,9 @@ int recv_some(httpd_req_t *req, uint8_t *buf, std::size_t len, int &timeouts)
 
 void OtaService::boot()
 {
+#ifdef LUMEN_OTA_SELFTEST
+    ESP_LOGW(TAG, "*** OTA SELF-TEST IMAGE (rollback drill %d) - not for release ***", LUMEN_OTA_SELFTEST);
+#endif
     const esp_partition_t *running = esp_ota_get_running_partition();
     esp_ota_img_states_t state = ESP_OTA_IMG_UNDEFINED;
     if (running != nullptr && esp_ota_get_state_partition(running, &state) == ESP_OK) {

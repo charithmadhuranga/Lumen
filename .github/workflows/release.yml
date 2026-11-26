@@ -1,0 +1,207 @@
+# Lumen release build.
+#
+# Triggered when a GitHub release is published (tag vX.Y.Z or vX.Y.Z-rc.N).
+# Re-runs the host and web UI checks, builds the web UI, firmware and
+# LittleFS image for every board target, packages them with
+# scripts/package_release.py (which refuses test images, version mismatches
+# and oversized applications) and attaches the files plus flashing
+# instructions to the release.
+#
+# Manual run (Actions -> Release -> Run workflow) builds a tag WITHOUT
+# touching any release: the files are kept as a workflow artifact only.
+#
+# Toolchain pins match platformio.ini / ci.yml (AGENTS.md §5).
+
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build (e.g. v1.0.0)"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ github.event.release.tag_name || inputs.tag }}
+
+jobs:
+  checks:
+    name: Checks
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+      - name: Version from tag must match version.txt
+        id: version
+        run: |
+          version="${TAG#v}"
+          file="$(tr -d '[:space:]' < version.txt)"
+          if [ "$version" != "$file" ]; then
+            echo "::error::tag $TAG is version '$version' but version.txt says '$file' — bump version.txt before tagging"
+            exit 1
+          fi
+          case "$version" in *dev*) echo "::error::refusing to release a -dev version"; exit 1;; esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Cache PlatformIO
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            ~/.platformio/platforms
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+      - name: Install PlatformIO (pinned)
+        run: pip install platformio==6.2.0
+      - name: Host unit tests
+        run: pio test -e native
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: webui/package-lock.json
+      - name: Web UI lint, typecheck, tests
+        working-directory: webui
+        run: |
+          npm ci
+          npm run lint
+          npm run typecheck
+          npm test
+
+  build:
+    name: Build (${{ matrix.env }})
+    needs: checks
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        env: [esp32, esp32s3]
+    env:
+      VERSION: ${{ needs.checks.outputs.version }}
+      # Release images never carry test code.
+      LUMEN_TEST_HOOKS: ""
+      LUMEN_OTA_SELFTEST: ""
+      LUMEN_VERSION: ""
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Cache PlatformIO
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            ~/.platformio/platforms
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+      - name: Install PlatformIO and esptool (pinned)
+        # esptool only merges the images into one file here (CI-side, nothing on the device).
+        run: pip install platformio==6.2.0 esptool==4.8.1
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: webui/package-lock.json
+      - name: Web UI (build, bundle budgets, web.pack)
+        working-directory: webui
+        run: |
+          npm ci
+          npm run build:fs
+      - name: Firmware
+        run: pio run -e ${{ matrix.env }}
+      - name: LittleFS image
+        run: pio run -e ${{ matrix.env }} -t buildfs
+      - name: Package
+        run: python3 scripts/package_release.py ${{ matrix.env }} "$VERSION" dist | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: lumen-${{ env.VERSION }}-${{ matrix.env }}
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: Attach to release
+    needs: [checks, build]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.checks.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/download-artifact@v8
+        with:
+          path: parts
+          merge-multiple: true
+      - name: Assemble release files
+        run: |
+          mkdir -p release
+          cp parts/* release/
+          # One zip per board: every image, the offsets and the flashing guide.
+          for env in esp32 esp32s3; do
+            dir="lumen-${VERSION}-${env}"
+            mkdir -p "zip/$dir"
+            cp parts/lumen-${VERSION}-${env}-* parts/lumen-${VERSION}-web.pack "zip/$dir/"
+            cp docs/FLASHING.md "zip/$dir/FLASHING.md"
+            (cd zip && zip -qr "../release/$dir.zip" "$dir")
+          done
+          cp docs/FLASHING.md release/FLASHING.md
+          (cd release && sha256sum * > SHA256SUMS.txt)
+          ls -l release
+      - name: Release notes
+        run: |
+          {
+            echo "## Lumen ${VERSION}"
+            echo
+            awk -v v="$VERSION" '$0 ~ "^## \\[" v "\\]" {on=1; next} on && /^## \[/ {exit} on' CHANGELOG.md
+            echo
+            echo "## Downloads"
+            echo
+            echo "| File | Use |"
+            echo "|---|---|"
+            echo "| \`lumen-${VERSION}-esp32-full.bin\` | **New installation** on an ESP32 board (KinCony KC868-AP, generic ESP32): write at \`0x0\`. Erases all settings. |"
+            echo "| \`lumen-${VERSION}-esp32-app.bin\` | **Update** an existing ESP32 controller: Settings → Firmware. Keeps all settings. |"
+            echo "| \`lumen-${VERSION}-web.pack\` | **Update the web interface**: Settings → Web interface (or \`/recovery\`). |"
+            echo "| \`lumen-${VERSION}-esp32s3-*\` | The same for ESP32-S3 boards (compile-verified; not yet tested on S3 hardware). |"
+            echo "| \`lumen-${VERSION}-<board>.zip\` | Everything for one board, with \`FLASHING.md\`. |"
+            echo "| \`SHA256SUMS.txt\` | Checksums. |"
+            echo
+            echo "Step-by-step flashing instructions: **FLASHING.md** (attached)."
+          } > notes.md
+          cat notes.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload to the release
+        if: github.event_name == 'release'
+        run: |
+          gh release upload "$TAG" release/* --clobber
+          # Keep notes written by hand on the release; add the generated part below them.
+          body="$(gh release view "$TAG" --json body -q .body)"
+          if [ -n "$body" ] && ! grep -q "^## Downloads" <<< "$body"; then
+            printf '%s\n\n%s\n' "$body" "$(cat notes.md)" > notes.md
+          fi
+          if [ -z "$body" ] || ! grep -q "^## Downloads" <<< "$body"; then
+            gh release edit "$TAG" --notes-file notes.md
+          fi
+      - name: Keep as artifact (manual run)
+        if: github.event_name != 'release'
+        uses: actions/upload-artifact@v7
+        with:
+          name: lumen-${{ env.VERSION }}-release
+          path: release/

@@ -133,6 +133,7 @@ Legend: `[x]` done · `[ ]` not done · **HW** = verified on physical hardware.
       sunset, strobe); duration 0 runs until replaced.
 - [x] Driver adapters (`src/lighting/drivers/driver_adapter.cpp`): PCA9685
       dimmer/RGB/RGBW/CCT with channel offsets, LEDC, relay/GPIO switch.
+      LEDC dimmer + fade driven on the ESP32 DevKit (latched duty read-back, nothing attached).
 - [ ] **Addressable LEDs (RMT/WS2812)**: not implemented; `rmt` lights are refused by the API (no hardware to verify).
 - [x] Switch lights change instantly (a default fade only delayed switching off) — host test + HW (relay / GPIO LED)
 - [x] Host tests (`test_host_engine`, 14): command → hardware duties, offsets,
@@ -177,8 +178,11 @@ Legend: `[x]` done · `[ ]` not done · **HW** = verified on physical hardware.
       editor, stored and shown there in control mode
 - [x] **HW** e2e (desktop + mobile): upload with script stripped, place + save, glow follows output changed by another
       client, tap drives the PCA9685 (read-back), axe in both modes, Konva not fetched in control mode
-- [x] Budgets: viewer 33 KB, editor 83 KB (DESIGN §14.1: 40 / 90)
-- [ ] Glow radius via a slider instead of a Konva Transformer handle; drag from the tray is "click to place" (centre) — deviations from DESIGN §9.4
+- [x] Budgets: viewer 33.1 KB, editor 83.5 KB (DESIGN §14.1: 40 / 90)
+- [x] Glow-radius handle on the selected light's ring (one undo step per drag; slider kept for keyboard use) and
+      drag-from-tray placement at the drop point (click-to-place kept for touch/keyboard) — **HW** e2e. Deviation
+      from DESIGN §9.4: a purpose-built handle instead of `Konva.Transformer` (+7 KB gz, editor chunk would sit at
+      its 90 KB budget)
 - [ ] Sensor overlay layer (no sensors in the model yet)
 
 ## Phase 9 — Automation
@@ -220,7 +224,7 @@ Legend: `[x]` done · `[ ]` not done · **HW** = verified on physical hardware.
       delivered, no duplicates, no amplification, peer restart → rejoin with sequence continuity; e2e (UI) desktop + mobile
 - [ ] MQTT network topics (SPEC §12.4) — not implemented
 - [ ] Roles primary/secondary/gateway — not implemented (all controllers are standalone owners)
-- [ ] Local-wins rule not exercised on hardware (needs a delayed remote frame; covered by design + code review only)
+- [x] Local-wins rule — **HW** via `reliability_test.py` (receive path held 2.5 s on the test image)
 
 ## Phase 12 — Security and production
 
@@ -240,15 +244,33 @@ Legend: `[x]` done · `[ ]` not done · **HW** = verified on physical hardware.
       ticks every 20 ms); WebSocket propagation over the phone-hotspot Wi-Fi p95 165–200 ms (target < 250 ms);
       transitions ≈ 37 hardware updates/s (target ≥ 30); worst lighting tick 10 ms of 20, 0 overruns
 - [x] Diagnostics complete per SPEC §21 (firmware/MCU, reset reason + boot count, task stacks, heap, lighting and
-      latency stats, peripherals/I²C health, automations, network, recent warnings/errors ring, peers placeholder)
+      latency stats, peripherals/I²C health incl. PCA9685 fault/recovery counts, automations, network, recent
+      warnings/errors ring, ESP-NOW peers, failed heap allocations (task/size/caps) and a timestamped warning for
+      each 4 KB step of the heap minimum below 24 KB, `testHooks` flag)
 - [x] MQTT reconnect logging: one warning per distinct problem (esp-mqtt/esp-tls per-retry lines muted); broker may be
       given as a `.local` name (mDNS resolution) so a changing PC address does not break it
 - [ ] 24 h soak (`test/integration/soak_test.py`) — not completed: stopped by the owner after 1.1 h (2026-11-26 17:05–18:14). In that window: no reboot, no new tick overruns, free heap flat at 61 KB, command latency avg 13 ms. A full 24 h run is still owed before release.
-- [ ] Reliability suite items not yet automated: I²C peripheral failure (needs unplugging the PCA9685), low-memory injection, ESP-NOW peer loss (Phase 11)
+- [x] Reliability suite (`test/integration/reliability_test.py`, needs a `LUMEN_TEST_HOOKS=1` test image) — **HW**
+      20/20 on 2026-11-26: PCA9685 stops answering (fault reported, loop keeps 59 ticks/s with 0 overruns,
+      latest state kept), chip back → reconfigured + latest state in 0.3 s; power-cycled (sleeping) chip woken
+      within 4.4 s; heap reserved down to 12 KB → no reboot, commands applied, diagnostics refused cleanly,
+      failed allocations recorded; ESP-NOW peer loss → offline in 17 s, 409 for remote commands, rejoin in
+      1 s; late remote command rejected as stale (local wins). Host: back-off/recovery/power-cycle +
+      engine-level fault isolation tests
+- [x] Task watchdog on every Lumen task: `lighting`, `housekeeping`, `espnow`, `ctrl` (reports hangs; no panic reset)
+- [x] Release packaging + CI: `scripts/package_release.py` (refuses test images, version mismatch, oversized app;
+      merged image verified byte-for-byte against its parts) and `.github/workflows/release.yml`;
+      install/update guide `docs/FLASHING.md`
 
 ## Known limitations
 
 - RS485, Ethernet, relay polarity on the KC868-AP: **unverified on hardware**.
+- No 24 h soak yet (1.1 h run only): required before 1.0.0. Current release: `1.0.0-rc.1`.
+- ESP32-S3 images are compile-tested only.
+- The task watchdog reports a hung task but does not reset the device (`CONFIG_ESP_TASK_WDT_PANIC` off, unchanged).
+- A fresh device prints its setup-hotspot password on the serial console at boot (the provisioning path; needs physical access). This conflicts with AGENTS.md §5 "never log secrets" and is left for the owner to decide.
+- Firmware uses 91 % of its 1.5 MB OTA slot (release check fails above 100 %).
+- Under severe memory pressure (≈ 12 KB free) large API responses such as diagnostics are refused (500) while light commands keep working.
 - Addressable LED strips: no RMT driver; the API refuses `rmt` lights with a clear error (the UI does not offer them). The installed strip is a single-colour strip on PCA9685 channel 0 (light "Ceiling").
 - Wi-Fi/HTTP round trips through the phone hotspot are 60 ms median with spikes to 300 ms; on-device latency is the SPEC metric.
 - Floor-plan drawings are not part of backups (overlay positions are); re-upload the SVG after restoring onto another controller.
@@ -288,4 +310,9 @@ not belong in this section.
 | 2026-11-26 | same | Security suite 29/29; HA/MQTT/HTTP/TCP/UDP suite 34/34; e2e 14/14 | PASS |
 | 2026-11-26 | same | Performance (perf_test.py): all on-device targets met; reset reason / boot counter / log ring live in diagnostics | PASS |
 | 2026-11-26 | KC868-AP + ESP32 DevKit (ESP32-D0WD-V3, MAC a0:b7:65:62:e7:04, CP2102 /dev/ttyUSB1) | ESP-NOW multi-controller suite 17/17; e2e 16/16 incl. Controllers tab | PASS |
-| 2026-11-26 | KC868-AP | Single-colour LED strip on PCA9685 ch0: off/on/dim/fade/breathing sequence, read-back matches | PASS (visual confirmation pending from the owner) |
+| 2026-11-26 | KC868-AP | Single-colour LED strip on PCA9685 ch0: off/on/dim/fade/breathing sequence, read-back matches | PASS — visually confirmed by the owner |
+| 2026-11-26 | KC868-AP | Floor-plan editor e2e: drag-from-tray placement at the drop point, glow-radius handle (desktop); full e2e 17/17 | PASS |
+| 2026-11-26 | KC868-AP (+ DevKit) | Reliability suite with a `LUMEN_TEST_HOOKS=1` image: I²C fault + recovery, power-cycled PCA9685, 12 KB heap, ESP-NOW peer loss, local-wins | PASS — 20/20 |
+| 2026-11-26 | KC868-AP | MQTT broker stopped/started: disconnect detected at once, reconnected 3 s after restart, publishing resumed | PASS |
+| 2026-11-26 | ESP32 DevKit | LEDC dimmer on `ledc_pwm0` (GPIO15, nothing attached): 100/50/10/0 % → 100/18.4/1.1/0 % duty, 1.5 s fade mid-way at 0.75 s (driver-latched read-back) | PASS (no physical measurement) |
+| 2026-11-26 | KC868-AP + DevKit | Release-configuration image (watchdogs, PCA recovery): multi-controller 17/17, HA/MQTT/TCP/UDP 34/34, perf 4/4, test routes absent (404) | PASS |

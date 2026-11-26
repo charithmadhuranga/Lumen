@@ -52,6 +52,16 @@ controller-presets/  vendor reference only — never a source of verified facts
 
 ## Current status
 
-Phase 0 (foundation) complete: firmware builds and boots on the physical
-KC868-AP with a heartbeat, host tests pass, schemas validate, web UI builds.
-No product features yet — phases 1–12 follow the plan.
+Release candidate **1.0.0-rc.1**: all implementation phases (0–12) are complete
+and tested on the KinCony KC868-AP. See [CHANGELOG.md](CHANGELOG.md) for the
+feature list and known limitations, and `docs/IMPLEMENTATION_STATUS.md` for the
+evidence. Open before 1.0.0: the 24-hour soak test, and the hardware checks for
+Ethernet, RS485 and relay polarity.
+
+## Installing
+
+Download the files from the GitHub release and follow
+[docs/FLASHING.md](docs/FLASHING.md): browser or `esptool` for a fresh install,
+**Settings → Firmware** / **Web interface** to update a running controller.
+Publishing a GitHub release for tag `v<version>` (matching `version.txt`)
+builds and attaches the files automatically.

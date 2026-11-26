@@ -53,7 +53,7 @@ Route access levels: **public** (`/auth/login`, `/auth/session`, `/system/health
 |---|---|---|
 | GET | `/system/health` | public liveness probe |
 | GET | `/system/info` | firmware version, board, chip, uptime |
-| GET | `/system/diagnostics` | firmware version, MCU (target, revision, cores, flash, IDF), reset reason + boot count, heap (free/min/largest), task stack watermarks, lighting stats (ticks, worst tick, overruns, queue drops, hardware errors, on-device command latency, automation event wait), peripherals health (I²C devices), automations (total/enabled/running/dropped events), storage, network, WebSocket/web counters, recent warnings/errors (16-line ring), peers (ESP-NOW: not supported yet) |
+| GET | `/system/diagnostics` | firmware version, MCU (target, revision, cores, flash, IDF), reset reason + boot count, heap (free/min/largest), task stack watermarks, lighting stats (ticks, worst tick, overruns, queue drops, hardware errors, on-device command latency, automation event wait), peripherals health (`ok`, `errors`, `detail`: PCA9685 `not responding` / `ok (recovered Nx)`), automations (total/enabled/running/dropped events), storage, network, WebSocket/web counters, recent warnings/errors (16-line ring), `allocFailures` (`total`, last 4 `{uptimeSec, size, caps, task}`), `peers` (`supported`, `running`, `count`, `online`), `testHooks` (true only on a test image). Under severe memory pressure the request can fail with 500 `diagnostics unavailable` |
 | POST | `/system/restart` | restarts after 1.5 s; pending light state is saved and MQTT publishes `offline` first |
 | POST | `/system/factory-reset` | erases configuration and credentials (confirm in UI) |
 
@@ -169,6 +169,21 @@ Document names are relative (`[A-Za-z0-9_.-]`, at most one folder level, `.json`
 
 Recovery page: `/recovery` (built into the firmware, independent of LittleFS) — sign in, install a `web.pack`
 or a firmware image. It is also served for `/` when no UI is installed.
+
+### Test-image routes (`LUMEN_TEST_HOOKS=1` only)
+
+Not present in release images (404). Built only for
+`test/integration/reliability_test.py`; all require a signed-in session.
+
+| Method | Path | Body / result |
+|---|---|---|
+| GET | `/test/hooks` | `{heapReserved}` |
+| POST | `/test/heap/reserve` | `{leaveBytes ≥ 4096}` → allocates 2 KB blocks until about that much heap is free (max 256 KB); `{heapReserved, freeHeap}` |
+| POST | `/test/heap/release` | frees the reservation; `{freeHeap}` |
+| POST | `/test/i2c/fault` | `{address, fail}`: every transaction to that I²C address fails with `ESP_ERR_TIMEOUT` until `fail: false` |
+| POST | `/test/i2c/write` | `{address, reg, value}` raw register write |
+| POST | `/test/i2c/read` | `{address, reg}` → `{value}` |
+| POST | `/test/espnow/hold` | `{ms 0–3000}`: delay processing of every received ESP-NOW frame |
 
 ## 4. WebSocket — `/api/v1/ws`
 

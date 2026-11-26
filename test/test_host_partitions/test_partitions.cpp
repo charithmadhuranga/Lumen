@@ -188,7 +188,7 @@ static void test_dual_ota_slots_are_equal(void)
     TEST_ASSERT_EQUAL_STRING("ota_0", ota0->subtype.c_str());
     TEST_ASSERT_EQUAL_STRING("ota_1", ota1->subtype.c_str());
     TEST_ASSERT_EQUAL_UINT32(ota0->size, ota1->size);
-    TEST_ASSERT_TRUE_MESSAGE(ota0->size >= 0x1A0000, "OTA slot below 1.625 MB (firmware needs headroom)");
+    TEST_ASSERT_TRUE_MESSAGE(ota0->size >= 0x180000, "OTA slot below 1.5 MB (firmware needs headroom)");
 }
 
 static void test_storage_fits_web_budget(void)
@@ -197,9 +197,9 @@ static void test_storage_fits_web_budget(void)
     // partition must be able to hold it (Phase 0 plan: >= 1 MB).
     const Partition *storage = find(partitions, "storage");
     TEST_ASSERT_NOT_NULL(storage);
-    // Revised layout (2026-11-25): 640 KB LittleFS holds the gzipped UI
-    // (budget 450 KB) plus configuration and floor plans.
-    TEST_ASSERT_TRUE_MESSAGE(storage->size >= 0xA0000, "storage partition below 640 KB");
+    // Revised layout (2026-11-26): 896 KB LittleFS holds the gzipped UI
+    // (budget 500 KB) plus configuration and floor-plan drawings.
+    TEST_ASSERT_TRUE_MESSAGE(storage->size >= 0xE0000, "storage partition below 896 KB");
 }
 
 static void test_nvs_minimum_size(void)

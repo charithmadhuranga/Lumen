@@ -1,17 +1,20 @@
 # Name,   Type, SubType, Offset,   Size,     Flags
 # Lumen partition table — 4 MB flash, dual OTA + LittleFS config/web.
-# Layout (AGENTS.md §15: ask before changing; revised 2026-11-25 with the
-# owner's approval to give each OTA slot ~250 KB headroom):
+# Layout (AGENTS.md §15: ask before changing). Revisions, each approved by
+# the owner: 2026-11-25 OTA slots grown for firmware headroom; 2026-11-26
+# slots 1664 -> 1536 KB, LittleFS 640 -> 896 KB for the floor-plan UI and
+# drawings. Changing this table needs a serial flash (OTA cannot move it).
 #   0x009000 nvs        24 KB   credentials + critical settings
 #   0x00F000 otadata     8 KB   OTA selection
 #   0x011000 phy_init    4 KB   RF calibration
-#   0x020000 ota_0    1664 KB   application slot A
-#   0x1C0000 ota_1    1664 KB   application slot B
-#   0x360000 storage   640 KB   LittleFS: /config JSON + gzipped web assets
-#                              (web budget: <= 450 KB gz, DESIGN.md §14.1)
+#   0x020000 ota_0    1536 KB   application slot A
+#   0x1A0000 ota_1    1536 KB   application slot B
+#   0x320000 storage   896 KB   LittleFS: /config JSON, gzipped web UI
+#                              (budget <= 500 KB gz, DESIGN.md §14.1) and
+#                              floor-plan SVGs (/lfs/floorplans)
 nvs,      data, nvs,     0x9000,   0x6000,
 otadata,  data, ota,     0xf000,   0x2000,
 phy_init, data, phy,     0x11000,  0x1000,
-ota_0,    app,  ota_0,   0x20000,  0x1A0000,
-ota_1,    app,  ota_1,   0x1C0000, 0x1A0000,
-storage,  data, spiffs,  0x360000, 0xA0000,
+ota_0,    app,  ota_0,   0x20000,  0x180000,
+ota_1,    app,  ota_1,   0x1A0000, 0x180000,
+storage,  data, spiffs,  0x320000, 0xE0000,

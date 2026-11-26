@@ -90,5 +90,6 @@ void register_network_routes(AppContext &ctx);
 void register_automation_routes(AppContext &ctx);
 void register_integration_routes(AppContext &ctx);
 void register_maintenance_routes(AppContext &ctx);
+void register_floorplan_routes(AppContext &ctx);
 
 } // namespace lumen

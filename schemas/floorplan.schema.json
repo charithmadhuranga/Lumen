@@ -1,63 +1,55 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Floor Plan",
-  "description": "Floor-plan document with overlay positions in SVG viewBox coordinates (SPEC 10.4). The uploaded SVG is never modified to store data.",
+  "title": "Floor Plan overlay",
+  "description": "Overlay stored as config/floorplans/<id>.json (SPEC 10.4). Positions are SVG viewBox coordinates shared by the viewer and the editor. The uploaded SVG is stored separately (/lfs/floorplans/<id>.svg) and never modified. Firmware: src/services/floorplan.cpp (apply_layout validates against existing lights/rooms and the viewBox).",
   "type": "object",
-  "required": ["schema_version", "id", "name", "svg_file", "view_box", "rooms"],
+  "required": ["schema_version", "id", "name", "viewBox", "lights", "rooms"],
   "properties": {
-    "schema_version": {"type": "integer", "minimum": 1},
-    "id": {"type": "string", "pattern": "^[a-z0-9_-]+$"},
-    "name": {"type": "string", "minLength": 1, "maxLength": 80},
-    "svg_file": {"type": "string", "minLength": 1, "maxLength": 200},
-    "view_box": {
-      "type": "string",
-      "pattern": "^\\s*-?\\d+(\\.\\d+)?(\\s+-?\\d+(\\.\\d+)?){3}\\s*$"
+    "schema_version": {"const": 1},
+    "id": {"type": "string", "pattern": "^[a-z0-9_-]{1,32}$"},
+    "name": {"type": "string", "minLength": 1, "maxLength": 48},
+    "viewBox": {
+      "type": "array",
+      "prefixItems": [{"type": "number"}, {"type": "number"}, {"type": "number", "exclusiveMinimum": 0}, {"type": "number", "exclusiveMinimum": 0}],
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "hasSvg": {"type": "boolean", "description": "Informational; the API reports whether the drawing file exists."},
+    "lights": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "required": ["lightId", "x", "y", "radius"],
+        "properties": {
+          "lightId": {"type": "string", "pattern": "^[a-z0-9_-]+$"},
+          "x": {"type": "number"},
+          "y": {"type": "number"},
+          "radius": {"type": "number", "exclusiveMinimum": 0},
+          "color": {"type": "string", "pattern": "^#[0-9a-fA-F]{6}$"},
+          "icon": {"type": "string", "pattern": "^[a-z0-9-]{0,24}$"}
+        },
+        "additionalProperties": false
+      }
     },
     "rooms": {
       "type": "array",
+      "maxItems": 32,
       "items": {
         "type": "object",
-        "required": ["id", "name", "lights"],
+        "required": ["roomId", "points"],
         "properties": {
-          "id": {"type": "string", "pattern": "^[a-z0-9_-]+$"},
-          "name": {"type": "string", "minLength": 1, "maxLength": 80},
-          "lights": {
+          "roomId": {"type": "string", "pattern": "^[a-z0-9_-]+$"},
+          "points": {
             "type": "array",
-            "items": {
-              "type": "object",
-              "required": ["light_id", "x", "y"],
-              "properties": {
-                "light_id": {"type": "string", "pattern": "^[a-z0-9_-]+$"},
-                "x": {"type": "number"},
-                "y": {"type": "number"},
-                "icon": {"type": "string", "maxLength": 60},
-                "glow_radius": {"type": "number", "minimum": 0, "maximum": 500},
-                "glow_color": {"type": "string", "pattern": "^#[0-9a-fA-F]{6}$"}
-              },
-              "additionalProperties": false
-            }
-          },
-          "polygon": {
-            "type": "array",
-            "items": {"type": "number"}
+            "minItems": 3,
+            "maxItems": 32,
+            "items": {"type": "array", "prefixItems": [{"type": "number"}, {"type": "number"}], "minItems": 2, "maxItems": 2}
           }
         },
         "additionalProperties": false
       }
-    },
-    "sensors": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["sensor_id", "x", "y"],
-        "properties": {
-          "sensor_id": {"type": "string", "pattern": "^[a-z0-9_-]+$"},
-          "x": {"type": "number"},
-          "y": {"type": "number"},
-          "icon": {"type": "string", "maxLength": 60}
-        },
-        "additionalProperties": false
-      }
     }
-  }
+  },
+  "additionalProperties": false
 }

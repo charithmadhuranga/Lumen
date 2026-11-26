@@ -22,7 +22,7 @@ namespace lumen
 namespace
 {
 
-constexpr std::size_t kMaxFirmware = 0x1A0000; // OTA slot size (partitions.csv)
+constexpr std::size_t kMaxFirmware = 0x180000; // OTA slot size (partitions.csv); OtaService checks the real slot too
 constexpr std::size_t kMaxUi = 600 * 1024;
 
 // A rejected upload leaves unread bytes on the socket: close the connection

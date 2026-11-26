@@ -71,6 +71,7 @@ const char *status_line(int status)
     case 422: return "422 Unprocessable Entity";
     case 429: return "429 Too Many Requests";
     case 503: return "503 Service Unavailable";
+    case 507: return "507 Insufficient Storage";
     default: return "500 Internal Server Error";
     }
 }

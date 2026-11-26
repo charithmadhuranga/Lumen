@@ -1,23 +1,12 @@
 {
   "schema_version": 1,
-  "id": "ground_floor",
-  "name": "Ground Floor",
-  "svg_file": "ground-floor.svg",
-  "view_box": "0 0 1200 800",
-  "rooms": [
-    {
-      "id": "living_room",
-      "name": "Living Room",
-      "lights": [
-        {
-          "light_id": "living_room_main",
-          "x": 400,
-          "y": 250,
-          "icon": "ceiling-light",
-          "glow_radius": 65,
-          "glow_color": "#FFD68A"
-        }
-      ]
-    }
-  ]
+  "id": "ground-floor",
+  "name": "Ground floor",
+  "viewBox": [0, 0, 800, 500],
+  "hasSvg": true,
+  "lights": [
+    {"lightId": "ceiling", "x": 200, "y": 250, "radius": 80},
+    {"lightId": "counter", "x": 600, "y": 250, "radius": 70, "color": "#ffd9a0", "icon": "bulb"}
+  ],
+  "rooms": [{"roomId": "living", "points": [[10, 10], [420, 10], [420, 490], [10, 490]]}]
 }

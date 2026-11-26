@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "id": "Ground Floor",
+  "name": "",
+  "viewBox": [0, 0, 0, 500],
+  "lights": [{"lightId": "ceiling", "x": "200", "y": 250, "radius": -1, "onclick": "x"}],
+  "rooms": [{"roomId": "living", "points": [[0, 0], [1, 1]]}]
+}

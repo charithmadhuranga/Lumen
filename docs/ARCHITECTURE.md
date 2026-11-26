@@ -184,7 +184,7 @@ is enforced by the host test `test/test_host_partitions`.
 
 ## 10. Firmware update, rollback and backup (Phase 12)
 
-- **Slots**: `ota_0` / `ota_1` (1 664 KB each). Serial flashing (`pio run -t upload`) also writes the initial
+- **Slots**: `ota_0` / `ota_1` (1 536 KB each; LittleFS `storage` 896 KB at 0x320000 — layout revised 2026-11-26). Serial flashing (`pio run -t upload`) also writes the initial
   `otadata`, so it always returns the device to `ota_0`.
 - **Upload** (`src/app/ota_service.cpp`, httpd task): streamed in 4 KB chunks into the inactive slot with
   `OTA_WITH_SEQUENTIAL_WRITES` (sector erase as it goes). Pre-checks: ESP image magic, chip id, app-descriptor
@@ -206,3 +206,20 @@ is enforced by the host test `test/test_host_partitions`.
   Restore assembles `/lfs/config.restore`, then swaps directories (`config → config.old`, `restore → config`);
   `recover_interrupted()` at boot repairs a cut swap. After a restore, configuration writes are frozen until the
   restart (the shutdown handler does not save light state over the restored files).
+
+## 11. Floor plans (Phase 8)
+
+- **Storage**: overlay `config/floorplans/<id>.json` (IStorage, transactional, in backups) and the drawing
+  `/lfs/floorplans/<id>.svg` (outside `config/`, so a restore's directory swap never deletes it). Max 3 plans; SVG space is
+  whatever LittleFS has free (≈ 350 KB with a 480 KB UI), checked before each upload (507).
+- **Firmware check** (`src/services/svg_check.cpp`): streaming character state machine (no XML parser, no full buffer):
+  quote-aware tag scanner, long geometry values (`d`, `points`, …) truncated while reading, element/denylist/attribute/
+  CSS/url checks, root viewBox extraction. Upload streams through it into `<id>.svg.new`, renamed only on success.
+- **Web UI**: `sanitizeSvg.ts` (allowlist via DOMParser) before upload and before render; `SanitizedSvg` is the only
+  `dangerouslySetInnerHTML`. `coords.ts` holds the one viewBox ↔ screen mapping: the viewer renders in the SVG's own
+  viewBox, the Konva editor's stage transform is `fit()` of the same viewBox (unit-tested to land on the same pixel).
+- **Viewer** (control mode, ≈ 33 KB gz): inline SVG layers (drawing, rooms, glows with one shared `feGaussianBlur`,
+  interaction), Motion animates opacity/scale/gradient stops only; glow = the light's reported `output` from the live
+  query cache (WebSocket-patched), never the optimistic `state`.
+- **Editor** (edit mode, ≈ 83 KB gz): `react-konva` core build + 5 shapes, lazy route, never imported by the viewer
+  (checked by `check_bundle_budget.mjs`). Draft/undo/redo in a Zustand store; Save → `PUT /layout`.

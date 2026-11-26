@@ -9,7 +9,7 @@ Legend: `[x]` done · `[ ]` not done · **HW** = verified on physical hardware.
 ## Phase 0 — Foundation
 
 - [x] PlatformIO project (pinned `espressif32@8.0.0`, ESP-IDF 6.1.0, envs `esp32`, `esp32s3`, `native`)
-- [x] Partition table (4 MB): 2 × 1.625 MB OTA app slots + 640 KB LittleFS (grown from 1.25 MB slots on 2026-11-25, approved) — validated by host test
+- [x] Partition table (4 MB): 2 × 1.5 MB OTA app slots + 896 KB LittleFS (revised 2026-11-25 and 2026-11-26, both owner-approved) — validated by host test
 - [x] SPEC §22 source tree (`src/core`, `src/hardware`, `src/lighting`, `src/automation`, `src/networking`, `src/web`, `src/services`, `include/`)
 - [x] Minimal `main.cpp` (version banner, structured log format, heartbeat) — **HW: boots on KC868-AP**
 - [x] `.clang-format` + `.clang-tidy`
@@ -168,11 +168,19 @@ Legend: `[x]` done · `[ ]` not done · **HW** = verified on physical hardware.
 
 ## Phase 8 — Floor-plan editor
 
-- [ ] SVG sanitizer (+ malicious-input suite)
-- [ ] Control mode (inline SVG + Motion glows)
-- [ ] Edit mode (React Konva)
-- [ ] Coordinate system shared by both modes
-- Screen shows "not available in this firmware build" — nothing is faked.
+- [x] Firmware: floor-plan API, overlay validation, streaming SVG safety checker (rejects, never repairs) — host suite
+      with 38 malicious samples fed whole and byte-by-byte; **HW**: unsafe uploads rejected, stored drawing untouched
+- [x] SVG sanitiser (allowlist) + malicious-input suite (27 tests); `SanitizedSvg` is the only `dangerouslySetInnerHTML`
+- [x] Control mode (inline SVG + Motion glows from the reported output; zoom/pan/pinch; accessible list view)
+- [x] Edit mode (React Konva core, lazy): place lights, room regions, drag, multi-select, align/distribute, snap,
+      arrow-key nudge, undo/redo, save/discard, unsaved-change guard
+- [x] Shared viewBox coordinate core, unit-tested for viewer/editor agreement; **HW** e2e: placed at (200,150) in the
+      editor, stored and shown there in control mode
+- [x] **HW** e2e (desktop + mobile): upload with script stripped, place + save, glow follows output changed by another
+      client, tap drives the PCA9685 (read-back), axe in both modes, Konva not fetched in control mode
+- [x] Budgets: viewer 33 KB, editor 83 KB (DESIGN §14.1: 40 / 90)
+- [ ] Glow radius via a slider instead of a Konva Transformer handle; drag from the tray is "click to place" (centre) — deviations from DESIGN §9.4
+- [ ] Sensor overlay layer (no sensors in the model yet)
 
 ## Phase 9 — Automation
 
@@ -210,7 +218,7 @@ Legend: `[x]` done · `[ ]` not done · **HW** = verified on physical hardware.
 
 ## Phase 12 — Security and production
 
-- [x] Auth hardening: sessions, CSRF, IP rate limit + account lockout (**HW**)
+- [x] Auth hardening: sessions, CSRF, IP rate limit + account lockout — **HW** security suite (`test/integration/security_test.py`, 29 checks): 98 routes need a session, every mutating route needs CSRF, cookie flags, security headers, no secrets in any GET/diagnostics, size limits, WS refused without session and closed on logout, sessions end on logout/password change, login rate limit with Retry-After
 - [x] Forced password change enforcement (**HW**)
 - [x] Factory reset endpoint (erases config + credentials)
 - [x] Dual-partition OTA upload with verification and automatic rollback — **HW**: valid update, corrupt /
@@ -228,6 +236,8 @@ Legend: `[x]` done · `[ ]` not done · **HW** = verified on physical hardware.
 
 - RS485, Ethernet, relay polarity on the KC868-AP: **unverified on hardware**.
 - Addressable LED strips: no RMT driver yet (see Phase 4).
+- Floor-plan drawings are not part of backups (overlay positions are); re-upload the SVG after restoring onto another controller.
+- Moving the partition table (as on 2026-11-26) needs a serial flash; OTA cannot change it. Configuration was carried over with backup/restore.
 - The automation "send TCP" action opens a short-lived connection per action; there is no persistent outbound session.
 - `pio run -t uploadfs` replaces the whole LittleFS image, including `/config`. Install UI updates with Settings → Web interface (or `POST /system/ui/upload`) instead; that keeps the configuration.
 - During a firmware upload the flash erase briefly stalls code running from flash; running transitions/effects can stutter for the ~30 s of the upload.
@@ -258,3 +268,6 @@ not belong in this section.
 | 2026-11-25 | same | TCP 8266 (auth, commands, push, errors) and UDP 8267 (discovery, HMAC control; replay, bad MAC, stale ts rejected; rate limit) | PASS |
 | 2026-11-25 | same | Integration suite vs. Mosquitto 2.1.4 + Home Assistant 2026.11.2 (`test/integration/ha/ha_test.py`): MQTT, HA, HTTP, TCP, UDP | PASS — 34/34 (twice) |
 | 2026-11-25 | same | OTA drills: valid 0.1.1 (ota_0→ota_1, confirmed after 20 s), corrupt/truncated/wrong/unauthenticated rejected, crash image → bootloader rollback (aborted), unhealthy image → health-check rollback (invalid); backup/restore full + partial; UI pack install; config preserved | PASS |
+| 2026-11-26 | same | Repartition (1.5 MB slots, 896 KB LittleFS) by serial flash; configuration restored from backup; NVS secrets kept | PASS |
+| 2026-11-26 | same | Floor plans: API + unsafe-SVG rejection; e2e desktop + mobile (upload, place, save, glow follows output, tap → PCA read-back, axe) | PASS |
+| 2026-11-26 | same | Security suite 29/29; HA/MQTT/HTTP/TCP/UDP suite 34/34; e2e 14/14 | PASS |

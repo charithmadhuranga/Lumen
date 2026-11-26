@@ -229,6 +229,7 @@ void Controller::start()
     register_automation_routes(ctx_);
     register_integration_routes(ctx_);
     register_maintenance_routes(ctx_);
+    register_floorplan_routes(ctx_);
 
     if (web_->start() == ESP_OK) {
         ws_->attach(web_->handle());

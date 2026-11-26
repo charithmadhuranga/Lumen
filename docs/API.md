@@ -124,11 +124,28 @@ Document format: see `docs/AUTOMATION.md`.
 | GET | `/integrations/token` | integration token (signed-in user only) |
 | POST | `/integrations/token/regenerate` | invalidates every TCP/UDP client |
 
+### Floor plans
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/floorplans` | `[{id, name, viewBox, hasSvg, lights, rooms}]` (max 3 plans) |
+| POST | `/floorplans` | `{name, id?}` → overlay; id derived from the name when omitted |
+| GET / PUT / DELETE | `/floorplans/{id}` | overlay document; PUT `{name}`; DELETE removes overlay and drawing |
+| POST | `/floorplans/{id}/upload` | raw SVG (≤ 128 KB, ≤ 4000 elements), streamed through the firmware checker; **unsafe input is rejected, never repaired** (400 `INVALID_SVG` with the reason; the stored drawing is unchanged). 507 `STORAGE_FULL` when LittleFS has no room. Sets `viewBox` from the drawing; if it changed, light positions are cleared (`layoutReset`). |
+| GET | `/floorplans/{id}/svg` | the stored drawing, `image/svg+xml`, `Content-Security-Policy: default-src 'none'; … sandbox` |
+| PUT | `/floorplans/{id}/layout` | `{lights:[{lightId,x,y,radius,color?,icon?}], rooms:[{roomId,points:[[x,y],…]}]}` in viewBox units; lights/rooms must exist, positions within the drawing + 10 %, ≤ 64 lights, ≤ 32 regions of 3–32 points |
+
+Overlay format: `schemas/floorplan.schema.json`. Overlays are in `config/floorplans/` (included in backups); drawings in
+`/lfs/floorplans/` (not in backups — re-upload after restoring onto another controller; `hasSvg` reports the file's presence).
+Firmware rejects: `<script>`, `<foreignObject>`, `<iframe>`/`<object>`/`<embed>`, `<a>`, animation elements, DOCTYPE/ENTITY,
+processing instructions other than `<?xml`, `on*` attributes, `javascript:`/`vbscript:`/`data:text`, any `href` other than
+`#local` or `data:image/{png,jpeg,gif,webp}`, `url()` other than `url(#local)`, `@import`, `expression()`, nesting > 64.
+The web UI sanitises with an allowlist before upload and again before every render.
+
 ### Maintenance (firmware, web UI, backup)
 | Method | Path | Notes |
 |---|---|---|
 | GET | `/ota/status` | running / other slot (version, state), progress, last error |
-| POST | `/ota/upload` | raw `firmware.bin`, `Content-Type: application/octet-stream`, streamed (≤ slot size 1 664 KB). Header checked before any flash write (ESP image, chip, Lumen app descriptor); full image verified (checksum + SHA-256) before it is selected; then restarts. 400 `INVALID_FIRMWARE` with the reason, 409 `BUSY`. Refused while the running firmware is still pending verification. |
+| POST | `/ota/upload` | raw `firmware.bin`, `Content-Type: application/octet-stream`, streamed (≤ slot size 1 536 KB). Header checked before any flash write (ESP image, chip, Lumen app descriptor); full image verified (checksum + SHA-256) before it is selected; then restarts. 400 `INVALID_FIRMWARE` with the reason, 409 `BUSY`. Refused while the running firmware is still pending verification. |
 | POST | `/system/ui/upload` | raw `web.pack` (≤ 600 KB), validated before it replaces the current UI |
 | GET | `/backup[?sections=lights,scenes,…]` | configuration backup (format below), streamed; no secrets |
 | POST | `/backup/restore[?mode=merge]` | raw backup JSON; transactional; restarts on success. Default replaces the whole configuration, `merge` replaces only the documents in the file. 400 `INVALID_BACKUP` leaves everything unchanged. |

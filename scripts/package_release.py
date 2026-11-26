@@ -30,6 +30,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CHIPS = {"esp32": "esp32", "esp32s3": "esp32s3"}
+BOOTLOADER_OFFSET = {"esp32": 0x1000, "esp32s3": 0x0}
 FLASH = {"mode": "dio", "freq": "40m", "size": "4MB"}  # what `pio run -t upload` writes
 TEST_MARKERS = [b"/test/heap/reserve", b"TEST IMAGE: fault-injection", b"OTA SELF-TEST IMAGE"]
 
@@ -76,7 +77,6 @@ def main():
     if env not in CHIPS:
         die(f"unknown env {env!r}")
     build = os.path.join(ROOT, ".pio", "build", env)
-    meta = json.loads(subprocess.check_output(["pio", "project", "metadata", "-e", env, "--json-output"], cwd=ROOT))[env]["extra"]
     parts = partitions()
     app = os.path.join(build, "firmware.bin")
     fs = os.path.join(build, "littlefs.bin")
@@ -100,13 +100,18 @@ def main():
 
     os.makedirs(out, exist_ok=True)
     name = lambda part: os.path.join(out, f"lumen-{version}-{env}-{part}")  # noqa: E731
-    images = []  # (offset, source, published name)
-    for img in meta["flash_images"]:
-        off = int(str(img["offset"]), 0)
-        base = os.path.basename(img["path"]).replace(".bin", "")
-        base = {"partitions": "partitions"}.get(base, base)
-        images.append((off, img["path"], name(f"{base}.bin")))
-    images.append((int(str(meta["application_offset"]), 0), app, name("app.bin")))
+    # Offsets as `pio run -t upload` writes them: bootloader per chip, partition
+    # table at 0x8000, the rest from partitions.csv. (No `pio` call here: it
+    # can reconfigure the build directory.)
+    images = [  # (offset, source, published name)
+        (BOOTLOADER_OFFSET[env], os.path.join(build, "bootloader.bin"), name("bootloader.bin")),
+        (0x8000, os.path.join(build, "partitions.bin"), name("partitions.bin")),
+        (parts["otadata"][0], os.path.join(build, "ota_data_initial.bin"), name("ota_data_initial.bin")),
+        (parts["ota_0"][0], app, name("app.bin")),
+    ]
+    for _off, src, _dst in images:
+        if not os.path.exists(src):
+            die(f"missing {os.path.relpath(src, ROOT)}")
     images.append((parts["storage"][0], fs, name("littlefs.bin")))
     images.sort()
     for _off, src, dst in images:

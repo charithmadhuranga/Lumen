@@ -26,6 +26,10 @@
 - 2026-11-25 (Phase 12): Settings → Firmware / Web interface / Backup & restore; uploads via XHR for progress, sharing
   the single envelope `unwrap()` with `request()`.
 
+- 2026-11-26 (Phase 11): Devices → Controllers shows peers (online, last seen, signal) and their lights as switches;
+  switching sends a command to the owner and the switch follows the owner's reported state. Integrations →
+  Multi-controller holds enable / network id / key (show, paste, regenerate).
+
 ## Known gaps
 
 - Initial JS budget is 160 KB in the check (DESIGN target 150 KB); currently 159.6 KB — any new initial-route code must be offset.

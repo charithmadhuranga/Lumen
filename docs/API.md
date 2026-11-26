@@ -141,6 +141,19 @@ processing instructions other than `<?xml`, `on*` attributes, `javascript:`/`vbs
 `#local` or `data:image/{png,jpeg,gif,webp}`, `url()` other than `url(#local)`, `@import`, `expression()`, nesting > 64.
 The web UI sanitises with an allowlist before upload and again before every render.
 
+### Multi-controller (ESP-NOW)
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/controllers` | `{self:{id,enabled,running,networkId,maxPeers,hasKey}, peers:[{id,ip,version,online,lastSeenSec,rssi,lights:[{id,name,type,output}]}], stats:{…}}` |
+| POST | `/controllers/{id}/lights/{light}/command` | Lumen light command body, sent to the owner over ESP-NOW (202); 409 `CONTROLLER_UNAVAILABLE` when that controller is offline |
+| POST | `/controllers/scenes/{scene}/activate` | activates the scene here and asks every peer to activate its scene with the same id |
+| PUT | `/integrations/espnow` | `{enabled, networkId, key?}` (key 16–64 chars, write-only; generated on first enable) |
+| GET | `/integrations/espnow/key` | the network key (signed-in user), to copy to the other controllers |
+| POST | `/integrations/espnow/key/regenerate` | |
+
+Protocol: `docs/ESP_NOW_PROTOCOL.md`. WebSocket events: `controller_discovered`, `controller_disconnected`,
+`peer_light_state`.
+
 ### Maintenance (firmware, web UI, backup)
 | Method | Path | Notes |
 |---|---|---|

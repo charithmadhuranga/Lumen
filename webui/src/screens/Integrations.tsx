@@ -14,6 +14,7 @@ import { Switch } from "@/components/ui/switch";
 import { ConfirmDialog, Field, PageHeader, StatusDot } from "@/components/common";
 import { errorMessage } from "@/hooks/useAuth";
 import { integrationsApi, MqttForm, type IntegrationsT, type MqttFormT } from "./integrations/api";
+import { controllersApi, controllersKey } from "./controllers/api";
 
 const KEY = ["integrations"] as const;
 
@@ -49,6 +50,7 @@ export default function Integrations() {
       <MqttSection key={settingsKey(q.data)} data={q.data} />
       <HomeAssistantSection data={q.data} />
       <ControlSection data={q.data} />
+      <EspNowSection />
     </div>
   );
 }
@@ -259,6 +261,71 @@ function ControlSection({ data }: { data: IntegrationsT }) {
         confirmLabel="Regenerate"
         destructive
         onConfirm={() => void regenerate()}
+      />
+    </Section>
+  );
+}
+
+function EspNowSection() {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: controllersKey, queryFn: controllersApi.get, refetchInterval: 10000 });
+  const [networkId, setNetworkId] = React.useState<string | null>(null);
+  const [keyInput, setKeyInput] = React.useState("");
+  const [shownKey, setShownKey] = React.useState<string | null>(null);
+  const [confirmRegen, setConfirmRegen] = React.useState(false);
+  if (!q.data) return null;
+  const self = q.data.self;
+  const nid = networkId ?? self.networkId;
+  const save = async (body: { enabled?: boolean; networkId?: string; key?: string }, ok: string) => {
+    try {
+      qc.setQueryData(controllersKey, await controllersApi.update(body));
+      toast.success(ok, { duration: 2500 });
+      setKeyInput("");
+      setNetworkId(null);
+    } catch (e) {
+      toast.error("Could not save", { description: errorMessage(e) });
+    }
+  };
+  const online = q.data.peers.filter((p) => p.online).length;
+  return (
+    <Section title="Multi-controller (ESP-NOW)" actions={<StatusDot status={!self.enabled ? "off" : self.running ? "ok" : "warn"} label={!self.enabled ? "Off" : self.running ? `On · ${online} peer${online === 1 ? "" : "s"} online` : "Starting…"} />}>
+      <p className="text-sm text-muted-foreground">
+        Controllers with the same network id and key see and switch each other's lights directly over the radio — no router, broker or internet needed. All controllers must be on the same Wi-Fi channel (connect them to the same access point).
+      </p>
+      <Toggle label="Link with other Lumen controllers" checked={self.enabled} onChange={(enabled) => void save({ enabled, networkId: nid }, enabled ? "Multi-controller on" : "Multi-controller off")} />
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Network id" htmlFor="en-net" hint="Same on every controller">
+          <Input id="en-net" value={nid} onChange={(e) => setNetworkId(e.target.value)} maxLength={32} />
+        </Field>
+        <Field label="Network key" htmlFor="en-key" hint={self.hasKey ? "•••••• (set) — paste a key to replace it" : "Created automatically when you switch this on"}>
+          <Input id="en-key" type="password" autoComplete="off" value={keyInput} onChange={(e) => setKeyInput(e.target.value)} maxLength={64} />
+        </Field>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button variant="outline" disabled={!keyInput && nid === self.networkId} onClick={() => void save({ networkId: nid, ...(keyInput ? { key: keyInput } : {}) }, "Saved")}>Save network</Button>
+        {shownKey ? (
+          <code className="break-all rounded bg-muted px-2 py-1 font-mono text-sm" aria-label="ESP-NOW network key">{shownKey}</code>
+        ) : (
+          <Button variant="outline" disabled={!self.hasKey} onClick={async () => setShownKey((await controllersApi.key()).key)}><Eye className="size-4" /> Show key</Button>
+        )}
+        <Button variant="outline" disabled={!self.hasKey} onClick={() => setConfirmRegen(true)}><RefreshCw className="size-4" /> New key</Button>
+      </div>
+      <p className="text-xs text-muted-foreground">To add a controller: copy this key, then on the other controller set the same network id, paste the key and switch it on. Its lights appear under Devices → Controllers.</p>
+      <ConfirmDialog
+        open={confirmRegen}
+        onOpenChange={setConfirmRegen}
+        title="Create a new network key?"
+        description="Other controllers stop syncing with this one until they get the new key."
+        confirmLabel="Create new key"
+        destructive
+        onConfirm={async () => {
+          try {
+            setShownKey((await controllersApi.regenerateKey()).key);
+            void qc.invalidateQueries({ queryKey: controllersKey });
+          } catch (e) {
+            toast.error("Could not create a key", { description: errorMessage(e) });
+          }
+        }}
       />
     </Section>
   );

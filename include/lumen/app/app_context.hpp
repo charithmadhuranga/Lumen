@@ -27,6 +27,7 @@ namespace lumen
 class MqttService;
 class ControlServers;
 class OtaService;
+class EspNowManager;
 
 struct ProfileApplyOutcome
 {
@@ -56,6 +57,7 @@ struct AppContext
     MqttService *mqtt = nullptr;
     ControlServers *control = nullptr;
     OtaService *ota = nullptr;
+    EspNowManager *espnow = nullptr;
 
     // Transactional board-profile apply with rollback (SPEC §5.4).
     std::function<ProfileApplyOutcome(const std::string &id, bool force)> apply_profile;
@@ -91,5 +93,6 @@ void register_automation_routes(AppContext &ctx);
 void register_integration_routes(AppContext &ctx);
 void register_maintenance_routes(AppContext &ctx);
 void register_floorplan_routes(AppContext &ctx);
+void register_controller_routes(AppContext &ctx);
 
 } // namespace lumen

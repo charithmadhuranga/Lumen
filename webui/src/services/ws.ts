@@ -121,6 +121,12 @@ export class LumenSocket {
       case "network_status":
         void this.queryClient.invalidateQueries({ queryKey: queryKeys.networkStatus() });
         break;
+      case "controller_discovered":
+      case "controller_disconnected":
+      case "peer_light_state":
+        // Multi-controller view (ESP-NOW): refetch the peer list.
+        void this.queryClient.invalidateQueries({ queryKey: ["controllers"] });
+        break;
       default:
         break; // unknown events are ignored (forward compatible)
     }

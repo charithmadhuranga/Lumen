@@ -343,9 +343,10 @@ bool validate_against(const Channel &candidate, const BoardProfile &profile,
             return false;
         }
     } else if (candidate.driver.type == "rmt") {
-        for (const auto &p : profile.peripherals) {
-            if (p.id == dev && p.type == "addressable_led") found = true;
-        }
+        // No RMT/WS2812 driver is built yet: refuse instead of creating a
+        // light that can only ever report a hardware error.
+        error = "addressable LED strips (rmt) are not supported by this firmware yet";
+        return false;
     }
     if (!found) {
         error = "device '" + dev + "' (" + candidate.driver.type +

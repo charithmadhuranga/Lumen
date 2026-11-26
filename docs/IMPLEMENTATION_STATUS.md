@@ -133,9 +133,8 @@ Legend: `[x]` done · `[ ]` not done · **HW** = verified on physical hardware.
       sunset, strobe); duration 0 runs until replaced.
 - [x] Driver adapters (`src/lighting/drivers/driver_adapter.cpp`): PCA9685
       dimmer/RGB/RGBW/CCT with channel offsets, LEDC, relay/GPIO switch.
-- [ ] **Addressable LEDs (RMT/WS2812)**: adapter exists, but no ESP-IDF RMT
-      driver is built by the hardware manager — such lights report a
-      hardware error. Not implemented.
+- [ ] **Addressable LEDs (RMT/WS2812)**: not implemented; `rmt` lights are refused by the API (no hardware to verify).
+- [x] Switch lights change instantly (a default fade only delayed switching off) — host test + HW (relay / GPIO LED)
 - [x] Host tests (`test_host_engine`, 14): command → hardware duties, offsets,
       transitions, effects, CCT, removal re-indexing.
 - [x] **HW**: dimmer/RGB/CCT/relay lights driven and verified by PCA9685
@@ -211,10 +210,17 @@ Legend: `[x]` done · `[ ]` not done · **HW** = verified on physical hardware.
 
 ## Phase 11 — Multi-controller
 
-- [ ] ESP-NOW versioned envelopes
-- [ ] Peer discovery/sync
-- [ ] Command conflict resolution
-- [ ] Controllers UI
+- [x] ESP-NOW v1 envelope (binary header, HMAC, network tag, boot-continuous sequence) — host suite `test_host_espnow`
+- [x] Peer discovery (HELLO 5 s, offline 20 s, 8 peers), state sync by owners, remote commands, network scenes
+- [x] Conflict resolution: duplicates, replays, stale timestamps, local-command-wins rule; loops impossible by design
+- [x] Controllers tab (Devices) + ESP-NOW card (Integrations); WS events `controller_discovered` / `controller_disconnected` / `peer_light_state`
+- [x] **HW** (KC868-AP `lumen-0798` + ESP32 DevKit `lumen-e704`, `test/integration/multi_test.py` 17/17): remote
+      command A→B 26 ms / B→A 31 ms median (PCA read-back), state sync 115 ms median incl. HTTP polling, network scene,
+      wrong key / other network rejected, works with the MQTT broker stopped, 300-command two-way burst: 100 %
+      delivered, no duplicates, no amplification, peer restart → rejoin with sequence continuity; e2e (UI) desktop + mobile
+- [ ] MQTT network topics (SPEC §12.4) — not implemented
+- [ ] Roles primary/secondary/gateway — not implemented (all controllers are standalone owners)
+- [ ] Local-wins rule not exercised on hardware (needs a delayed remote frame; covered by design + code review only)
 
 ## Phase 12 — Security and production
 
@@ -243,7 +249,7 @@ Legend: `[x]` done · `[ ]` not done · **HW** = verified on physical hardware.
 ## Known limitations
 
 - RS485, Ethernet, relay polarity on the KC868-AP: **unverified on hardware**.
-- Addressable LED strips: no RMT driver yet (see Phase 4).
+- Addressable LED strips: no RMT driver; the API refuses `rmt` lights with a clear error (the UI does not offer them). The installed strip is a single-colour strip on PCA9685 channel 0 (light "Ceiling").
 - Wi-Fi/HTTP round trips through the phone hotspot are 60 ms median with spikes to 300 ms; on-device latency is the SPEC metric.
 - Floor-plan drawings are not part of backups (overlay positions are); re-upload the SVG after restoring onto another controller.
 - Moving the partition table (as on 2026-11-26) needs a serial flash; OTA cannot change it. Configuration was carried over with backup/restore.
@@ -281,3 +287,5 @@ not belong in this section.
 | 2026-11-26 | same | Floor plans: API + unsafe-SVG rejection; e2e desktop + mobile (upload, place, save, glow follows output, tap → PCA read-back, axe) | PASS |
 | 2026-11-26 | same | Security suite 29/29; HA/MQTT/HTTP/TCP/UDP suite 34/34; e2e 14/14 | PASS |
 | 2026-11-26 | same | Performance (perf_test.py): all on-device targets met; reset reason / boot counter / log ring live in diagnostics | PASS |
+| 2026-11-26 | KC868-AP + ESP32 DevKit (ESP32-D0WD-V3, MAC a0:b7:65:62:e7:04, CP2102 /dev/ttyUSB1) | ESP-NOW multi-controller suite 17/17; e2e 16/16 incl. Controllers tab | PASS |
+| 2026-11-26 | KC868-AP | Single-colour LED strip on PCA9685 ch0: off/on/dim/fade/breathing sequence, read-back matches | PASS (visual confirmation pending from the owner) |

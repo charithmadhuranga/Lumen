@@ -1,5 +1,6 @@
 // Lumen — controller implementation. See controller.hpp
 #include "lumen/app/controller.hpp"
+#include "lumen/networking/espnow_manager.hpp"
 
 #include <cstring>
 #include <dirent.h>
@@ -217,6 +218,8 @@ void Controller::start()
     control_ = std::make_unique<ControlServers>(ctx_);
     ctx_.mqtt = mqtt_.get();
     ctx_.control = control_.get();
+    espnow_ = std::make_unique<EspNowManager>(ctx_);
+    ctx_.espnow = espnow_.get();
     ctx_.mqtt_publish = [this](const std::string &topic, const std::string &payload, bool retain) {
         return mqtt_->publish(topic, payload, retain);
     };
@@ -270,6 +273,7 @@ void Controller::start()
     register_integration_routes(ctx_);
     register_maintenance_routes(ctx_);
     register_floorplan_routes(ctx_);
+    register_controller_routes(ctx_);
 
     if (web_->start() == ESP_OK) {
         ws_->attach(web_->handle());
@@ -298,6 +302,8 @@ void Controller::start()
         if (g_controller != nullptr) g_controller->on_shutdown();
     }));
     control_->start();
+    espnow_->load();
+    if (espnow_->start() != ESP_OK) ESP_LOGW(TAG, "ESP-NOW task could not start");
 
     // 5. Tasks.
     TaskHandle_t lt = nullptr;
@@ -443,11 +449,13 @@ void Controller::on_light_changed(const Channel &ch, LightChange change)
     if (change == LightChange::kConfig) {
         ws_->broadcast("config_changed", "{\"kind\":\"lights\"}");
         if (mqtt_) mqtt_->lights_reconfigured();
+        if (espnow_) espnow_->lights_reconfigured();
         return;
     }
     ws_->notify_light(index);
     if (mqtt_) mqtt_->light_changed(index);
     if (control_) control_->light_changed(index);
+    if (espnow_) espnow_->light_changed(index, ch.last_origin);
     if (automation_) {
         LightState &prev = last_light_states_[ch.id];
         AutoEvent ae;

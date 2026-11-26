@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { ConfirmDialog, EmptyState, Field, PageHeader } from "@/components/common";
 import { useCreateLight, useDeleteLight, useHardwareStatus, useLights, useRooms, useUpdateLight } from "@/services/queries";
 import { useLiveStore } from "@/stores/liveStore";
+import { ControllersTab } from "./controllers/ControllersTab";
 import { LightCreate, type HardwareOutput, type Light, type LightType } from "@/schemas";
 
 const TYPES: { value: LightType; label: string; outputs: number }[] = [
@@ -263,9 +264,11 @@ export default function Devices() {
         <TabsList>
           <TabsTrigger value="lights">Lights</TabsTrigger>
           <TabsTrigger value="inputs">Inputs</TabsTrigger>
+          <TabsTrigger value="controllers">Controllers</TabsTrigger>
         </TabsList>
         <TabsContent value="lights" className="mt-4"><LightsTab /></TabsContent>
         <TabsContent value="inputs" className="mt-4"><InputsTab /></TabsContent>
+        <TabsContent value="controllers" className="mt-4"><ControllersTab /></TabsContent>
       </Tabs>
     </>
   );

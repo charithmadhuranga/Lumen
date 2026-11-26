@@ -255,7 +255,9 @@ void LightingTask::apply_command(const LightCommand &cmd, uint32_t now_ms)
     effects_.cancel(ch.id);
     slot.effect.clear();
 
-    const uint32_t duration = cmd.use_default_transition ? ch.transition_ms : cmd.transition_ms;
+    // Switches cannot dim: a "fade" would only delay switching off until the
+    // interpolated brightness reaches 0, so they always change instantly.
+    const uint32_t duration = ch.type == LightType::kSwitch ? 0 : cmd.use_default_transition ? ch.transition_ms : cmd.transition_ms;
     LightState from = slot.written_valid ? slot.written : ch.applied;
     if (duration > 1 && !same_state(from, target)) {
         LightState to = target;

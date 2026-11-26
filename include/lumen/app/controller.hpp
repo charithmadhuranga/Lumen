@@ -14,6 +14,7 @@
 #include <string>
 
 #include "lumen/app/app_context.hpp"
+#include "lumen/networking/espnow_manager.hpp"
 #include "lumen/app/ota_service.hpp"
 #include "lumen/app/automation_host.hpp"
 #include "lumen/networking/control_servers.hpp"
@@ -75,6 +76,7 @@ class Controller
     NetSender net_sender_;
     std::unique_ptr<MqttService> mqtt_;
     std::unique_ptr<ControlServers> control_;
+    std::unique_ptr<EspNowManager> espnow_;
     std::unique_ptr<OtaService> ota_;
     uint32_t health_ticks_ = 0; // lighting ticks at the previous health check
     std::map<std::string, LightState> last_light_states_; // for automation prev-state

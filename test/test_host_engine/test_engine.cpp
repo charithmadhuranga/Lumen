@@ -3,6 +3,7 @@
 // these assert what actually reaches the outputs.
 #include <cstdlib>
 #include <map>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -470,6 +471,29 @@ static void test_command_latency_is_measured_enqueue_to_flush(void)
     TEST_ASSERT_EQUAL_UINT32(1, t.stats().tick_overruns);
 }
 
+
+static void test_switch_changes_instantly_even_with_a_default_transition(void)
+{
+    MockHw hw;
+    LightingTask t;
+    Channel sw = make("sw", LightType::kSwitch, "relay", "relay1", 0);
+    sw.transition_ms = 500;
+    t.register_channel(sw);
+    t.attach_hardware(&hw);
+    LightState on{};
+    on.power = true;
+    cmd(t, "sw", on, kFieldPower);
+    t.run_once(0);
+    TEST_ASSERT_TRUE(hw.relay.on);
+    LightCommandEnvelope e; // like a REST/MQTT command without transitionMs
+    e.command.channel_id = "sw";
+    e.command.fields = kFieldPower;
+    e.command.use_default_transition = true; // the channel default is 500 ms
+    TEST_ASSERT_EQUAL(static_cast<int>(EnqueueResult::kOk), static_cast<int>(t.enqueue(e)));
+    t.run_once(20);
+    TEST_ASSERT_FALSE(hw.relay.on); // off on the next tick, not after the fade
+}
+
 static void test_light_store_validation_and_round_trip(void)
 {
     BoardProfile profile;
@@ -487,6 +511,9 @@ static void test_light_store_validation_and_round_trip(void)
     TEST_ASSERT_FALSE(light_store::validate_against(overlap, profile, t.channel_manager(), "", err));
     Channel overflow = make("y", LightType::kRgbw, "pca9685", "pca9685_0", 13);
     TEST_ASSERT_FALSE(light_store::validate_against(overflow, profile, t.channel_manager(), "", err));
+    Channel strip = make("strip", LightType::kAddressableRgb, "rmt", "led0", 0);
+    TEST_ASSERT_FALSE(light_store::validate_against(strip, profile, t.channel_manager(), "", err));
+    TEST_ASSERT_NOT_NULL(std::strstr(err.c_str(), "not supported"));
     Channel relay_dimmer = make("z", LightType::kDimmer, "relay", "relay1", 0);
     TEST_ASSERT_FALSE(light_store::validate_against(relay_dimmer, profile, t.channel_manager(), "", err));
     Channel relay_switch = make("s", LightType::kSwitch, "relay", "relay2", 0);
@@ -636,6 +663,7 @@ int main(int, char **)
     RUN_TEST(test_room_group_scene_fan_out_reaches_hardware);
     RUN_TEST(test_remove_channel_notifies_config_and_releases_output);
     RUN_TEST(test_command_latency_is_measured_enqueue_to_flush);
+    RUN_TEST(test_switch_changes_instantly_even_with_a_default_transition);
     RUN_TEST(test_light_store_validation_and_round_trip);
     RUN_TEST(test_hardware_manager_builds_kc868_profile);
     RUN_TEST(test_builtin_profiles_validate_with_bus_pins);

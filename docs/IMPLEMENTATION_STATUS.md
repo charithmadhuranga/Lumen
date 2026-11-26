@@ -243,7 +243,7 @@ Legend: `[x]` done · `[ ]` not done · **HW** = verified on physical hardware.
       latency stats, peripherals/I²C health, automations, network, recent warnings/errors ring, peers placeholder)
 - [x] MQTT reconnect logging: one warning per distinct problem (esp-mqtt/esp-tls per-retry lines muted); broker may be
       given as a `.local` name (mDNS resolution) so a changing PC address does not break it
-- [ ] 24 h soak (`test/integration/soak_test.py`) — running; result to be recorded here
+- [ ] 24 h soak (`test/integration/soak_test.py`) — not completed: stopped by the owner after 1.1 h (2026-11-26 17:05–18:14). In that window: no reboot, no new tick overruns, free heap flat at 61 KB, command latency avg 13 ms. A full 24 h run is still owed before release.
 - [ ] Reliability suite items not yet automated: I²C peripheral failure (needs unplugging the PCA9685), low-memory injection, ESP-NOW peer loss (Phase 11)
 
 ## Known limitations

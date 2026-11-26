@@ -171,8 +171,9 @@ jobs:
           {
             echo "## Lumen ${VERSION}"
             echo
-            awk -v v="$VERSION" '$0 ~ "^## \\[" v "\\]" {on=1; next} on && /^## \[/ {exit} on' CHANGELOG.md
-            echo
+            awk -v v="$VERSION" '$0 ~ "^## \\[" v "\\]" {on=1; next} on && /^## \[/ {exit} on' CHANGELOG.md | grep -v '^\[.*\]: http'
+          } > changes.md
+          {
             echo "## Downloads"
             echo
             echo "| File | Use |"
@@ -185,19 +186,22 @@ jobs:
             echo "| \`SHA256SUMS.txt\` | Checksums. |"
             echo
             echo "Step-by-step flashing instructions: **FLASHING.md** (attached)."
-          } > notes.md
+          } > downloads.md
+          cat changes.md downloads.md > notes.md
           cat notes.md >> "$GITHUB_STEP_SUMMARY"
       - name: Upload to the release
         if: github.event_name == 'release'
         run: |
           gh release upload "$TAG" release/* --clobber
-          # Keep notes written by hand on the release; add the generated part below them.
+          # Empty release notes: use the changelog section + downloads. Notes written
+          # by hand are kept and only the downloads table is added below them.
           body="$(gh release view "$TAG" --json body -q .body)"
-          if [ -n "$body" ] && ! grep -q "^## Downloads" <<< "$body"; then
-            printf '%s\n\n%s\n' "$body" "$(cat notes.md)" > notes.md
-          fi
-          if [ -z "$body" ] || ! grep -q "^## Downloads" <<< "$body"; then
+          if [ -z "$body" ]; then
             gh release edit "$TAG" --notes-file notes.md
+          elif ! grep -q "^## Downloads" <<< "$body"; then
+            printf '%s\n\n' "$body" > final.md
+            cat downloads.md >> final.md
+            gh release edit "$TAG" --notes-file final.md
           fi
       - name: Keep as artifact (manual run)
         if: github.event_name != 'release'

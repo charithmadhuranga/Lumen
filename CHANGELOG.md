@@ -78,10 +78,16 @@ gate is still open: the 24-hour soak test (see "Known limitations").
   supports placing lights by dragging them from the tray or clicking, a
   glow-radius handle, room regions, multi-select, align and distribute,
   snap, zoom and pan, and undo/redo.
+- Labels on the floor-plan editor have a halo so they read on any drawing, in both themes.
 - An automation editor in two forms: a simple form and a visual editor
   built on React Flow.
 - Light and dark themes, respects `prefers-reduced-motion`, and no serious
   or critical axe violations on the main routes.
+
+### Project
+
+- Released under the MIT License. New README with logo, screenshots (taken from a real controller with
+  `webui/scripts/readme_screenshots.mjs`), architecture overview and install guide.
 
 ### Tests
 

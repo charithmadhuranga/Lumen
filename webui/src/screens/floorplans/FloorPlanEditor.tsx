@@ -236,7 +236,7 @@ export default function FloorPlanEditor({ plan, svg, lights, rooms }: { plan: Fl
                           change((d) => ({ ...d, rooms: d.rooms.map((x) => (x.roomId === r.roomId ? { ...x, points: x.points.map((p) => { const q = place(p[0] + dx, p[1] + dy); return [q.x, q.y] as [number, number]; }) } : x)) }));
                         }}
                       />
-                      <Text x={r.points[0][0] + unit} y={r.points[0][1] + unit} text={name} fontSize={unit * 2.5} fill={t.primary} listening={false} />
+                      <Text x={r.points[0][0] + unit} y={r.points[0][1] + unit} text={name} fontSize={unit * 2.5} fill={t.primary} stroke={t.background} strokeWidth={unit * 0.5} fillAfterStrokeEnabled listening={false} />
                       {sel &&
                         r.points.map((p, i) => (
                           <Circle
@@ -307,7 +307,7 @@ export default function FloorPlanEditor({ plan, svg, lights, rooms }: { plan: Fl
                           }}
                         />
                       )}
-                      <Text text={l?.name ?? `${p.lightId} (deleted)`} y={unit * 2} fontSize={unit * 2.2} fill={t.foreground} align="center" width={unit * 30} offsetX={unit * 15} listening={false} />
+                      <Text text={l?.name ?? `${p.lightId} (deleted)`} y={unit * 2} fontSize={unit * 2.2} fill={t.foreground} stroke={t.background} strokeWidth={unit * 0.5} fillAfterStrokeEnabled align="center" width={unit * 30} offsetX={unit * 15} listening={false} />
                     </Group>
                   );
                 })}

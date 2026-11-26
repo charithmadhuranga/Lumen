@@ -1,7 +1,8 @@
 {
   "name": "lumen",
-  "version": "0.1.0-dev",
+  "version": "1.0.0-rc.1",
   "private": true,
+  "license": "MIT",
   "description": "Lumen — universal ESP32 smart lighting controller (repo-root tooling)",
   "type": "module",
   "scripts": {

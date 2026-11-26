@@ -29,7 +29,7 @@ test/                 unit, integration, hardware, fixtures
 docs/                 ARCHITECTURE, API, HARDWARE_PROFILES, AUTOMATION, ESP_NOW_PROTOCOL, UI_UX, IMPLEMENTATION_STATUS
 .opencode/            plans/ (phase-by-phase implementation plan), skills/ (phase agent skills)
 controller-presets/   vendor reference code and pinmap for the KC868-AP (read-only reference, never a source of verified facts)
-assets/               product images
+assets/               logo (SVG) and product images
 ```
 
 If the actual layout differs, follow the repository and update this section.
@@ -62,6 +62,7 @@ Environment names: `esp32` (KC868-AP reference board + flash/monitor ports), `es
 | Performance / soak (real device) | `python3 test/integration/perf_test.py <url> '<password>'`; `python3 test/integration/soak_test.py <url> '<password>' --hours 24` (CSV + summary in `test/soak/results/`) |
 | Two-controller ESP-NOW suite | `python3 test/integration/multi_test.py http://<A> http://<B> '<password>'`; e2e: add `LUMEN_PEER_URL=http://<B>`; flash a second board with `pio run -e esp32 -t upload --upload-port /dev/ttyUSB1`; `test/device/ota_install.py <password> <bin> <url…>` installs over the network |
 | Device test helpers | `test/device/setup_demo.py <url> <password>` (demo rooms/lights), `test/device/lumen_udp.py` (signed UDP client) |
+| README screenshots (real device) | `cd webui && LUMEN_URL=http://<controller-ip> LUMEN_PASSWORD=<pw> node scripts/readme_screenshots.mjs` (needs a floor plan `readme-demo` and automation `evening_lights`, or set `LUMEN_PLAN` / `LUMEN_AUTOMATION`; writes `docs/images/`) |
 | Validate schemas | `npm run validate:schemas` (repo root; first `npm ci` at root installs ajv) |
 
 ## 4. Architecture rules (mandatory)

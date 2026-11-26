@@ -2,7 +2,7 @@
   "name": "lumen-webui",
   "private": true,
   "license": "MIT",
-  "version": "1.0.0-rc.1",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",

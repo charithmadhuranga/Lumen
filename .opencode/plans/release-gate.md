@@ -7,12 +7,12 @@ Run this gate after Phase 12. Every box must be checked with **evidence**
 production-ready release done. A box backed only by code that was never run
 does not count (SPEC §29 Rule 7).
 
-## Status for v1.0.0-rc.1 (2026-11-26)
+## Status for v0.1.0 (2026-11-26)
 
 `[x]` = done with evidence, `[ ]` = open (reason given), `[-]` = deferred or
 blocked by a recorded decision. "HW" means it was run on a real board (KC868-AP
 `lumen-0798` unless another board is named), "host" means host unit tests.
-**Result: release candidate only. Open items block 1.0.0:** the 24 h soak, and the
+**Result: released as 0.1.0. Open items block 1.0.0:** the 24 h soak, and the
 hardware checks for Ethernet, RS485 and relays, or the owner's explicit acceptance
 of those items as known limitations.
 
@@ -119,7 +119,7 @@ of those items as known limitations.
 - [x] `docs/IMPLEMENTATION_STATUS.md` — every phase box checked or marked open with a
       reason.
 - [x] Known-limitations list written (IMPLEMENTATION_STATUS, CHANGELOG).
-- [x] Version tagged (`v1.0.0-rc.1`); changelog in `CHANGELOG.md`; release notes are
+- [x] Version tagged (`v0.1.0`); changelog in `CHANGELOG.md`; release notes are
       generated from it by `.github/workflows/release.yml`.
 - [x] Pinned versions unchanged: `espressif32@8.0.0` (ESP-IDF 6.1.0), PlatformIO 6.2.0 in
       CI. Web dependencies added during the project were each approved (konva,

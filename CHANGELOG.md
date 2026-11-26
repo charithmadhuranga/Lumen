@@ -9,9 +9,9 @@ Installation and update steps are in [docs/FLASHING.md](docs/FLASHING.md).
 
 ## [Unreleased]
 
-## [1.0.0-rc.1] - 2026-11-26
+## [0.1.0] - 2026-11-26
 
-First release candidate. Every implementation phase (0–12) is complete and
+First public release. Every implementation phase (0–12) is complete and
 tested on the KinCony KC868-AP reference board. One item from the release
 gate is still open: the 24-hour soak test (see "Known limitations").
 
@@ -121,5 +121,5 @@ gate is still open: the 24-hour soak test (see "Known limitations").
   of backups.
 - The firmware uses 91 % of its 1.5 MB OTA slot.
 
-[Unreleased]: https://github.com/charithmadhuranga/Lumen/compare/v1.0.0-rc.1...HEAD
-[1.0.0-rc.1]: https://github.com/charithmadhuranga/Lumen/releases/tag/v1.0.0-rc.1
+[Unreleased]: https://github.com/charithmadhuranga/Lumen/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/charithmadhuranga/Lumen/releases/tag/v0.1.0

@@ -242,7 +242,7 @@ For development, Wi-Fi credentials can be seeded from a git-ignored `secrets.ini
 
 ## Project status
 
-**1.0.0-rc.1, release candidate.** All implementation phases are complete and tested on the KC868-AP.
+**0.1.0, first public release.** All implementation phases are complete and tested on the KC868-AP.
 Before 1.0.0, three things remain open: a 24-hour soak test, hardware checks for Ethernet, RS485 and relay polarity, and
 ESP32-S3 hardware testing. The full list of known limitations is in the [changelog](CHANGELOG.md).
 

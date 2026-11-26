@@ -265,7 +265,7 @@ Legend: `[x]` done · `[ ]` not done · **HW** = verified on physical hardware.
 ## Known limitations
 
 - RS485, Ethernet, relay polarity on the KC868-AP: **unverified on hardware**.
-- No 24 h soak yet (1.1 h run only): required before 1.0.0. Current release: `1.0.0-rc.1`.
+- No 24 h soak yet (1.1 h run only): required before 1.0.0. Current release: `0.1.0`.
 - ESP32-S3 images are compile-tested only.
 - The task watchdog reports a hung task but does not reset the device (`CONFIG_ESP_TASK_WDT_PANIC` off, unchanged).
 - A fresh device prints its setup-hotspot password on the serial console at boot (the provisioning path; needs physical access). This conflicts with AGENTS.md §5 "never log secrets" and is left for the owner to decide.

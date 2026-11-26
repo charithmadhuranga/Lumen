@@ -275,6 +275,7 @@ void Controller::start()
     register_maintenance_routes(ctx_);
     register_floorplan_routes(ctx_);
     register_controller_routes(ctx_);
+    register_test_hook_routes(ctx_);
 
     if (web_->start() == ESP_OK) {
         ws_->attach(web_->handle());
@@ -570,6 +571,11 @@ ProfileApplyOutcome Controller::apply_profile(const std::string &id, bool force)
 std::string Controller::diagnostics_json()
 {
     cJSON *o = cJSON_CreateObject();
+#ifdef LUMEN_TEST_HOOKS
+    cJSON_AddBoolToObject(o, "testHooks", true);
+#else
+    cJSON_AddBoolToObject(o, "testHooks", false);
+#endif
     cJSON *heap = cJSON_AddObjectToObject(o, "heap");
     cJSON_AddNumberToObject(heap, "free", esp_get_free_heap_size());
     cJSON_AddNumberToObject(heap, "minFree", esp_get_minimum_free_heap_size());

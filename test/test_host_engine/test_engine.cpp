@@ -606,6 +606,72 @@ static void test_hardware_manager_builds_kc868_profile(void)
     TEST_ASSERT_FALSE(hw.running());
 }
 
+// Reliability: the PCA9685 stops answering mid-operation (unplugged / I2C
+// fault). Lights on other drivers keep working, health reports the fault,
+// and once the chip answers again it is reconfigured and receives the
+// LATEST state (commands sent during the outage are not lost).
+static void test_pca9685_fault_isolated_and_recovered(void)
+{
+    BoardProfile profile;
+    for (const auto &b : builtin_boards()) {
+        if (std::string(b.id) == "kincony_kc868_ap") load_board_profile(b.json, profile);
+    }
+    MockFactory factory;
+    HardwareManager hw(factory);
+    TEST_ASSERT_EQUAL(ESP_OK, hw.start(profile));
+    MockI2cBus &bus = *factory.last_bus;
+    bus.set_device_byte(0x40, 0x20); // MODE1 read-back: awake
+    LightingTask t;
+    TEST_ASSERT_TRUE(t.register_channel(make("strip", LightType::kDimmer, "pca9685", "pca9685_0", 0)));
+    TEST_ASSERT_TRUE(t.register_channel(make("sw", LightType::kSwitch, "relay", "relay1", 0)));
+    t.attach_hardware(&hw);
+    auto pca_health = [&]() {
+        for (const auto &h : hw.health()) if (h.id == "pca9685_0") return h;
+        TEST_FAIL_MESSAGE("no pca9685_0 health");
+        return PeripheralHealth{};
+    };
+    TEST_ASSERT_TRUE(pca_health().ok);
+
+    bus.inject_error(0x40, ESP_ERR_TIMEOUT); // chip gone
+    LightState s{};
+    s.brightness = 30;
+    cmd(t, "strip", s, kFieldBrightness);
+    LightState on{};
+    on.power = true;
+    cmd(t, "sw", on, kFieldPower);
+    uint32_t now = 0;
+    t.run_once(now);
+    auto *relay = static_cast<MockRelay *>(hw.driver("relay1"));
+    TEST_ASSERT_TRUE(relay->on); // other drivers unaffected
+    TEST_ASSERT_FALSE(pca_health().ok);
+    TEST_ASSERT_EQUAL_STRING("not responding", pca_health().detail.c_str());
+    TEST_ASSERT_TRUE(t.stats().hardware_errors > 0);
+
+    // The engine keeps running: the relay light switches during the outage,
+    // and the strip's newest command (60 %) replaces the earlier one.
+    s.brightness = 60;
+    cmd(t, "strip", s, kFieldBrightness);
+    cmd(t, "sw", LightState{}, kFieldPower);
+    t.run_once(now += 20);
+    TEST_ASSERT_FALSE(relay->on);
+
+    // Chip back: within the recovery interval it is reconfigured and all 16
+    // channels are rewritten with the latest state.
+    bus.inject_error(0x40, ESP_OK);
+    bus.clear_transactions();
+    for (uint32_t i = 0; i <= Pca9685Driver::kRecoveryInterval + 1; ++i) t.run_once(now += 20);
+    TEST_ASSERT_TRUE(pca_health().ok);
+    TEST_ASSERT_EQUAL_STRING("ok (recovered 1x)", pca_health().detail.c_str());
+    const MockI2cBus::Transaction *full = nullptr;
+    for (const auto &tx : bus.transactions()) {
+        if (tx.device_addr == 0x40 && tx.write && tx.data.size() == 1 + 16 * 4 && tx.data[0] == 0x06) full = &tx;
+    }
+    TEST_ASSERT_NOT_NULL(full);
+    const uint16_t off0 = static_cast<uint16_t>(full->data[3] | ((full->data[4] & 0x1F) << 8));
+    TEST_ASSERT_EQUAL_UINT16(pca12(60), off0);
+    hw.stop();
+}
+
 static void test_builtin_profiles_validate_with_bus_pins(void)
 {
     std::string json;
@@ -666,6 +732,7 @@ int main(int, char **)
     RUN_TEST(test_switch_changes_instantly_even_with_a_default_transition);
     RUN_TEST(test_light_store_validation_and_round_trip);
     RUN_TEST(test_hardware_manager_builds_kc868_profile);
+    RUN_TEST(test_pca9685_fault_isolated_and_recovered);
     RUN_TEST(test_builtin_profiles_validate_with_bus_pins);
     return UNITY_END();
 }

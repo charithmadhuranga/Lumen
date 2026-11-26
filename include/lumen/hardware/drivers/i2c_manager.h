@@ -56,7 +56,22 @@ class I2cManager final : public II2CBus
     const I2cBusConfig &config() const { return config_; }
     uint32_t error_count() const { return error_count_; }
 
+#ifdef LUMEN_TEST_HOOKS
+    // Reliability test images only: every transaction to `address` fails
+    // with `err` (as if the chip were unplugged). ESP_OK clears it.
+    void inject_fault(uint8_t address, esp_err_t err)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        fault_address_ = address;
+        fault_err_ = err;
+    }
+#endif
+
   private:
+#ifdef LUMEN_TEST_HOOKS
+    uint8_t fault_address_ = 0xFF;
+    esp_err_t fault_err_ = ESP_OK;
+#endif
     struct DeviceSlot
     {
         uint8_t address = 0;

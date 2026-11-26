@@ -458,6 +458,12 @@ std::vector<PeripheralHealth> HardwareManager::health() const
         h.type = e.type;
         h.ok = e.driver != nullptr;
         h.detail = h.ok ? "ok" : err_name(e.init_err);
+        if (e.type == "pca9685" && e.driver != nullptr) {
+            const auto *pca = static_cast<const Pca9685Driver *>(e.driver);
+            h.ok = pca->online();
+            h.errors = pca->error_count();
+            h.detail = h.ok ? (pca->recovery_count() > 0 ? "ok (recovered " + std::to_string(pca->recovery_count()) + "x)" : "ok") : "not responding";
+        }
         out.push_back(h);
     }
     for (const auto &pe : pcfs_) {

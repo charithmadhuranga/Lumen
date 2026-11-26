@@ -102,6 +102,12 @@ class EspNowManager
     void light_changed(std::size_t index, const std::string &origin);
     void lights_reconfigured() { resync_ = true; }
 
+#ifdef LUMEN_TEST_HOOKS
+    // Reliability test images only: delay the processing of every received
+    // frame by `ms` (simulates a slow/late radio path). 0 disables.
+    static void test_set_rx_hold_ms(uint32_t ms);
+#endif
+
   private:
     struct Rx
     {

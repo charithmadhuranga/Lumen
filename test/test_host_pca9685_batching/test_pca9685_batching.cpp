@@ -102,6 +102,123 @@ static void test_set_frequency_validation(void)
     TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, pca.set_frequency(5000));
 }
 
+// ---------------------------------------------------------------------------
+// Reliability: I2C peripheral failure (PCA9685 unplugged / bus fault) and
+// recovery. A mock bus with error injection stands in for the physical fault.
+
+static void ready(MockI2cBus &bus, Pca9685Driver &pca)
+{
+    bus.add_device(0x40, {0x20}); // MODE1 after init: auto-increment, awake
+    TEST_ASSERT_EQUAL(ESP_OK, pca.initialize());
+    bus.clear_transactions();
+}
+
+static void test_failure_backs_off_without_bus_traffic(void)
+{
+    MockI2cBus bus;
+    Pca9685Driver pca(bus, 0x40, 1000);
+    ready(bus, pca);
+    TEST_ASSERT_TRUE(pca.online());
+
+    bus.inject_error(0x40, ESP_ERR_TIMEOUT); // chip gone
+    pca.queue_update(3, 2000, true);
+    TEST_ASSERT_NOT_EQUAL(ESP_OK, pca.flush());
+    TEST_ASSERT_FALSE(pca.online());
+    TEST_ASSERT_EQUAL_UINT32(1, pca.error_count());
+
+    // While lost, flushes do not touch the bus (no I2C timeouts per tick).
+    bus.clear_transactions();
+    for (uint32_t i = 0; i < Pca9685Driver::kRecoveryInterval; ++i) {
+        TEST_ASSERT_EQUAL(ESP_FAIL, pca.flush());
+    }
+    TEST_ASSERT_EQUAL(0, bus.transaction_count());
+
+    // Then exactly one recovery attempt; still failing -> back off again.
+    TEST_ASSERT_EQUAL(ESP_FAIL, pca.flush());
+    TEST_ASSERT_TRUE(bus.transaction_count() >= 1 && bus.transaction_count() <= 2);
+    TEST_ASSERT_EQUAL_UINT32(2, pca.error_count());
+    TEST_ASSERT_FALSE(pca.online());
+}
+
+static void test_recovery_reconfigures_and_rewrites_every_channel(void)
+{
+    MockI2cBus bus;
+    Pca9685Driver pca(bus, 0x40, 1000);
+    ready(bus, pca);
+    pca.queue_update(0, 1000, true);
+    TEST_ASSERT_EQUAL(ESP_OK, pca.flush());
+
+    bus.inject_error(0x40, ESP_ERR_TIMEOUT);
+    pca.queue_update(7, 3000, true); // state changes while the chip is gone
+    pca.flush();
+    for (uint32_t i = 0; i < Pca9685Driver::kRecoveryInterval; ++i) pca.flush();
+
+    bus.inject_error(0x40, ESP_OK); // chip back
+    bus.clear_transactions();
+    TEST_ASSERT_EQUAL(ESP_OK, pca.flush());
+    TEST_ASSERT_TRUE(pca.online());
+    TEST_ASSERT_EQUAL_UINT32(1, pca.recovery_count());
+    TEST_ASSERT_EQUAL(0, pca.pending_count());
+
+    // Reconfigure: MODE2, sleep, prescale, wake, restart, then one batched
+    // write of all 16 channels carrying the latest state (ch 0 and ch 7).
+    const auto &t = bus.transactions();
+    TEST_ASSERT_EQUAL(6, t.size());
+    TEST_ASSERT_EQUAL_UINT8(0x01, t[0].data[0]); // MODE2
+    TEST_ASSERT_EQUAL_UINT8(0xFE, t[2].data[0]); // PRE_SCALE
+    const auto &all = t.back().data;
+    TEST_ASSERT_EQUAL(1 + 16 * 4, all.size());
+    TEST_ASSERT_EQUAL_UINT8(0x06, all[0]); // LED0_ON_L
+    const auto off = [&](int ch) { return all[1 + ch * 4 + 2] | ((all[1 + ch * 4 + 3] & 0x1F) << 8); };
+    TEST_ASSERT_EQUAL(1000, off(0));
+    TEST_ASSERT_EQUAL(3000, off(7));
+    TEST_ASSERT_EQUAL(0x1000, off(1)); // untouched channels stay fully off
+}
+
+static void test_power_cycled_chip_is_woken_and_rewritten(void)
+{
+    MockI2cBus bus;
+    Pca9685Driver pca(bus, 0x40, 1000);
+    ready(bus, pca);
+    pca.queue_update(2, 1500, true);
+    TEST_ASSERT_EQUAL(ESP_OK, pca.flush());
+
+    // The chip lost power and came back: writes succeed, but it sleeps with
+    // every register reset. The periodic MODE1 check notices it within
+    // kSleepCheckInterval flushes and rewrites all channels.
+    bus.set_device_byte(0x40, 0x10);
+    uint32_t n = 0;
+    while (pca.recovery_count() == 0 && n < Pca9685Driver::kSleepCheckInterval) {
+        bus.clear_transactions();
+        TEST_ASSERT_EQUAL(ESP_OK, pca.flush());
+        ++n;
+    }
+    TEST_ASSERT_EQUAL_UINT32(1, pca.recovery_count());
+    TEST_ASSERT_EQUAL(0, pca.pending_count());
+    TEST_ASSERT_EQUAL(1 + 16 * 4, bus.transactions().back().data.size());
+    TEST_ASSERT_TRUE(pca.online());
+    bus.set_device_byte(0x40, 0x20); // awake again: no further recoveries
+    for (uint32_t i = 0; i < 2 * Pca9685Driver::kSleepCheckInterval; ++i) pca.flush();
+    TEST_ASSERT_EQUAL_UINT32(1, pca.recovery_count());
+}
+
+static void test_mode1_read_failure_marks_lost(void)
+{
+    MockI2cBus bus;
+    Pca9685Driver pca(bus, 0x40, 1000);
+    ready(bus, pca);
+    bus.inject_error(0x40, ESP_ERR_TIMEOUT);
+    // Nothing to write, but the idle chip's disappearance is still detected
+    // by the periodic MODE1 check.
+    uint32_t n = 0;
+    while (pca.online() && n < Pca9685Driver::kSleepCheckInterval) {
+        pca.flush();
+        ++n;
+    }
+    TEST_ASSERT_FALSE(pca.online());
+    TEST_ASSERT_EQUAL_UINT32(1, pca.error_count());
+}
+
 int main(int argc, char **argv)
 {
     (void)argc;
@@ -112,5 +229,9 @@ int main(int argc, char **argv)
     RUN_TEST(test_redundant_flush_skipped);
     RUN_TEST(test_queue_update_validation);
     RUN_TEST(test_set_frequency_validation);
+    RUN_TEST(test_failure_backs_off_without_bus_traffic);
+    RUN_TEST(test_recovery_reconfigures_and_rewrites_every_channel);
+    RUN_TEST(test_power_cycled_chip_is_woken_and_rewritten);
+    RUN_TEST(test_mode1_read_failure_marks_lost);
     return UNITY_END();
 }

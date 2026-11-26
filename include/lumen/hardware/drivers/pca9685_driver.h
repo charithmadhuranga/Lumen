@@ -78,6 +78,19 @@ class Pca9685Driver final : public IPwmDriver
     // Number of pending (dirty) updates.
     std::size_t pending_count() const;
 
+    // Runtime fault handling. A failed write marks the chip lost: flush()
+    // then returns ESP_FAIL without bus traffic (so a missing chip cannot
+    // stall the lighting loop with I2C timeouts) and retries every
+    // kRecoveryInterval flushes by re-applying MODE2/prescale/wake and
+    // rewriting every channel. Every kSleepCheckInterval flushes MODE1 is
+    // read back: a chip that power-cycled wakes up asleep with outputs off,
+    // which is recovered the same way.
+    static constexpr uint32_t kRecoveryInterval = 50;    // ~1 s at 20 ms ticks
+    static constexpr uint32_t kSleepCheckInterval = 250; // ~5 s
+    bool online() const { return state_ == DriverState::kInitialized && !lost_; }
+    uint32_t error_count() const { return errors_; }
+    uint32_t recovery_count() const { return recoveries_; }
+
   private:
     II2CBus &bus_;          // bus (interface)
     uint8_t device_addr_;
@@ -93,6 +106,14 @@ class Pca9685Driver final : public IPwmDriver
     esp_err_t write_reg(uint8_t reg, uint8_t val);
     esp_err_t read_reg(uint8_t reg, uint8_t &val);
     esp_err_t set_prescale(uint32_t frequency_hz);
+    esp_err_t reconfigure(); // MODE2 + prescale + wake; channel state kept
+    void mark_lost();
+
+    bool lost_ = false;
+    uint32_t retry_wait_ = 0;
+    uint32_t sleep_check_ = 0;
+    uint32_t errors_ = 0;
+    uint32_t recoveries_ = 0;
 };
 
 } // namespace lumen

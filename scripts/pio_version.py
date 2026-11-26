@@ -18,21 +18,30 @@ env.Append(CPPDEFINES=[("LUMEN_FIRMWARE_VERSION", env.StringifyMacro(version))])
 # CMake caches PROJECT_VER (app descriptor): force a reconfigure whenever the
 # effective version changes, e.g. between an LUMEN_VERSION test image and a
 # normal build.
+hooks = os.environ.get("LUMEN_TEST_HOOKS", "").strip() == "1"
+selftest = os.environ.get("LUMEN_OTA_SELFTEST", "").strip()
 build_dir = env.subst("$BUILD_DIR")  # noqa: F821
 stamp = os.path.join(build_dir, "lumen_version.txt")
+key = f"{version} hooks={int(hooks)} selftest={selftest}"
 previous = open(stamp, encoding="utf-8").read().strip() if os.path.exists(stamp) else None
-if previous != version and env.subst("$PIOPLATFORM") != "native":  # noqa: F821
+if previous != key and env.subst("$PIOPLATFORM") != "native":  # noqa: F821
     cache = os.path.join(build_dir, "CMakeCache.txt")
     if os.path.exists(cache):
         os.remove(cache)
     os.makedirs(build_dir, exist_ok=True)
     with open(stamp, "w", encoding="utf-8") as f:
-        f.write(version + "\n")
+        f.write(key + "\n")
 
 # OTA rollback drills only (never for release images):
 #   LUMEN_OTA_SELFTEST=1  image never passes its health check -> rolls back
 #   LUMEN_OTA_SELFTEST=2  image crashes shortly after boot    -> rolls back
-selftest = os.environ.get("LUMEN_OTA_SELFTEST", "").strip()
 if selftest in ("1", "2"):
     env.Append(CPPDEFINES=[("LUMEN_OTA_SELFTEST", int(selftest))])  # noqa: F821
     print(f"*** OTA self-test image (LUMEN_OTA_SELFTEST={selftest}) — not for release ***")
+
+# Reliability-suite images only (never for release): fault-injection routes
+# under /api/v1/test/* (src/web/api_test_hooks.cpp).
+#   LUMEN_TEST_HOOKS=1 LUMEN_VERSION=0.0.0-test pio run -e esp32
+if hooks:
+    env.Append(CPPDEFINES=[("LUMEN_TEST_HOOKS", 1)])  # noqa: F821
+    print("*** Test image (LUMEN_TEST_HOOKS=1): fault-injection API enabled — not for release ***")

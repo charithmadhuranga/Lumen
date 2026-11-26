@@ -94,5 +94,6 @@ void register_integration_routes(AppContext &ctx);
 void register_maintenance_routes(AppContext &ctx);
 void register_floorplan_routes(AppContext &ctx);
 void register_controller_routes(AppContext &ctx);
+void register_test_hook_routes(AppContext &ctx); // no-op unless LUMEN_TEST_HOOKS
 
 } // namespace lumen

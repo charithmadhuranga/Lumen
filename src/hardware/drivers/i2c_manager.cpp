@@ -145,6 +145,12 @@ esp_err_t I2cManager::write_then_read(uint8_t device_addr,
     if (state_ != DriverState::kInitialized || bus_handle_ == nullptr) {
         return ESP_ERR_INVALID_STATE;
     }
+#ifdef LUMEN_TEST_HOOKS
+    if (fault_err_ != ESP_OK && device_addr == fault_address_) {
+        ++error_count_;
+        return fault_err_;
+    }
+#endif
     void *handle = device_locked(device_addr);
     if (handle == nullptr) {
         ++error_count_;

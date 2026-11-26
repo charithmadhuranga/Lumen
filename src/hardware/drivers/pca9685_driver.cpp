@@ -298,6 +298,35 @@ esp_err_t Pca9685Driver::flush()
         return ESP_ERR_INVALID_STATE;
     }
 
+    if (lost_) {
+        if (retry_wait_ > 0) {
+            --retry_wait_;
+            return ESP_FAIL;
+        }
+        if (reconfigure() != ESP_OK) {
+            mark_lost();
+            return ESP_FAIL;
+        }
+        lost_ = false;
+        ++recoveries_;
+        channel_dirty_.fill(true); // the chip lost its registers: rewrite all
+    } else if (++sleep_check_ >= kSleepCheckInterval) {
+        sleep_check_ = 0;
+        uint8_t mode1 = 0;
+        if (read_reg(kRegMode1, mode1) != ESP_OK) {
+            mark_lost();
+            return ESP_FAIL;
+        }
+        if ((mode1 & kMode1Sleep) != 0) { // power-cycled: asleep, registers reset
+            if (reconfigure() != ESP_OK) {
+                mark_lost();
+                return ESP_FAIL;
+            }
+            ++recoveries_;
+            channel_dirty_.fill(true);
+        }
+    }
+
     // Collect dirty channels in ascending order for auto-increment batching.
     // Fixed-size scratch: no heap allocation on the lighting hot path.
     uint8_t dirty[kChannelCount];
@@ -364,8 +393,27 @@ esp_err_t Pca9685Driver::flush()
         for (std::size_t d = 0; d < dirty_count; ++d) {
             channel_dirty_[dirty[d]] = false;
         }
+    } else {
+        mark_lost();
     }
     return last_err;
+}
+
+void Pca9685Driver::mark_lost()
+{
+    lost_ = true;
+    retry_wait_ = kRecoveryInterval;
+    ++errors_;
+}
+
+esp_err_t Pca9685Driver::reconfigure()
+{
+    uint8_t mode2 = kMode2OutTotemPole;
+    if (inverted_) {
+        mode2 |= kMode2Inverted;
+    }
+    const esp_err_t err = write_reg(kRegMode2, mode2);
+    return err != ESP_OK ? err : set_prescale(frequency_hz_);
 }
 
 esp_err_t Pca9685Driver::read_back(uint8_t channel, uint16_t &on_reg, uint16_t &off_reg,

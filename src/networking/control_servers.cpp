@@ -5,6 +5,7 @@
 #include <ctime>
 
 #include "esp_log.h"
+#include "esp_task_wdt.h"
 #include "esp_random.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -442,7 +443,10 @@ void ControlServers::run()
 {
     open_sockets();
     char buf[512];
+    const bool wdt = esp_task_wdt_add(nullptr) == ESP_OK; // select() wakes every 100 ms
+    if (!wdt) ESP_LOGW(TAG, "ctrl task not on the task watchdog");
     for (;;) {
+        if (wdt) esp_task_wdt_reset();
         bool restart = false;
         {
             std::lock_guard<std::mutex> l(mutex_);

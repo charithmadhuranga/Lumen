@@ -8,6 +8,7 @@
 #include "esp_log.h"
 #include "esp_now.h"
 #include "esp_random.h"
+#include "esp_task_wdt.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
@@ -311,11 +312,36 @@ bool EspNowManager::send(espnow::Type type, const std::string &payload)
 
 // ---------------------------------------------------------------- main loop
 
+#ifdef LUMEN_TEST_HOOKS
+namespace
+{
+std::atomic<uint32_t> g_rx_hold_ms{0};
+void test_hold()
+{
+    const uint32_t ms = g_rx_hold_ms.load();
+    if (ms > 0) vTaskDelay(pdMS_TO_TICKS(ms));
+}
+} // namespace
+
+void EspNowManager::test_set_rx_hold_ms(uint32_t ms)
+{
+    g_rx_hold_ms = ms > 3000 ? 3000 : ms; // below the 5 s task watchdog
+}
+#else
+namespace
+{
+inline void test_hold() {}
+} // namespace
+#endif
+
 void EspNowManager::run()
 {
     uint32_t last_hello = 0, last_states = 0, last_resync = 0;
     Rx rx;
+    const bool wdt = esp_task_wdt_add(nullptr) == ESP_OK; // loop wakes at least every 50 ms
+    if (!wdt) ESP_LOGW(TAG, "espnow task not on the task watchdog");
     for (;;) {
+        if (wdt) esp_task_wdt_reset();
         bool restart = false;
         {
             std::lock_guard<std::mutex> l(mutex_);
@@ -341,9 +367,13 @@ void EspNowManager::run()
             }
         }
         if (xQueueReceive(static_cast<QueueHandle_t>(queue_), &rx, pdMS_TO_TICKS(50)) == pdTRUE) {
+            test_hold();
             if (running_) handle(rx);
             // Drain what is already queued before housekeeping.
-            while (running_ && xQueueReceive(static_cast<QueueHandle_t>(queue_), &rx, 0) == pdTRUE) handle(rx);
+            while (running_ && xQueueReceive(static_cast<QueueHandle_t>(queue_), &rx, 0) == pdTRUE) {
+                test_hold();
+                handle(rx);
+            }
         }
         if (!running_) {
             vTaskDelay(pdMS_TO_TICKS(200));

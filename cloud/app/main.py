@@ -21,11 +21,12 @@ from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, Counter, H
 from redis.asyncio import Redis
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from app.api.v1 import health
+from app.api.v1 import auth, health, homes
 from app.core.errors import error_body, install_error_handlers
 from app.core.logging import configure_logging
 from app.core.settings import Settings, get_settings
 from app.db.session import make_engine, make_sessionmaker
+from app.services.email import DevEmailSender, EmailSender
 
 log = structlog.get_logger("lumen.http")
 
@@ -173,7 +174,10 @@ def _lifespan(settings: Settings, shared: Resources | None) -> Callable[[FastAPI
 
 
 def create_public_app(
-    settings: Settings | None = None, metrics: Metrics | None = None, resources: Resources | None = None
+    settings: Settings | None = None,
+    metrics: Metrics | None = None,
+    resources: Resources | None = None,
+    email: EmailSender | None = None,
 ) -> FastAPI:
     settings = settings or get_settings()
     metrics = metrics or Metrics()
@@ -188,8 +192,11 @@ def create_public_app(
     )
     app.state.settings = settings
     app.state.metrics = metrics
+    app.state.email = email or DevEmailSender()
     _install_common(app, metrics)
     app.include_router(health.router)
+    app.include_router(auth.router)
+    app.include_router(homes.router)
     app.add_middleware(BodyLimit, limit=MAX_BODY_BYTES)
     return app
 

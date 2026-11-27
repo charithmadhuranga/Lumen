@@ -16,7 +16,7 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.core.logging import REDACTED, configure_logging, redact_processor
-from app.core.settings import Settings
+from app.core.settings import DEV_SECRET, Settings
 from app.db.base import Base, uuid7
 from tests.conftest import TEST_DB, alembic_config
 
@@ -43,9 +43,9 @@ def test_production_with_strong_values_starts() -> None:
 @pytest.mark.parametrize(
     ("override", "fragment"),
     [
-        ({"jwt_secret": "dev-insecure-change-me"}, "LUMEN_JWT_SECRET"),
+        ({"jwt_secret": DEV_SECRET}, "LUMEN_JWT_SECRET"),
         ({"hook_secret": "short"}, "LUMEN_HOOK_SECRET"),
-        ({"kek": "dev-insecure-change-me"}, "LUMEN_KEK"),
+        ({"kek": DEV_SECRET}, "LUMEN_KEK"),
         ({"database_url": "postgresql+asyncpg://lumen:lumen@db/lumen"}, "LUMEN_DATABASE_URL"),
         ({"broker_url": "mqtt://broker:1883"}, "mqtts://"),
         ({"log_level": "DEBUG"}, "DEBUG"),

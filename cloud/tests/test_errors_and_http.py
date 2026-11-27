@@ -124,7 +124,7 @@ async def test_openapi_is_hidden_in_production(make_client) -> None:  # type: ig
             database_url="postgresql+asyncpg://prod:x@db/lumen",
         )
     )
-    async for client in make_client(app):
+    async for client in make_client(app, reset=False):
         assert (await client.get("/api/v1/openapi.json")).status_code == 404
     dev = create_public_app(make_settings())
     async for client in make_client(dev):

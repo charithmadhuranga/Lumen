@@ -20,7 +20,7 @@ async def test_readyz_ok_when_database_and_redis_answer(client: AsyncClient) -> 
 
 async def test_readyz_503_names_the_failing_dependency_without_leaking_urls(make_client, migrated) -> None:  # type: ignore[no-untyped-def]
     app = create_public_app(make_settings(redis_url="redis://:hunter2@127.0.0.1:1/0", readiness_timeout_s=0.5))
-    async for c in make_client(app):
+    async for c in make_client(app, reset=False):
         r = await c.get("/readyz")
     assert r.status_code == 503
     body = r.json()
@@ -35,7 +35,7 @@ async def test_readyz_503_when_database_is_down(make_client) -> None:  # type: i
     app = create_public_app(
         make_settings(database_url="postgresql+asyncpg://lumen:secretpw@127.0.0.1:1/x", readiness_timeout_s=0.5)
     )
-    async for c in make_client(app):
+    async for c in make_client(app, reset=False):
         r = await c.get("/readyz")
     assert r.status_code == 503
     assert r.json()["data"]["checks"]["database"] == "unavailable"

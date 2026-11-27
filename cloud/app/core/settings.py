@@ -13,7 +13,7 @@ from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Values that exist only so a development checkout starts. Production rejects them.
-DEV_SECRET = "dev-insecure-change-me"  # noqa: S105 - deliberate development placeholder
+DEV_SECRET = "dev-insecure-change-me-0123456789abcdef"  # noqa: S105 - deliberate development placeholder
 
 
 class Settings(BaseSettings):
@@ -27,13 +27,28 @@ class Settings(BaseSettings):
     internal_host: str = "0.0.0.0"  # noqa: S104
     internal_port: int = Field(default=8801, ge=1, le=65535)
 
+    # Proxies whose X-Forwarded-For is trusted for the client IP (rate limits).
+    # Comma-separated IPs/CIDRs; "*" only behind a load balancer that strips the header.
+    trusted_proxies: str = "127.0.0.1"
+
     database_url: SecretStr = SecretStr("postgresql+asyncpg://lumen:lumen@localhost:55432/lumen")
     redis_url: SecretStr = SecretStr("redis://localhost:56379/0")
     broker_url: str = "mqtts://localhost:28883"
 
     jwt_secret: SecretStr = SecretStr(DEV_SECRET)
+    jwt_previous_secret: SecretStr | None = None  # still accepted for verification during key rotation
     hook_secret: SecretStr = SecretStr(DEV_SECRET)  # EMQX -> /internal/mqtt/* (P3)
     kek: SecretStr = SecretStr(DEV_SECRET)  # wraps per-controller K_local (P3)
+
+    # Rate limits (P2). Windows in seconds.
+    login_fail_limit: int = Field(default=5, ge=1)  # per IP + e-mail
+    login_ip_fail_limit: int = Field(default=30, ge=1)  # per IP, all e-mails (spraying)
+    login_window_s: int = Field(default=300, ge=1)
+    lockout_after: int = Field(default=10, ge=1)  # consecutive failures on one account
+    lockout_s: int = Field(default=300, ge=1)
+    register_ip_limit: int = Field(default=10, ge=1)
+    register_window_s: int = Field(default=3600, ge=1)
+    refresh_ttl_days: int = Field(default=30, ge=1, le=365)
 
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     log_json: bool = True

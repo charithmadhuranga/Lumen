@@ -96,6 +96,7 @@ jobs:
       - run: uv sync --frozen
       - run: uv run ruff check . && uv run ruff format --check . && uv run mypy
       - run: uv run python tools/licenses.py --check
+      - run: uv run python tools/openapi.py --check
       # The broker tests skip here (no dev certificates / EMQX); they run locally against compose.
       - run: uv run pytest -q
       - name: Image builds

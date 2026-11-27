@@ -23,7 +23,13 @@ async def main() -> None:
 
     def config(app: FastAPI, host: str, port: int) -> uvicorn.Config:
         return uvicorn.Config(
-            app, host=host, port=port, log_config=None, proxy_headers=True, forwarded_allow_ips="*", server_header=False
+            app,
+            host=host,
+            port=port,
+            log_config=None,
+            proxy_headers=True,
+            forwarded_allow_ips=settings.trusted_proxies,
+            server_header=False,
         )
 
     servers = [

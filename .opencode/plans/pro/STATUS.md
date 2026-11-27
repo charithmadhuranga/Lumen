@@ -8,7 +8,7 @@ Progress record for [README.md](README.md). Verification labels: **mock**,
 |---|---|---|
 | P0 Foundation | done (gate passed 2026-11-27) | see log |
 | P1 Cloud foundation | done (gate passed 2026-11-27) | local docker |
-| P2 Accounts and homes | not started | |
+| P2 Accounts and homes | done (gate passed 2026-11-27) | local docker |
 | P3 Devices and identity | not started | |
 | P4 Cloud messaging | not started | |
 | P5 Firmware (tickets, gateway pairing) | not started | no cloud connection on controllers (D-17) |
@@ -46,3 +46,5 @@ Progress record for [README.md](README.md). Verification labels: **mock**,
 | 2026-11-27 | P1 | Cloud: ruff + mypy --strict clean; 35 pytest tests incl. live broker refusal | PASS (local docker) |
 | 2026-11-27 | P1 | `make up`: postgres 16.16, redis 7.4.12, emqx 5.8.9 (TLS only), api image (python 3.12.16-slim) all healthy; `/readyz` 200 | PASS (local docker) |
 | 2026-11-27 | P1 | 41 cloud production deps added to THIRD_PARTY_NOTICES.md (certifi MPL-2.0, unmodified, server side) | done |
+| 2026-11-27 | P2 | Accounts (argon2id, JWT + rotating refresh with reuse detection, sessions, lockout, rate limits, verify/reset), homes, members, rooms, role matrix (60 route×role cases incl. outsider 404) | PASS — 151 tests (local docker) |
+| 2026-11-27 | P2 | HTTP smoke test against the rebuilt API container | PASS (local docker) |

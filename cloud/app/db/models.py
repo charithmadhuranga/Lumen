@@ -1,4 +1,6 @@
-"""Imports every ORM model so Base.metadata is complete (Alembic, tests).
+"""Imports every ORM model so Base.metadata is complete (Alembic, tests)."""
 
-No tables yet in P1; P2 adds users, homes, members and rooms here.
-"""
+from app.models.account import EmailToken, RefreshToken, Session, User
+from app.models.home import Home, HomeMember, Room
+
+__all__ = ["EmailToken", "Home", "HomeMember", "RefreshToken", "Room", "Session", "User"]

@@ -44,19 +44,31 @@ def licence_of(dist: metadata.Distribution) -> str:
 
 
 def main() -> None:
-    exported = subprocess.run(  # noqa: S603 - fixed argv
+    exported = subprocess.run(
         ["uv", "export", "--no-dev", "--no-hashes", "--frozen", "--format", "requirements-txt"],  # noqa: S607
-        cwd=HERE, check=True, capture_output=True, text=True,
+        cwd=HERE,
+        check=True,
+        capture_output=True,
+        text=True,
     ).stdout
     names = sorted({m.group(1).lower() for m in re.finditer(r"^([A-Za-z0-9_.\-]+)==", exported, re.M)})
     rows = []
     for name in names:
         dist = metadata.distribution(name)
-        rows.append({"name": dist.metadata["Name"], "version": dist.version, "license": licence_of(dist),
-                     "url": f"https://pypi.org/project/{dist.metadata['Name']}/"})
+        rows.append(
+            {
+                "name": dist.metadata["Name"],
+                "version": dist.version,
+                "license": licence_of(dist),
+                "url": f"https://pypi.org/project/{dist.metadata['Name']}/",
+            }
+        )
     text = json.dumps(rows, indent=2) + "\n"
     if "--check" in sys.argv:
-        current = open(OUT, encoding="utf-8").read() if os.path.exists(OUT) else ""
+        current = ""
+        if os.path.exists(OUT):
+            with open(OUT, encoding="utf-8") as f:
+                current = f.read()
         if current != text:
             sys.exit("cloud/licenses.json is out of date: run uv run python tools/licenses.py")
         print("cloud/licenses.json up to date")

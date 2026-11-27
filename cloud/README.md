@@ -4,8 +4,9 @@ API-only backend for Lumen Pro (Python 3.12, FastAPI, PostgreSQL 16, EMQX 5.8, R
 device and gateway registry, claiming, broker auth/ACL hooks, command routing, state, events WebSocket and OTA
 orchestration. No web frontend. Gateways are its only device clients (`docs/pro/DECISIONS.md` D-17).
 
-Status: **P1 foundation done** (app factory, envelope, settings, logging, migrations, dev stack). Accounts and
-homes come in P2. Plan: `.opencode/plans/pro/`.
+Status: **P2 done**: foundation (P1) plus accounts, sessions, homes, members, rooms. API reference:
+`docs/pro/CLOUD_API.md` (+ generated `openapi.json`). Devices and the broker hooks come in P3. Plan:
+`.opencode/plans/pro/`.
 
 ## Develop
 
@@ -33,11 +34,15 @@ make down
 ```text
 app/core       settings (env only, production refuses unsafe values), envelope + errors, logging (redaction)
 app/db         base model (UUIDv7 ids, timestamps), engine/session, models registry
-app/api/v1     routers (health so far)
+app/api/v1     routers: health, auth, homes (members, rooms)
+app/api        deps (signed-in user, home access = tenant isolation), schemas (camelCase, envelope)
+app/core       ... also security (argon2id, JWT, opaque tokens), permissions (role matrix)
+app/models     account (users, sessions, refresh/e-mail tokens), home (homes, members, rooms)
+app/services   accounts (auth logic), ratelimit (Redis), email (dev sender until P10)
 app/main.py    public + internal app factories, request logging, metrics, body limit (64 KB)
 app/serve.py   runs both apps in one process (container entry point)
 migrations/    Alembic (async); `make migrate`
-tools/         dev_certs.sh, licenses.py (feeds THIRD_PARTY_NOTICES.md)
+tools/         dev_certs.sh, licenses.py (feeds THIRD_PARTY_NOTICES.md), openapi.py (docs/pro/openapi.json)
 ```
 
 After changing dependencies run `uv run python tools/licenses.py` and `node ../scripts/third_party_notices.mjs`.

@@ -46,6 +46,22 @@ def mint(key: bytes, claims: dict) -> str:
     return body + "." + b64url(mac)
 
 
+def raw_claims(claims: dict) -> str:
+    return claims_json(claims)
+
+
+def mint_raw(key: bytes, raw: str) -> str:
+    body = "LT1." + b64url(raw.encode())
+    return body + "." + b64url(hmac.new(key, body.encode(), hashlib.sha256).digest())
+
+
+def noncanonical(ticket: str) -> str:
+    """Set a non-zero unused bit in the MAC's last base64url character (same bytes for lenient decoders)."""
+    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+    head, last = ticket[:-1], ticket[-1]
+    return head + alphabet[alphabet.index(last) | 1]
+
+
 def tickets():
     key = bytes(range(32))
     base = {"sub": "u:" + USER, "dev": DEV, "scp": "control", "iat": 1795780800, "exp": 1795780800 + 7 * 86400, "ep": 3}
@@ -82,12 +98,19 @@ def tickets():
             {"name": "not_base64", "ticket": "LT1.!!!." + parts[2], "reason": "format"},
             {"name": "too_long", "ticket": good + "A" * 600, "reason": "format"},
             {"name": "bad_scope", "ticket": mint(key, dict(base, scp="root")), "reason": "claims"},
+            # A lenient base64 decoder ignores the 2 unused low bits of the last character;
+            # verifiers must reject the non-canonical form (one ticket, one encoding).
+            {"name": "noncanonical_mac", "ticket": noncanonical(good), "reason": "format"},
+            {"name": "duplicate_claim_key", "ticket": mint_raw(key, raw_claims(base).replace('"ep":3', '"ep":3,"ep":3')),
+             "reason": "claims"},
+            {"name": "exponent_number", "ticket": mint_raw(key, raw_claims(base).replace(str(base["iat"]), "1.7957808e9")),
+             "reason": "claims"},
         ],
         "rules": {
             "max_length": 512,
             "max_lifetime_s": {"control": 604800, "admin": 43200},
             "clock_skew_s": 300,
-            "comment": "iat may be at most clock_skew_s in the future; exp must be > now; ep must equal the device's ticket epoch.",
+            "comment": "iat may be at most clock_skew_s in the future; exp must be > now; ep must equal the device's ticket epoch. Both base64url parts must be canonical (unused trailing bits zero). Claims: exactly six distinct keys; iat, exp, ep plain non-negative integers (no fraction, exponent or sign).",
         },
     }
     return vectors

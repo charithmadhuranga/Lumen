@@ -112,7 +112,7 @@ void register_light_routes(AppContext &ctx)
 {
     WebServer &web = *ctx.web;
 
-    web.route(HTTP_GET, "/lights", RouteAuth::kUser, [&ctx](ApiRequest &req) {
+    web.route(HTTP_GET, "/lights", RouteAuth::kControl, [&ctx](ApiRequest &req) {
         ModelLock lock(model_mutex());
         cJSON *arr = cJSON_CreateArray();
         const ChannelManager &cm = ctx.lighting->channel_manager();
@@ -124,7 +124,7 @@ void register_light_routes(AppContext &ctx)
         return send_data(req, arr);
     });
 
-    web.route(HTTP_GET, "/lights/effects", RouteAuth::kUser, [](ApiRequest &req) {
+    web.route(HTTP_GET, "/lights/effects", RouteAuth::kControl, [](ApiRequest &req) {
         static const char *names[] = {"breathing", "pulse",  "rainbow", "color_cycle",
                                       "candlelight", "sunrise", "sunset", "strobe"};
         cJSON *arr = cJSON_CreateArray();
@@ -132,7 +132,7 @@ void register_light_routes(AppContext &ctx)
         return send_data(req, arr);
     });
 
-    web.route(HTTP_GET, "/lights/{id}", RouteAuth::kUser, [&ctx](ApiRequest &req) {
+    web.route(HTTP_GET, "/lights/{id}", RouteAuth::kControl, [&ctx](ApiRequest &req) {
         ModelLock lock(model_mutex());
         const Channel *ch = ctx.lighting->channel_manager().find(req.params[0]);
         if (ch == nullptr) return send_error(req, 404, "NOT_FOUND", "Light not found");
@@ -230,7 +230,7 @@ void register_light_routes(AppContext &ctx)
         return send_data(req, o);
     });
 
-    web.route(HTTP_POST, "/lights/{id}/command", RouteAuth::kUser, [&ctx](ApiRequest &req) {
+    web.route(HTTP_POST, "/lights/{id}/command", RouteAuth::kControl, [&ctx](ApiRequest &req) {
         LightCommandEnvelope env;
         env.command.channel_id = req.params[0];
         env.command.origin = "rest";

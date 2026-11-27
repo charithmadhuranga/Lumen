@@ -39,9 +39,20 @@ struct WebServerConfig
 enum class RouteAuth : uint8_t
 {
     kPublic = 0,        // no session needed
-    kPasswordChange,    // any valid session, even one that must change password
-    kUser,              // valid session with the password already changed
+    kPasswordChange,    // any valid session, even one that must change password (never a ticket)
+    kUser,              // valid session with the password already changed, or an admin ticket
+    kControl,           // as kUser, or any local ticket (lights, groups, rooms, scenes, reads)
+    kSession,           // a signed-in session only, never a ticket (secrets, pairing, reset)
 };
+
+// Result of checking an "Authorization: Lumen-Ticket <ticket>" header (PROTOCOL.md §6).
+struct TicketVerdict
+{
+    bool ok = false;
+    bool admin = false;
+    const char *reason = "format";
+};
+using TicketChecker = std::function<TicketVerdict(const std::string &ticket)>;
 
 // One API request as seen by a route handler.
 struct ApiRequest
@@ -55,6 +66,8 @@ struct ApiRequest
     std::string client_ip;
     std::string session_token;       // "" for public routes without cookie
     Session session;                 // valid when session_token non-empty
+    bool via_ticket = false;         // authenticated by a local ticket (no session)
+    bool ticket_admin = false;
 
     // Parsed JSON body (owned by the request; nullptr if empty/invalid).
     cJSON *json();
@@ -96,6 +109,10 @@ class WebServer
     void route_stream(int method, const char *pattern, RouteAuth auth, ApiHandler handler, std::size_t max_body);
 
     void set_ws_manager(WebSocketManager *ws) { ws_ = ws; }
+    // Lumen Pro: accept local tickets (unset = tickets are refused).
+    void set_ticket_checker(TicketChecker checker) { tickets_ = std::move(checker); }
+    // "Authorization: Lumen-Ticket ..." header, or for the WebSocket also ?ticket=.
+    static std::string ticket_from(httpd_req_t *req, bool allow_query);
 
     // Cookie helpers used by the auth routes.
     static void set_session_cookie(httpd_req_t *req, const std::string &token, int64_t max_age_s);
@@ -132,6 +149,7 @@ class WebServer
     WebServerConfig config_;
     httpd_handle_t server_ = nullptr;
     WebSocketManager *ws_ = nullptr;
+    TicketChecker tickets_;
     std::vector<Route> routes_;
     uint32_t requests_ = 0;
     WebPack pack_{"/lfs/web/web.pack"};

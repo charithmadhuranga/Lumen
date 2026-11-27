@@ -63,7 +63,8 @@ func reject(reason string) error { return &Error{Reason: reason} }
 var (
 	b64Chars = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 	uuidRe   = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
-	enc      = base64.RawURLEncoding
+	// Strict: the unused trailing bits must be zero, so every ticket has one encoding.
+	enc = base64.RawURLEncoding.Strict()
 )
 
 func mac(key []byte, body string) []byte {
@@ -126,8 +127,11 @@ func Verify(ticket string, key []byte, device string, epoch, now int64) (Claims,
 	return c, nil
 }
 
-// decodeClaims requires exactly the six keys with the right types.
+// decodeClaims requires exactly six distinct keys with the right types.
 func decodeClaims(raw []byte, c *Claims) error {
+	if err := distinctKeys(raw); err != nil {
+		return err
+	}
 	var keys map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &keys); err != nil || len(keys) != 6 {
 		return errors.New("claims")
@@ -150,6 +154,29 @@ func decodeClaims(raw []byte, c *Claims) error {
 	}
 	if !uuidRe.MatchString(c.Dev) || c.Iat < 0 || c.Exp < 0 || c.Ep < 0 {
 		return errors.New("claims")
+	}
+	return nil
+}
+
+// distinctKeys rejects a top-level object that repeats a key (encoding/json
+// would silently keep the last one; the other implementations reject it).
+func distinctKeys(raw []byte) error {
+	d := json.NewDecoder(bytes.NewReader(raw))
+	if t, err := d.Token(); err != nil || t != json.Delim('{') {
+		return errors.New("claims")
+	}
+	seen := map[string]bool{}
+	for d.More() {
+		t, err := d.Token()
+		key, ok := t.(string)
+		if err != nil || !ok || seen[key] {
+			return errors.New("claims")
+		}
+		seen[key] = true
+		var skip json.RawMessage
+		if err := d.Decode(&skip); err != nil {
+			return errors.New("claims")
+		}
 	}
 	return nil
 }

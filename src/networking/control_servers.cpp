@@ -1,5 +1,6 @@
 // Lumen — TCP/UDP control servers. See control_servers.hpp
 #include "lumen/networking/control_servers.hpp"
+#include "lumen/app/cloud_service.hpp"
 
 #include <cstring>
 #include <ctime>
@@ -354,6 +355,10 @@ void ControlServers::handle_udp(const uint8_t *data, std::size_t len, const void
         if (s.tcp_enabled) cJSON_AddNumberToObject(o, "tcp", s.tcp_port);
         cJSON_AddBoolToObject(o, "udpControl", s.udp_control);
         cJSON_AddStringToObject(o, "version", kVersion);
+        // Lumen Pro: lets the gateway and the app list controllers they can adopt.
+        const std::string device = ctx_.cloud != nullptr ? ctx_.cloud->device_id() : std::string();
+        cJSON_AddStringToObject(o, "cloud", device.empty() ? "off" : "paired");
+        if (!device.empty()) cJSON_AddStringToObject(o, "device", device.c_str());
         reply(o);
         cJSON_Delete(msg);
         std::lock_guard<std::mutex> l(mutex_);

@@ -171,13 +171,13 @@ void register_controller_routes(AppContext &ctx)
         return send_data(req, controllers_json(*ctx.espnow));
     });
 
-    web.route(HTTP_GET, "/integrations/espnow/key", RouteAuth::kUser, [&ctx](ApiRequest &req) {
+    web.route(HTTP_GET, "/integrations/espnow/key", RouteAuth::kSession, [&ctx](ApiRequest &req) {
         cJSON *o = cJSON_CreateObject();
         cJSON_AddStringToObject(o, "key", ctx.espnow->key().c_str());
         return send_data(req, o);
     });
 
-    web.route(HTTP_POST, "/integrations/espnow/key/regenerate", RouteAuth::kUser, [&ctx](ApiRequest &req) {
+    web.route(HTTP_POST, "/integrations/espnow/key/regenerate", RouteAuth::kSession, [&ctx](ApiRequest &req) {
         cJSON *o = cJSON_CreateObject();
         cJSON_AddStringToObject(o, "key", ctx.espnow->regenerate_key().c_str());
         return send_data(req, o);

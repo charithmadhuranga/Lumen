@@ -190,6 +190,17 @@ void Controller::start()
     web_ = std::make_unique<WebServer>(*auth_);
     web_->set_ws_manager(ws_.get());
 
+    // Lumen Pro: pairing with a Lumen Gateway and local tickets (DECISIONS D-17).
+    // With no pairing (the default) every ticket is refused and nothing changes.
+    cloud_ = std::make_unique<CloudService>(*config_, *network_, *boards_);
+    cloud_->init();
+    web_->set_ticket_checker([this](const std::string &t) {
+        const CloudService::Verdict v = cloud_->verify(t);
+        return TicketVerdict{v.ok, v.admin, ticket::reason_name(v.reason)};
+    });
+    cloud_->set_on_change([this]() { network_->set_cloud_txt(cloud_->paired() ? "paired" : "off"); });
+    network_->set_cloud_txt(cloud_->paired() ? "paired" : "off");
+
     ctx_.bus = bus_.get();
     ctx_.storage = storage_.get();
     ctx_.config = config_.get();
@@ -203,6 +214,7 @@ void Controller::start()
     ctx_.web = web_.get();
     ctx_.ws = ws_.get();
     ctx_.network = network_.get();
+    ctx_.cloud = cloud_.get();
     ctx_.apply_profile = [this](const std::string &id, bool force) { return apply_profile(id, force); };
     ctx_.save_lights = [this]() { return light_store::save_lights(*config_, *lighting_); };
     ctx_.schedule_restart = [this](uint32_t ms) { schedule_restart(ms); };
@@ -275,12 +287,16 @@ void Controller::start()
     register_maintenance_routes(ctx_);
     register_floorplan_routes(ctx_);
     register_controller_routes(ctx_);
+    register_cloud_routes(ctx_);
     register_test_hook_routes(ctx_);
 
     if (web_->start() == ESP_OK) {
         ws_->attach(web_->handle());
         ws_->set_light_renderer([this](std::size_t index) { return render_light(index); });
         ws_->set_session_check([this](const std::string &token) {
+            // Ticket connections are re-checked like sessions: an expired or revoked
+            // ticket (or an unpaired controller) closes the WebSocket.
+            if (token.compare(0, 4, "LT1.") == 0) return cloud_->verify(token).ok;
             AuthResult r = auth_->validate_session(token);
             return r.code == AuthResult::kOk && !r.session->force_pw_change;
         });
@@ -414,6 +430,7 @@ void Controller::housekeeping_loop()
         }
         net_sender_.process();
         mqtt_->poll(now);
+        cloud_->poll(now); // pending gateway pairing, last-known-time persistence
         // OTA health check: a new firmware is confirmed only while the web
         // server runs and the lighting loop keeps ticking.
         if (now - last_ota >= 1000) {
@@ -769,6 +786,7 @@ void Controller::on_shutdown()
             }
         }
     }
+    if (cloud_) cloud_->on_shutdown();
     if (mqtt_) mqtt_->stop();
 }
 

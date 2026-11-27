@@ -29,9 +29,20 @@ class TicketError(Exception):
 
 
 def _b64d(s):
-    if not B64.match(s):
+    if not B64.match(s) or len(s) % 4 == 1:
         raise TicketError("format")
-    return base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
+    raw = base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
+    # Canonical form only: re-encoding must give the same text (unused trailing bits zero).
+    if base64.urlsafe_b64encode(raw).rstrip(b"=").decode() != s:
+        raise TicketError("format")
+    return raw
+
+
+def _no_duplicates(pairs):
+    keys = [k for k, _ in pairs]
+    if len(keys) != len(set(keys)):
+        raise TicketError("claims")
+    return dict(pairs)
 
 
 def verify(ticket, key, device, epoch, now):
@@ -55,7 +66,7 @@ def verify(ticket, key, device, epoch, now):
     if not hmac.compare_digest(mac, good):
         raise TicketError("mac")
     try:
-        c = json.loads(raw)
+        c = json.loads(raw, object_pairs_hook=_no_duplicates)
     except ValueError:
         raise TicketError("claims")
     if not isinstance(c, dict) or set(c) != KEYS:

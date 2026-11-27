@@ -336,8 +336,17 @@ esp_err_t WebServer::options_trampoline(httpd_req_t *req)
 
 esp_err_t WebServer::ws_pre_handshake(httpd_req_t *req)
 {
-    // Runs before the 101 upgrade: require a valid, password-changed session.
+    // Runs before the 101 upgrade: require a valid, password-changed session,
+    // or (Lumen Pro) any valid local ticket in the header or ?ticket=.
     auto *self = static_cast<WebServer *>(req->user_ctx);
+    const std::string ticket = ticket_from(req, true);
+    if (!ticket.empty()) {
+        if (self->ws_ != nullptr && self->tickets_ && self->tickets_(ticket).ok) return ESP_OK;
+        ESP_LOGW(TAG, "WS handshake rejected (invalid ticket)");
+        httpd_resp_set_status(req, "401 Unauthorized");
+        httpd_resp_send(req, nullptr, 0);
+        return ESP_FAIL;
+    }
     const std::string token = cookie_token(req);
     AuthResult res = self->auth_.validate_session(token);
     if (self->ws_ == nullptr || res.code != AuthResult::kOk || res.session->force_pw_change) {
@@ -352,7 +361,10 @@ esp_err_t WebServer::ws_pre_handshake(httpd_req_t *req)
 esp_err_t WebServer::ws_post_handshake(httpd_req_t *req)
 {
     auto *self = static_cast<WebServer *>(req->user_ctx);
-    return self->ws_ != nullptr ? self->ws_->on_open(req, cookie_token(req)) : ESP_FAIL;
+    // The connection remembers its credential (session token or ticket); the
+    // periodic re-check closes it once that stops being valid.
+    const std::string ticket = ticket_from(req, true);
+    return self->ws_ != nullptr ? self->ws_->on_open(req, ticket.empty() ? cookie_token(req) : ticket) : ESP_FAIL;
 }
 
 esp_err_t WebServer::ws_trampoline(httpd_req_t *req)
@@ -360,6 +372,27 @@ esp_err_t WebServer::ws_trampoline(httpd_req_t *req)
     // Data frames only (IDF 6 never routes the handshake here).
     auto *self = static_cast<WebServer *>(req->user_ctx);
     return self->ws_ != nullptr ? self->ws_->on_frame(req) : ESP_FAIL;
+}
+
+std::string WebServer::ticket_from(httpd_req_t *req, bool allow_query)
+{
+    constexpr std::size_t kMax = 600; // tickets are at most 512 bytes (PROTOCOL §6)
+    char buf[kMax + 16];
+    const std::size_t len = httpd_req_get_hdr_value_len(req, "Authorization");
+    if (len > 0 && len < sizeof(buf) && httpd_req_get_hdr_value_str(req, "Authorization", buf, sizeof(buf)) == ESP_OK) {
+        static constexpr char kScheme[] = "Lumen-Ticket ";
+        if (std::strncmp(buf, kScheme, sizeof(kScheme) - 1) == 0) return std::string(buf + sizeof(kScheme) - 1);
+    } else if (len >= sizeof(buf)) {
+        return std::string(kMax + 1, 'x'); // too long: fails verification as "format"
+    }
+    if (allow_query) {
+        const std::size_t qlen = httpd_req_get_url_query_len(req);
+        if (qlen > 0 && qlen < sizeof(buf) && httpd_req_get_url_query_str(req, buf, sizeof(buf)) == ESP_OK) {
+            char value[kMax + 1];
+            if (httpd_query_key_value(buf, "ticket", value, sizeof(value)) == ESP_OK) return std::string(value);
+        }
+    }
+    return std::string();
 }
 
 std::string WebServer::cookie_token(httpd_req_t *req)
@@ -451,7 +484,24 @@ esp_err_t WebServer::handle_api(httpd_req_t *req)
 
     // --- authentication / CSRF / forced password change -----------------
     ar.client_ip = client_ip(req);
-    const std::string token = cookie_token(req);
+    // Lumen Pro: a local ticket instead of a session (PROTOCOL.md §6). Tickets
+    // are not ambient credentials (the client attaches them on purpose), so no
+    // CSRF token applies. Some routes never accept one (RouteAuth::kSession).
+    const std::string ticket = ticket_from(req, false);
+    if (!ticket.empty()) {
+        if (!tickets_) return send_error(ar, 401, "INVALID_TICKET", "This controller is not paired with a gateway");
+        const TicketVerdict v = tickets_(ticket);
+        if (!v.ok) return send_error(ar, 401, "INVALID_TICKET", std::string("Ticket rejected: ") + v.reason);
+        if (match->auth == RouteAuth::kPasswordChange || match->auth == RouteAuth::kSession) {
+            return send_error(ar, 403, "SESSION_REQUIRED", "Sign in on the controller itself for this");
+        }
+        if (match->auth == RouteAuth::kUser && !v.admin) {
+            return send_error(ar, 403, "FORBIDDEN", "This needs admin access");
+        }
+        ar.via_ticket = true;
+        ar.ticket_admin = v.admin;
+    }
+    const std::string token = ar.via_ticket ? std::string() : cookie_token(req);
     if (!token.empty()) {
         AuthResult res = auth_.validate_session(token);
         if (res.code == AuthResult::kOk) {
@@ -459,11 +509,11 @@ esp_err_t WebServer::handle_api(httpd_req_t *req)
             ar.session = *res.session;
         }
     }
-    if (match->auth != RouteAuth::kPublic) {
+    if (match->auth != RouteAuth::kPublic && !ar.via_ticket) {
         if (ar.session_token.empty()) {
             return send_error(ar, 401, "UNAUTHORIZED", "Authentication required");
         }
-        if (match->auth == RouteAuth::kUser && ar.session.force_pw_change) {
+        if (match->auth != RouteAuth::kPasswordChange && ar.session.force_pw_change) {
             return send_error(ar, 403, "PASSWORD_CHANGE_REQUIRED",
                               "The default password must be changed first");
         }

@@ -155,13 +155,13 @@ void register_integration_routes(AppContext &ctx)
     web.route(HTTP_PUT, "/integrations/tcp", RouteAuth::kUser, control_update);
     web.route(HTTP_PUT, "/integrations/udp", RouteAuth::kUser, control_update);
 
-    web.route(HTTP_GET, "/integrations/token", RouteAuth::kUser, [&ctx](ApiRequest &req) {
+    web.route(HTTP_GET, "/integrations/token", RouteAuth::kSession, [&ctx](ApiRequest &req) {
         cJSON *o = cJSON_CreateObject();
         cJSON_AddStringToObject(o, "token", ctx.control->token().c_str());
         return send_data(req, o);
     });
 
-    web.route(HTTP_POST, "/integrations/token/regenerate", RouteAuth::kUser, [&ctx](ApiRequest &req) {
+    web.route(HTTP_POST, "/integrations/token/regenerate", RouteAuth::kSession, [&ctx](ApiRequest &req) {
         cJSON *o = cJSON_CreateObject();
         cJSON_AddStringToObject(o, "token", ctx.control->regenerate_token().c_str());
         return send_data(req, o);

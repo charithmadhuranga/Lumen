@@ -523,8 +523,8 @@ void NetworkManager::start_mdns()
     mdns_hostname_set(settings_.hostname.c_str());
     mdns_instance_name_set("Lumen lighting controller");
     mdns_service_add(nullptr, "_http", "_tcp", 80, nullptr, 0);
-    mdns_txt_item_t txt[] = {{"api", "/api/v1"}};
-    mdns_service_add(nullptr, "_lumen", "_tcp", 80, txt, 1);
+    mdns_txt_item_t txt[] = {{"api", "/api/v1"}, {"cloud", cloud_txt_.c_str()}};
+    mdns_service_add(nullptr, "_lumen", "_tcp", 80, txt, 2);
     mdns_started_ = true;
 }
 
@@ -659,4 +659,16 @@ std::string NetworkManager::scan_json()
     return out;
 }
 
+} // namespace lumen
+
+namespace lumen
+{
+void NetworkManager::set_cloud_txt(const char *state)
+{
+    cloud_txt_ = state;
+    if (mdns_started_) {
+        esp_err_t err = mdns_service_txt_item_set("_lumen", "_tcp", "cloud", state);
+        if (err != ESP_OK) ESP_LOGW(TAG, "mDNS cloud TXT update failed: %s", esp_err_to_name(err));
+    }
+}
 } // namespace lumen

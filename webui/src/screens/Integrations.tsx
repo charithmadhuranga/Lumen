@@ -5,7 +5,7 @@ import * as React from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, Eye, PlugZap, RefreshCw } from "lucide-react";
+import { Cloud, Copy, Eye, PlugZap, RefreshCw, Unlink } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import { ConfirmDialog, Field, PageHeader, StatusDot } from "@/components/common
 import { errorMessage } from "@/hooks/useAuth";
 import { integrationsApi, MqttForm, type IntegrationsT, type MqttFormT } from "./integrations/api";
 import { controllersApi, controllersKey } from "./controllers/api";
+import { cloudApi, cloudKey, PairForm, type CloudStatusT, type PairFormT } from "./integrations/cloud";
 
 const KEY = ["integrations"] as const;
 
@@ -51,6 +52,7 @@ export default function Integrations() {
       <HomeAssistantSection data={q.data} />
       <ControlSection data={q.data} />
       <EspNowSection />
+      <CloudSection />
     </div>
   );
 }
@@ -324,6 +326,90 @@ function EspNowSection() {
             void qc.invalidateQueries({ queryKey: controllersKey });
           } catch (e) {
             toast.error("Could not create a key", { description: errorMessage(e) });
+          }
+        }}
+      />
+    </Section>
+  );
+}
+
+function cloudDot(s: CloudStatusT): { status: "ok" | "warn" | "off" | "error"; label: string } {
+  if (s.state === "paired") return { status: "ok", label: "Paired" };
+  if (s.state === "pairing") return { status: "warn", label: "Pairing…" };
+  if (s.state === "pair_failed") return { status: "error", label: "Pairing failed" };
+  return { status: "off", label: "Off" };
+}
+
+function CloudSection() {
+  const qc = useQueryClient();
+  // Poll quickly while a pairing runs on the controller, gently otherwise.
+  const q = useQuery({
+    queryKey: cloudKey,
+    queryFn: cloudApi.get,
+    refetchInterval: (query) => (query.state.data?.state === "pairing" ? 1000 : 10000),
+  });
+  const [confirmUnpair, setConfirmUnpair] = React.useState(false);
+  const form = useForm<PairFormT>({ resolver: zodResolver(PairForm), defaultValues: { claimToken: "", gatewayUrl: "" } });
+  const previous = React.useRef<CloudStatusT["state"] | undefined>(undefined);
+  React.useEffect(() => {
+    const now = q.data?.state;
+    if (previous.current === "pairing" && now === "paired") toast.success("Paired with your Lumen Gateway", { duration: 4000 });
+    if (previous.current === "pairing" && now === "pair_failed") toast.error("Pairing failed", { description: q.data?.lastError ?? undefined });
+    previous.current = now;
+  }, [q.data]);
+  if (!q.data) return null;
+  const s = q.data;
+  const dot = cloudDot(s);
+  const pair = form.handleSubmit(async (values) => {
+    try {
+      qc.setQueryData(cloudKey, await cloudApi.pair(values));
+      form.reset({ claimToken: "", gatewayUrl: values.gatewayUrl });
+    } catch (e) {
+      toast.error("Could not start pairing", { description: errorMessage(e) });
+    }
+  });
+  return (
+    <Section title="Lumen Cloud" actions={<StatusDot status={dot.status} label={dot.label} />}>
+      <p className="text-sm text-muted-foreground">
+        Remote access and the Lumen app go through your Lumen Gateway on this network. Lights, scenes and automations keep working without it, and this controller never connects to the internet itself.
+      </p>
+      {s.state === "paired" ? (
+        <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+          <div><dt className="text-muted-foreground">Gateway</dt><dd className="font-mono break-all">{s.gatewayUrl}</dd></div>
+          <div><dt className="text-muted-foreground">Last contact from the gateway</dt><dd>{s.gatewaySeenSecAgo == null ? "Not yet" : s.gatewaySeenSecAgo < 90 ? "Just now" : `${Math.round(s.gatewaySeenSecAgo / 60)} min ago`}</dd></div>
+          <div><dt className="text-muted-foreground">Device id</dt><dd className="font-mono text-xs break-all">{s.deviceId}</dd></div>
+          <div><dt className="text-muted-foreground">App and gateway access</dt><dd>{s.tickets.accepted} allowed · {s.tickets.rejected} refused</dd></div>
+        </dl>
+      ) : (
+        <form className="space-y-4" onSubmit={(e) => void pair(e)} noValidate>
+          {s.state === "pair_failed" && s.lastError ? <p role="alert" className="text-sm text-destructive">{s.lastError}</p> : null}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Claim code" htmlFor="cl-claim" hint="From the Lumen app: Add device → Add with code" error={form.formState.errors.claimToken?.message}>
+              <Input id="cl-claim" autoComplete="off" spellCheck={false} {...form.register("claimToken")} />
+            </Field>
+            <Field label="Gateway address" htmlFor="cl-url" hint="Shown by the app and on the gateway" error={form.formState.errors.gatewayUrl?.message}>
+              <Input id="cl-url" placeholder="http://192.168.1.20:8780" autoComplete="off" spellCheck={false} {...form.register("gatewayUrl")} />
+            </Field>
+          </div>
+          <Button type="submit" disabled={s.state === "pairing" || form.formState.isSubmitting}><Cloud className="size-4" /> {s.state === "pairing" ? "Pairing…" : "Pair with gateway"}</Button>
+        </form>
+      )}
+      {s.state === "paired" ? (
+        <Button variant="outline" onClick={() => setConfirmUnpair(true)}><Unlink className="size-4" /> Unpair</Button>
+      ) : null}
+      <ConfirmDialog
+        open={confirmUnpair}
+        onOpenChange={setConfirmUnpair}
+        title="Unpair from the Lumen Gateway?"
+        description="The app and remote access stop working for this controller until you pair it again. Local control is not affected."
+        confirmLabel="Unpair"
+        destructive
+        onConfirm={async () => {
+          try {
+            qc.setQueryData(cloudKey, await cloudApi.unpair());
+            toast.success("Unpaired", { duration: 2500 });
+          } catch (e) {
+            toast.error("Could not unpair", { description: errorMessage(e) });
           }
         }}
       />

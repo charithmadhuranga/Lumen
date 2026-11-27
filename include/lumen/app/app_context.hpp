@@ -28,6 +28,7 @@ class MqttService;
 class ControlServers;
 class OtaService;
 class EspNowManager;
+class CloudService;
 
 struct ProfileApplyOutcome
 {
@@ -58,6 +59,7 @@ struct AppContext
     ControlServers *control = nullptr;
     OtaService *ota = nullptr;
     EspNowManager *espnow = nullptr;
+    CloudService *cloud = nullptr; // Lumen Pro: gateway pairing + local tickets
 
     // Transactional board-profile apply with rollback (SPEC §5.4).
     std::function<ProfileApplyOutcome(const std::string &id, bool force)> apply_profile;
@@ -94,6 +96,7 @@ void register_integration_routes(AppContext &ctx);
 void register_maintenance_routes(AppContext &ctx);
 void register_floorplan_routes(AppContext &ctx);
 void register_controller_routes(AppContext &ctx);
+void register_cloud_routes(AppContext &ctx);
 void register_test_hook_routes(AppContext &ctx); // no-op unless LUMEN_TEST_HOOKS
 
 } // namespace lumen

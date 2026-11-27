@@ -61,7 +61,7 @@ void register_system_routes(AppContext &ctx)
 {
     WebServer &web = *ctx.web;
 
-    web.route(HTTP_GET, "/system/info", RouteAuth::kUser, [&ctx](ApiRequest &req) {
+    web.route(HTTP_GET, "/system/info", RouteAuth::kControl, [&ctx](ApiRequest &req) {
         esp_chip_info_t chip{};
         esp_chip_info(&chip);
         uint32_t flash = 0;
@@ -130,7 +130,7 @@ void register_system_routes(AppContext &ctx)
         return send_data(req, o, 202);
     });
 
-    web.route(HTTP_POST, "/system/factory-reset", RouteAuth::kUser, [&ctx](ApiRequest &req) {
+    web.route(HTTP_POST, "/system/factory-reset", RouteAuth::kSession, [&ctx](ApiRequest &req) {
         std::string confirm;
         if (!api::get_string(req.json(), "confirm", confirm, 16) || confirm != "RESET") {
             return send_error(req, 400, "CONFIRMATION_REQUIRED",

@@ -208,7 +208,7 @@ void register_room_routes(AppContext &ctx)
     WebServer &web = *ctx.web;
 
     // ------------------------------------------------------------ rooms
-    web.route(HTTP_GET, "/rooms", RouteAuth::kUser, [&ctx](ApiRequest &req) {
+    web.route(HTTP_GET, "/rooms", RouteAuth::kControl, [&ctx](ApiRequest &req) {
         ModelLock lock(model_mutex());
         cJSON *arr = cJSON_CreateArray();
         for (std::size_t i = 0; i < ctx.rooms->room_count(); ++i) {
@@ -217,7 +217,7 @@ void register_room_routes(AppContext &ctx)
         return send_data(req, arr);
     });
 
-    web.route(HTTP_GET, "/rooms/{id}", RouteAuth::kUser, [&ctx](ApiRequest &req) {
+    web.route(HTTP_GET, "/rooms/{id}", RouteAuth::kControl, [&ctx](ApiRequest &req) {
         ModelLock lock(model_mutex());
         const Room *r = ctx.rooms->find(req.params[0]);
         return r ? send_data(req, room_json(ctx, *r)) : send_error(req, 404, "NOT_FOUND", "Room not found");
@@ -340,14 +340,14 @@ void register_room_routes(AppContext &ctx)
         return send_data(req, o);
     });
 
-    web.route(HTTP_POST, "/rooms/{id}/power", RouteAuth::kUser, [&ctx](ApiRequest &req) {
+    web.route(HTTP_POST, "/rooms/{id}/power", RouteAuth::kControl, [&ctx](ApiRequest &req) {
         ModelLock lock(model_mutex());
         const Room *r = ctx.rooms->find(req.params[0]);
         if (r == nullptr) return send_error(req, 404, "NOT_FOUND", "Room not found");
         return power_or_brightness(ctx, req, r->channel_ids, false, "room");
     });
 
-    web.route(HTTP_POST, "/rooms/{id}/brightness", RouteAuth::kUser, [&ctx](ApiRequest &req) {
+    web.route(HTTP_POST, "/rooms/{id}/brightness", RouteAuth::kControl, [&ctx](ApiRequest &req) {
         ModelLock lock(model_mutex());
         const Room *r = ctx.rooms->find(req.params[0]);
         if (r == nullptr) return send_error(req, 404, "NOT_FOUND", "Room not found");
@@ -355,7 +355,7 @@ void register_room_routes(AppContext &ctx)
     });
 
     // ----------------------------------------------------------- groups
-    web.route(HTTP_GET, "/groups", RouteAuth::kUser, [&ctx](ApiRequest &req) {
+    web.route(HTTP_GET, "/groups", RouteAuth::kControl, [&ctx](ApiRequest &req) {
         ModelLock lock(model_mutex());
         cJSON *arr = cJSON_CreateArray();
         for (std::size_t i = 0; i < ctx.groups->group_count(); ++i) {
@@ -364,7 +364,7 @@ void register_room_routes(AppContext &ctx)
         return send_data(req, arr);
     });
 
-    web.route(HTTP_GET, "/groups/{id}", RouteAuth::kUser, [&ctx](ApiRequest &req) {
+    web.route(HTTP_GET, "/groups/{id}", RouteAuth::kControl, [&ctx](ApiRequest &req) {
         ModelLock lock(model_mutex());
         const Group *g = ctx.groups->find(req.params[0]);
         return g ? send_data(req, group_json(ctx, *g)) : send_error(req, 404, "NOT_FOUND", "Group not found");
@@ -457,7 +457,7 @@ void register_room_routes(AppContext &ctx)
         return send_data(req, o);
     });
 
-    web.route(HTTP_POST, "/groups/{id}/command", RouteAuth::kUser, [&ctx](ApiRequest &req) {
+    web.route(HTTP_POST, "/groups/{id}/command", RouteAuth::kControl, [&ctx](ApiRequest &req) {
         LightCommand cmd;
         std::string error;
         cmd.origin = "group";
@@ -480,14 +480,14 @@ void register_room_routes(AppContext &ctx)
         return send_data(req, o, 202);
     });
 
-    web.route(HTTP_POST, "/groups/{id}/power", RouteAuth::kUser, [&ctx](ApiRequest &req) {
+    web.route(HTTP_POST, "/groups/{id}/power", RouteAuth::kControl, [&ctx](ApiRequest &req) {
         ModelLock lock(model_mutex());
         const Group *g = ctx.groups->find(req.params[0]);
         if (g == nullptr) return send_error(req, 404, "NOT_FOUND", "Group not found");
         return power_or_brightness(ctx, req, g->channel_ids, false, "group");
     });
 
-    web.route(HTTP_POST, "/groups/{id}/brightness", RouteAuth::kUser, [&ctx](ApiRequest &req) {
+    web.route(HTTP_POST, "/groups/{id}/brightness", RouteAuth::kControl, [&ctx](ApiRequest &req) {
         ModelLock lock(model_mutex());
         const Group *g = ctx.groups->find(req.params[0]);
         if (g == nullptr) return send_error(req, 404, "NOT_FOUND", "Group not found");

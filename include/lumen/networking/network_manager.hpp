@@ -111,6 +111,9 @@ class NetworkManager
         listener_user_ = user;
     }
 
+    // Lumen Pro: "cloud" TXT item of the _lumen._tcp service ("off" | "paired").
+    void set_cloud_txt(const char *state);
+
   private:
     static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data);
     void handle_event(esp_event_base_t base, int32_t id, void *data);
@@ -137,6 +140,7 @@ class NetworkManager
     uint32_t next_retry_ms_ = 0;
     uint32_t retry_delay_ms_ = 1000;
     bool mdns_started_ = false;
+    std::string cloud_txt_ = "off";
     StatusListener listener_ = nullptr;
     void *listener_user_ = nullptr;
 };

@@ -66,6 +66,19 @@ bool write_file(const std::string &p, const std::string &data)
     return std::fclose(f) == 0 && ok;
 }
 
+// Documents that belong to this controller and never travel in backups: the
+// cloud pairing (its key is in NVS, which backups never contain). A full
+// restore keeps the current copy (see restore_stream).
+constexpr const char *kDeviceOnly[] = {"cloud.json"};
+
+bool device_only(const std::string &rel)
+{
+    for (const char *d : kDeviceOnly) {
+        if (rel == d) return true;
+    }
+    return false;
+}
+
 bool is_document(const std::string &name)
 {
     // Storage keeps ".bak" / ".tmp" generations next to documents: never export them.
@@ -83,7 +96,7 @@ void collect(const std::string &root, const std::string &rel, std::vector<std::s
         const std::string r = rel.empty() ? name : rel + "/" + name;
         if (is_dir(root + "/" + r)) {
             if (depth < 1) collect(root, r, out, depth + 1);
-        } else if (is_document(name)) {
+        } else if (is_document(name) && !device_only(r)) {
             out.push_back(r);
         }
     }
@@ -315,6 +328,7 @@ bool restore_stream(const std::string &root, const Source &source, bool replace_
                 for (;;) {
                     if (!in.string(key, 96) || !in.expect(':')) return fail("Malformed documents list");
                     if (!valid_document_path(key)) return fail("Invalid document name '" + key + "'");
+                    if (device_only(key)) return fail("'" + key + "' belongs to one controller and cannot be restored");
                     if (++docs > kMaxDocuments) return fail("Too many documents in the backup");
                     if (!in.value(text, kMaxDocument)) return fail("Document '" + key + "' is malformed or larger than 32 KB");
                     cJSON *d = cJSON_Parse(text.c_str());
@@ -351,6 +365,16 @@ bool restore_stream(const std::string &root, const Source &source, bool replace_
     if (format != "lumen-backup" || !have_docs) return fail("Not a Lumen backup file");
     if (version < 1 || version > kFormatVersion) return fail("Backup format version is not supported by this firmware");
     if (docs == 0) return fail("The backup contains no documents");
+
+    // A full restore replaces everything except this controller's own documents.
+    if (replace_all) {
+        for (const char *d : kDeviceOnly) {
+            std::string keep;
+            if (read_file(root + "/" + d, keep) && !write_file(staging + "/" + d, keep)) {
+                return fail("Storage full or write failed; the current configuration is unchanged");
+            }
+        }
+    }
 
     // Swap (two renames). recover_interrupted() handles a cut in between.
     if (rename(root.c_str(), old.c_str()) != 0) return fail("Could not replace the configuration");

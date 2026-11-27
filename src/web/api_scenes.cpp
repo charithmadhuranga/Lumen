@@ -147,7 +147,7 @@ void register_scene_routes(AppContext &ctx)
 {
     WebServer &web = *ctx.web;
 
-    web.route(HTTP_GET, "/scenes", RouteAuth::kUser, [&ctx](ApiRequest &req) {
+    web.route(HTTP_GET, "/scenes", RouteAuth::kControl, [&ctx](ApiRequest &req) {
         ModelLock lock(model_mutex());
         cJSON *arr = cJSON_CreateArray();
         for (std::size_t i = 0; i < ctx.scenes->scene_count(); ++i) {
@@ -156,7 +156,7 @@ void register_scene_routes(AppContext &ctx)
         return send_data(req, arr);
     });
 
-    web.route(HTTP_GET, "/scenes/{id}", RouteAuth::kUser, [&ctx](ApiRequest &req) {
+    web.route(HTTP_GET, "/scenes/{id}", RouteAuth::kControl, [&ctx](ApiRequest &req) {
         ModelLock lock(model_mutex());
         const Scene *s = ctx.scenes->find(req.params[0]);
         return s ? send_data(req, scene_json(*s)) : send_error(req, 404, "NOT_FOUND", "Scene not found");
@@ -267,7 +267,7 @@ void register_scene_routes(AppContext &ctx)
         return send_data(req, o);
     });
 
-    web.route(HTTP_POST, "/scenes/{id}/activate", RouteAuth::kUser, [&ctx](ApiRequest &req) {
+    web.route(HTTP_POST, "/scenes/{id}/activate", RouteAuth::kControl, [&ctx](ApiRequest &req) {
         double t = 0;
         uint32_t override_ms = 0;
         if (api::get_number(req.json(), "transitionMs", t) && t >= 1 && t <= 600000) {

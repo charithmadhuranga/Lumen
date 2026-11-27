@@ -106,3 +106,57 @@ describe("Integrations screen", () => {
     expect((await screen.findByLabelText("Integration token")).textContent).toBe("abc123");
   });
 });
+
+describe("Lumen Cloud card", () => {
+  const OFF = { mode: "off", state: "off", lastError: null, gatewaySeenSecAgo: null, tickets: { accepted: 0, rejected: 0, rejectedBy: {} } };
+  const PAIRED = {
+    ...OFF,
+    mode: "gateway",
+    state: "paired",
+    deviceId: "0193f6c2-7a10-7b44-9d92-001122334455",
+    gatewayId: "0193f6c2-7a10-7c00-8a00-00000000aa01",
+    gatewayUrl: "http://192.168.1.20:8780",
+    ticketEpoch: 0,
+    pairedAt: 0,
+    gatewaySeenSecAgo: 12,
+    tickets: { accepted: 5, rejected: 1, rejectedBy: { expired: 1 } },
+  };
+  const route = (cloud: unknown) => (url: string) => (String(url).endsWith("/cloud") ? ok(cloud) : ok(DATA));
+
+  it("validates the claim code and gateway address before pairing", async () => {
+    const f = renderScreen(route(OFF));
+    fireEvent.change(await screen.findByLabelText("Claim code"), { target: { value: "not-a-code" } });
+    fireEvent.change(screen.getByLabelText("Gateway address"), { target: { value: "http://8.8.8.8" } });
+    fireEvent.click(screen.getByRole("button", { name: /pair with gateway/i }));
+    expect(await screen.findByText(/starts with lct_/i)).toBeTruthy();
+    expect(screen.getByText(/gateway's local address/i)).toBeTruthy();
+    expect(f.mock.calls.some(([u, i]) => String(u).endsWith("/cloud/pair") && i?.method === "POST")).toBe(false);
+  });
+
+  it("sends the pairing request", async () => {
+    const f = renderScreen((url, init) =>
+      String(url).endsWith("/cloud/pair") && init?.method === "POST" ? ok({ ...OFF, state: "pairing" }) : route(OFF)(url),
+    );
+    const claim = "lct_" + "A".repeat(43);
+    fireEvent.change(await screen.findByLabelText("Claim code"), { target: { value: claim } });
+    fireEvent.change(screen.getByLabelText("Gateway address"), { target: { value: "http://192.168.1.20:8780" } });
+    fireEvent.click(screen.getByRole("button", { name: /pair with gateway/i }));
+    await waitFor(() => expect(f.mock.calls.some(([u]) => String(u).endsWith("/cloud/pair"))).toBe(true));
+    const call = f.mock.calls.find(([u]) => String(u).endsWith("/cloud/pair"))!;
+    expect(JSON.parse(String(call[1]!.body))).toEqual({ claimToken: claim, gatewayUrl: "http://192.168.1.20:8780" });
+    expect(await screen.findByRole("button", { name: /pairing…/i })).toBeTruthy();
+  });
+
+  it("shows the pairing and offers unpair, never a key", async () => {
+    renderScreen(route(PAIRED));
+    expect(await screen.findByText("http://192.168.1.20:8780")).toBeTruthy();
+    expect(screen.getByText("Just now")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /unpair/i })).toBeTruthy();
+    expect(screen.queryByLabelText("Claim code")).toBeNull();
+  });
+
+  it("explains a failed pairing", async () => {
+    renderScreen(route({ ...OFF, state: "pair_failed", lastError: "the gateway refused pairing: The claim code is invalid" }));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/claim code is invalid/);
+  });
+});

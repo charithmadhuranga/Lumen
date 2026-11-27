@@ -43,12 +43,21 @@ def _b64e(data: bytes) -> str:
 
 
 def _b64d(text: str) -> bytes:
-    if not _B64.match(text):
+    if not _B64.match(text) or len(text) % 4 == 1:
         raise TicketError("format")
     try:
-        return base64.urlsafe_b64decode(text + "=" * (-len(text) % 4))
+        raw = base64.urlsafe_b64decode(text + "=" * (-len(text) % 4))
     except ValueError:
         raise TicketError("format") from None
+    if _b64e(raw) != text:  # canonical encoding only (unused trailing bits zero)
+        raise TicketError("format")
+    return raw
+
+
+def _no_duplicates(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    if len({k for k, _ in pairs}) != len(pairs):
+        raise TicketError("claims")
+    return dict(pairs)
 
 
 def _mac(key: bytes, body: str) -> bytes:
@@ -73,7 +82,7 @@ def verify(ticket: str, key: bytes, device: str, epoch: int, now: int) -> Claims
     if not hmac.compare_digest(mac, _mac(key, parts[0] + "." + parts[1])):
         raise TicketError("mac")
     try:
-        c = json.loads(raw)
+        c = json.loads(raw, object_pairs_hook=_no_duplicates)
     except ValueError:
         raise TicketError("claims") from None
     if not isinstance(c, dict) or set(c) != set(_KEYS):

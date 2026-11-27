@@ -115,7 +115,7 @@ void register_network_routes(AppContext &ctx)
         return send_data(req, arr != nullptr ? arr : cJSON_CreateArray());
     });
 
-    web.route(HTTP_GET, "/network/ap-password", RouteAuth::kUser, [&ctx](ApiRequest &req) {
+    web.route(HTTP_GET, "/network/ap-password", RouteAuth::kSession, [&ctx](ApiRequest &req) {
         cJSON *o = cJSON_CreateObject();
         cJSON_AddStringToObject(o, "password", ctx.network->settings().ap_password.c_str());
         return send_data(req, o);

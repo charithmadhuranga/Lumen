@@ -112,6 +112,21 @@
       "name": "bad_scope",
       "ticket": "LT1.eyJzdWIiOiJ1OjAxOTNmNmMyLTdhMTAtN2QxMS1iMjIyLTAwMDAwMDAwMDAwMSIsImRldiI6IjAxOTNmNmMyLTdhMTAtN2I0NC05ZDkyLTAwMTEyMjMzNDQ1NSIsInNjcCI6InJvb3QiLCJpYXQiOjE3OTU3ODA4MDAsImV4cCI6MTc5NjM4NTYwMCwiZXAiOjN9.g3xygiuiNC7DxRGgZA_bPPtxyxQZJLkhuu8SaosssLI",
       "reason": "claims"
+    },
+    {
+      "name": "noncanonical_mac",
+      "ticket": "LT1.eyJzdWIiOiJ1OjAxOTNmNmMyLTdhMTAtN2QxMS1iMjIyLTAwMDAwMDAwMDAwMSIsImRldiI6IjAxOTNmNmMyLTdhMTAtN2I0NC05ZDkyLTAwMTEyMjMzNDQ1NSIsInNjcCI6ImNvbnRyb2wiLCJpYXQiOjE3OTU3ODA4MDAsImV4cCI6MTc5NjM4NTYwMCwiZXAiOjN9.RW88EwYueQi2lcIW0VQp2s8hxz7pcGkiI_MqNiK9TNx",
+      "reason": "format"
+    },
+    {
+      "name": "duplicate_claim_key",
+      "ticket": "LT1.eyJzdWIiOiJ1OjAxOTNmNmMyLTdhMTAtN2QxMS1iMjIyLTAwMDAwMDAwMDAwMSIsImRldiI6IjAxOTNmNmMyLTdhMTAtN2I0NC05ZDkyLTAwMTEyMjMzNDQ1NSIsInNjcCI6ImNvbnRyb2wiLCJpYXQiOjE3OTU3ODA4MDAsImV4cCI6MTc5NjM4NTYwMCwiZXAiOjMsImVwIjozfQ.L-mdolCNoPS59WDIE7jnAy5is0zzPj1Ek2-mEXihnEQ",
+      "reason": "claims"
+    },
+    {
+      "name": "exponent_number",
+      "ticket": "LT1.eyJzdWIiOiJ1OjAxOTNmNmMyLTdhMTAtN2QxMS1iMjIyLTAwMDAwMDAwMDAwMSIsImRldiI6IjAxOTNmNmMyLTdhMTAtN2I0NC05ZDkyLTAwMTEyMjMzNDQ1NSIsInNjcCI6ImNvbnRyb2wiLCJpYXQiOjEuNzk1NzgwOGU5LCJleHAiOjE3OTYzODU2MDAsImVwIjozfQ.gKVkwYGWIlzAuhQ_GuKOk1obQeFJgSwtDTnTQDZPIDY",
+      "reason": "claims"
     }
   ],
   "rules": {
@@ -121,6 +136,6 @@
       "admin": 43200
     },
     "clock_skew_s": 300,
-    "comment": "iat may be at most clock_skew_s in the future; exp must be > now; ep must equal the device's ticket epoch."
+    "comment": "iat may be at most clock_skew_s in the future; exp must be > now; ep must equal the device's ticket epoch. Both base64url parts must be canonical (unused trailing bits zero). Claims: exactly six distinct keys; iat, exp, ep plain non-negative integers (no fraction, exponent or sign)."
   }
 }

@@ -2,11 +2,11 @@
   "name": "lumen",
   "version": "0.1.0",
   "private": true,
-  "license": "MIT",
+  "license": "UNLICENSED",
   "description": "Lumen — universal ESP32 smart lighting controller (repo-root tooling)",
   "type": "module",
   "scripts": {
-    "validate:schemas": "node scripts/validate_schemas.mjs"
+    "validate:schemas": "node scripts/validate_schemas.mjs && node scripts/validate_protocol.mjs"
   },
   "devDependencies": {
     "ajv": "8.17.1",

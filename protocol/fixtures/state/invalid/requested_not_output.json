@@ -1,0 +1,16 @@
+{
+  "v": 1,
+  "device": "0193f6c2-7a10-7b44-9d92-001122334455",
+  "ts": 1795780800000,
+  "rev": 0,
+  "lights": [
+    {
+      "id": "a",
+      "type": "dimmer",
+      "available": true,
+      "state": {
+        "power": true
+      }
+    }
+  ]
+}

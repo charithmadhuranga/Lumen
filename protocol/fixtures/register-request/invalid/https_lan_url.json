@@ -1,0 +1,11 @@
+{
+  "v": 1,
+  "claimToken": "lct_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+  "fw": "1.1.0",
+  "hw": {
+    "model": "generic-esp32",
+    "mac": "24:0a:c4:00:e7:04"
+  },
+  "controllerId": "lumen-e704",
+  "url": "https://example.com"
+}

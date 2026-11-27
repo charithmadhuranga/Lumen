@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.lumen.invalid/protocol/v1/command-result.schema.json",
+  "title": "Command result — topic lumen/v1/d/{device}/cmd/result (PROTOCOL.md §4)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "id", "device", "status", "ts"],
+  "properties": {
+    "v": { "$ref": "common.schema.json#/$defs/version" },
+    "id": { "$ref": "common.schema.json#/$defs/uuid" },
+    "device": { "$ref": "common.schema.json#/$defs/uuid" },
+    "status": { "enum": ["received", "applied", "rejected", "expired", "failed"] },
+    "ts": { "$ref": "common.schema.json#/$defs/timestampMs" },
+    "code": { "type": "string", "pattern": "^[a-z_]{1,32}$" },
+    "message": { "type": "string", "maxLength": 160 },
+    "revision": { "type": "integer", "minimum": 0 }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "rejected" } } },
+      "then": {
+        "required": ["code"],
+        "properties": {
+          "code": { "enum": ["invalid", "unknown_target", "unsupported_property", "unsupported", "forbidden",
+                             "conflict", "clock_unsynced", "capacity"] }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "status": { "const": "failed" } } },
+      "then": { "required": ["code"], "properties": { "code": { "enum": ["hardware_error", "busy", "internal"] } } }
+    },
+    {
+      "if": { "properties": { "status": { "enum": ["received", "applied", "expired"] } } },
+      "then": { "not": { "required": ["code"] } }
+    }
+  ]
+}

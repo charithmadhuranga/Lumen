@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.lumen.invalid/protocol/v1/children.schema.json",
+  "title": "Gateway child assignment — topic lumen/v1/g/{gateway}/children, retained (PROTOCOL.md §2)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "gateway", "ts", "children"],
+  "properties": {
+    "v": { "$ref": "common.schema.json#/$defs/version" },
+    "gateway": { "$ref": "common.schema.json#/$defs/uuid" },
+    "ts": { "$ref": "common.schema.json#/$defs/timestampMs" },
+    "children": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["device", "routeEpoch"],
+        "properties": {
+          "device": { "$ref": "common.schema.json#/$defs/uuid" },
+          "routeEpoch": { "type": "integer", "minimum": 1 },
+          "controllerId": { "type": "string", "pattern": "^[a-z0-9-]{1,32}$" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.lumen.invalid/protocol/v1/command.schema.json",
+  "title": "Cloud command — topic lumen/v1/d/{device}/cmd (PROTOCOL.md §3)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "id", "ts", "exp", "src", "op"],
+  "properties": {
+    "v": { "$ref": "common.schema.json#/$defs/version" },
+    "id": { "$ref": "common.schema.json#/$defs/uuid" },
+    "ts": { "$ref": "common.schema.json#/$defs/timestampMs" },
+    "exp": { "$ref": "common.schema.json#/$defs/timestampMs" },
+    "src": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id"],
+      "properties": {
+        "kind": { "enum": ["user", "automation", "system"] },
+        "id": { "type": "string", "minLength": 1, "maxLength": 40 }
+      }
+    },
+    "op": {
+      "enum": ["light.set", "light.effect", "group.set", "room.set", "scene.activate",
+               "device.status", "device.restart", "config.apply"]
+    },
+    "target": { "type": "string", "maxLength": 48 },
+    "args": { "type": "object" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "op": { "enum": ["light.set", "group.set"] } } },
+      "then": {
+        "required": ["target", "args"],
+        "properties": { "target": { "$ref": "common.schema.json#/$defs/localId" }, "args": { "$ref": "#/$defs/lightArgs" } }
+      }
+    },
+    {
+      "if": { "properties": { "op": { "const": "light.effect" } } },
+      "then": {
+        "required": ["target", "args"],
+        "properties": { "target": { "$ref": "common.schema.json#/$defs/localId" }, "args": { "$ref": "#/$defs/effectArgs" } }
+      }
+    },
+    {
+      "if": { "properties": { "op": { "const": "room.set" } } },
+      "then": {
+        "required": ["target", "args"],
+        "properties": { "target": { "$ref": "common.schema.json#/$defs/localId" }, "args": { "$ref": "#/$defs/roomArgs" } }
+      }
+    },
+    {
+      "if": { "properties": { "op": { "const": "scene.activate" } } },
+      "then": {
+        "required": ["target"],
+        "properties": { "target": { "$ref": "common.schema.json#/$defs/localId" }, "args": { "type": "object", "maxProperties": 0 } }
+      }
+    },
+    {
+      "if": { "properties": { "op": { "enum": ["device.status", "device.restart"] } } },
+      "then": { "not": { "anyOf": [{ "required": ["target"] }, { "required": ["args"] }] } }
+    },
+    {
+      "if": { "properties": { "op": { "const": "config.apply" } } },
+      "then": {
+        "required": ["target", "args"],
+        "properties": {
+          "target": { "enum": ["light", "room", "group", "scene", "automation", "cloud"] },
+          "args": { "$ref": "#/$defs/configArgs" }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "lightArgs": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "power": { "type": "boolean" },
+        "toggle": { "const": true },
+        "brightness": { "$ref": "common.schema.json#/$defs/percent" },
+        "red": { "$ref": "common.schema.json#/$defs/byte" },
+        "green": { "$ref": "common.schema.json#/$defs/byte" },
+        "blue": { "$ref": "common.schema.json#/$defs/byte" },
+        "white": { "$ref": "common.schema.json#/$defs/byte" },
+        "colorTemperature": { "$ref": "common.schema.json#/$defs/kelvin" },
+        "transitionMs": { "$ref": "common.schema.json#/$defs/transitionMs" }
+      },
+      "not": { "required": ["power", "toggle"] }
+    },
+    "effectArgs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["effect"],
+      "properties": {
+        "effect": { "type": "string", "pattern": "^[a-z0-9_-]{1,24}$" },
+        "speedMs": { "type": "integer", "minimum": 20, "maximum": 60000 },
+        "durationMs": { "type": "integer", "minimum": 0, "maximum": 86400000 }
+      }
+    },
+    "roomArgs": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "power": { "type": "boolean" },
+        "brightness": { "$ref": "common.schema.json#/$defs/percent" }
+      }
+    },
+    "configArgs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baseRevision", "action"],
+      "properties": {
+        "baseRevision": { "type": "integer", "minimum": 0 },
+        "action": { "enum": ["upsert", "delete"] },
+        "id": { "$ref": "common.schema.json#/$defs/localId" },
+        "doc": { "type": "object" }
+      },
+      "if": { "properties": { "action": { "const": "upsert" } } },
+      "then": { "required": ["doc"] },
+      "else": { "required": ["id"], "not": { "required": ["doc"] } }
+    }
+  }
+}

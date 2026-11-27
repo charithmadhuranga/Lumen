@@ -1,0 +1,11 @@
+{
+  "v": 1,
+  "claimToken": "lct_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  "fw": "1.1.0",
+  "hw": {
+    "model": "x",
+    "mac": "A0-B7-65-12-07-98"
+  },
+  "controllerId": "lumen-0798",
+  "url": "http://192.168.1.42"
+}

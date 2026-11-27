@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.lumen.invalid/protocol/v1/ticket-claims.schema.json",
+  "title": "Local ticket claims — LT1.<claims>.<mac> (PROTOCOL.md §6)",
+  "description": "Lifetime limits (exp - iat <= 604800 for control, <= 43200 for admin) are checked in code, not here: JSON Schema cannot compare two fields.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["sub", "dev", "scp", "iat", "exp", "ep"],
+  "properties": {
+    "sub": { "type": "string", "pattern": "^[ug]:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
+    "dev": { "$ref": "common.schema.json#/$defs/uuid" },
+    "scp": { "enum": ["control", "admin"] },
+    "iat": { "type": "integer", "minimum": 1600000000, "maximum": 4102444800 },
+    "exp": { "type": "integer", "minimum": 1600000000, "maximum": 4102444800 },
+    "ep": { "type": "integer", "minimum": 0, "maximum": 4294967295 }
+  }
+}

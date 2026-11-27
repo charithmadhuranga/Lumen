@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "claimToken": "lct_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  "fw": "1.1.0",
+  "hw": {
+    "model": "kc868-ap",
+    "board": "kincony_kc868_ap",
+    "mac": "a0:b7:65:12:07:98",
+    "chip": "esp32"
+  },
+  "controllerId": "lumen-0798"
+}

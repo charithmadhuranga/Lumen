@@ -40,6 +40,11 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
+      - name: Repository must be private (Lumen Pro, DECISIONS D-01)
+        if: ${{ !github.event.repository.private }}
+        run: |
+          echo "::error::refusing to build release files in a public repository"
+          exit 1
       - uses: actions/checkout@v7
         with:
           ref: ${{ env.TAG }}

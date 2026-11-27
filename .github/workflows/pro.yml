@@ -1,0 +1,68 @@
+# Lumen Pro checks: protocol contract, gateway, (cloud from P1, mobile from P7).
+# The firmware and web UI keep their own workflow (ci.yml).
+name: Lumen Pro
+
+on:
+  push:
+    branches: [lumen-pro]
+  pull_request:
+    branches: [lumen-pro]
+
+permissions:
+  contents: read
+
+jobs:
+  protocol:
+    name: Protocol contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - name: Fixtures are generated from make_fixtures.py
+        run: |
+          python3 protocol/tools/make_fixtures.py
+          git diff --exit-code -- protocol/fixtures
+      - run: npm run validate:schemas
+      - run: python3 protocol/tools/ticket_ref.py
+
+  notices:
+    name: Third-party notices
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: webui/package-lock.json
+      - run: npm ci
+        working-directory: webui
+      - run: node scripts/third_party_notices.mjs --check
+
+  gateway:
+    name: Gateway (Go)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: gateway
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: gateway/go.mod
+          cache-dependency-path: gateway/go.sum
+      - run: go vet ./...
+      - run: go test -race ./...
+      - name: Cross-build (arm64, armv7, amd64)
+        run: |
+          for t in linux/arm64 linux/arm/7 linux/amd64; do
+            IFS=/ read -r os arch arm <<< "$t"
+            GOOS=$os GOARCH=$arch GOARM=$arm CGO_ENABLED=0 go build ./...
+          done

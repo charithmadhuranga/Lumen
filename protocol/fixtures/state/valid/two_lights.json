@@ -1,0 +1,35 @@
+{
+  "v": 1,
+  "device": "0193f6c2-7a10-7b44-9d92-001122334455",
+  "ts": 1795780800000,
+  "rev": 118,
+  "lights": [
+    {
+      "id": "living_main",
+      "type": "rgb",
+      "available": true,
+      "output": {
+        "power": true,
+        "brightness": 75,
+        "red": 255,
+        "green": 180,
+        "blue": 90
+      },
+      "effect": null
+    },
+    {
+      "id": "porch",
+      "type": "switch",
+      "available": false,
+      "output": {
+        "power": false
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "id": "in1",
+      "state": false
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.lumen.invalid/protocol/v1/register-response.schema.json",
+  "title": "Controller registration response \u2014 gateway -> controller, POST /local/v1/register (PROTOCOL.md \u00a78)",
+  "description": "Contains K_local: never logged. Controllers never receive MQTT credentials (DECISIONS D-17).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "deviceId",
+    "localKey",
+    "ticketEpoch",
+    "gatewayId"
+  ],
+  "properties": {
+    "v": {
+      "$ref": "common.schema.json#/$defs/version"
+    },
+    "deviceId": {
+      "$ref": "common.schema.json#/$defs/uuid"
+    },
+    "localKey": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{43}$",
+      "description": "32 bytes, base64url without padding"
+    },
+    "ticketEpoch": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295
+    },
+    "gatewayId": {
+      "$ref": "common.schema.json#/$defs/uuid"
+    }
+  }
+}

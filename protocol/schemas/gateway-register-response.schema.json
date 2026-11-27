@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.lumen.invalid/protocol/v1/gateway-register-response.schema.json",
+  "title": "Gateway registration response \u2014 POST /api/v1/gateway/register (PROTOCOL.md \u00a78)",
+  "description": "Contains the gateway's MQTT secret: never logged.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "gatewayId",
+    "mqtt"
+  ],
+  "properties": {
+    "v": {
+      "$ref": "common.schema.json#/$defs/version"
+    },
+    "gatewayId": {
+      "$ref": "common.schema.json#/$defs/uuid"
+    },
+    "mqtt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "url",
+        "username",
+        "password"
+      ],
+      "properties": {
+        "url": {
+          "type": "string",
+          "pattern": "^mqtts://[A-Za-z0-9.-]{1,253}(:[0-9]{1,5})?$"
+        },
+        "username": {
+          "type": "string",
+          "pattern": "^g:[0-9a-f-]{36}$"
+        },
+        "password": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{43}$"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,126 @@
+{
+  "comment": "PROTOCOL.md §6 vectors. key is hex. Verify with device=dev, epoch=ep, now (unix s) unless the case overrides them.",
+  "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "device": "0193f6c2-7a10-7b44-9d92-001122334455",
+  "epoch": 3,
+  "now": 1795784400,
+  "valid": [
+    {
+      "name": "control_user",
+      "claims": {
+        "sub": "u:0193f6c2-7a10-7d11-b222-000000000001",
+        "dev": "0193f6c2-7a10-7b44-9d92-001122334455",
+        "scp": "control",
+        "iat": 1795780800,
+        "exp": 1796385600,
+        "ep": 3
+      },
+      "ticket": "LT1.eyJzdWIiOiJ1OjAxOTNmNmMyLTdhMTAtN2QxMS1iMjIyLTAwMDAwMDAwMDAwMSIsImRldiI6IjAxOTNmNmMyLTdhMTAtN2I0NC05ZDkyLTAwMTEyMjMzNDQ1NSIsInNjcCI6ImNvbnRyb2wiLCJpYXQiOjE3OTU3ODA4MDAsImV4cCI6MTc5NjM4NTYwMCwiZXAiOjN9.RW88EwYueQi2lcIW0VQp2s8hxz7pcGkiI_MqNiK9TNw"
+    },
+    {
+      "name": "admin_user",
+      "claims": {
+        "sub": "u:0193f6c2-7a10-7d11-b222-000000000001",
+        "dev": "0193f6c2-7a10-7b44-9d92-001122334455",
+        "scp": "admin",
+        "iat": 1795780800,
+        "exp": 1795824000,
+        "ep": 3
+      },
+      "ticket": "LT1.eyJzdWIiOiJ1OjAxOTNmNmMyLTdhMTAtN2QxMS1iMjIyLTAwMDAwMDAwMDAwMSIsImRldiI6IjAxOTNmNmMyLTdhMTAtN2I0NC05ZDkyLTAwMTEyMjMzNDQ1NSIsInNjcCI6ImFkbWluIiwiaWF0IjoxNzk1NzgwODAwLCJleHAiOjE3OTU4MjQwMDAsImVwIjozfQ.kySIR5RRdyuHJOXs5NBpbGteW2u3OBxW43qYX1aDw6I"
+    },
+    {
+      "name": "gateway_admin",
+      "claims": {
+        "sub": "g:0193f6c2-7a10-7c00-8a00-00000000aa01",
+        "dev": "0193f6c2-7a10-7b44-9d92-001122334455",
+        "scp": "admin",
+        "iat": 1795780800,
+        "exp": 1795824000,
+        "ep": 3
+      },
+      "ticket": "LT1.eyJzdWIiOiJnOjAxOTNmNmMyLTdhMTAtN2MwMC04YTAwLTAwMDAwMDAwYWEwMSIsImRldiI6IjAxOTNmNmMyLTdhMTAtN2I0NC05ZDkyLTAwMTEyMjMzNDQ1NSIsInNjcCI6ImFkbWluIiwiaWF0IjoxNzk1NzgwODAwLCJleHAiOjE3OTU4MjQwMDAsImVwIjozfQ.q0wkCZXC0RdFv6o3duqAe7OMeTuVqXNLKZzPXopHY_I"
+    }
+  ],
+  "invalid": [
+    {
+      "name": "bad_mac",
+      "ticket": "LT1.eyJzdWIiOiJ1OjAxOTNmNmMyLTdhMTAtN2QxMS1iMjIyLTAwMDAwMDAwMDAwMSIsImRldiI6IjAxOTNmNmMyLTdhMTAtN2I0NC05ZDkyLTAwMTEyMjMzNDQ1NSIsInNjcCI6ImNvbnRyb2wiLCJpYXQiOjE3OTU3ODA4MDAsImV4cCI6MTc5NjM4NTYwMCwiZXAiOjN9.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "reason": "mac"
+    },
+    {
+      "name": "claims_changed_after_signing",
+      "ticket": "LT1.eyJzdWIiOiJ1OjAxOTNmNmMyLTdhMTAtN2QxMS1iMjIyLTAwMDAwMDAwMDAwMSIsImRldiI6IjAxOTNmNmMyLTdhMTAtN2I0NC05ZDkyLTAwMTEyMjMzNDQ1NSIsInNjcCI6ImFkbWluIiwiaWF0IjoxNzk1NzgwODAwLCJleHAiOjE3OTYzODU2MDAsImVwIjozfQ.RW88EwYueQi2lcIW0VQp2s8hxz7pcGkiI_MqNiK9TNw",
+      "reason": "mac"
+    },
+    {
+      "name": "wrong_key",
+      "ticket": "LT1.eyJzdWIiOiJ1OjAxOTNmNmMyLTdhMTAtN2QxMS1iMjIyLTAwMDAwMDAwMDAwMSIsImRldiI6IjAxOTNmNmMyLTdhMTAtN2I0NC05ZDkyLTAwMTEyMjMzNDQ1NSIsInNjcCI6ImNvbnRyb2wiLCJpYXQiOjE3OTU3ODA4MDAsImV4cCI6MTc5NjM4NTYwMCwiZXAiOjN9.TXrRuX3tNI2WRTa4h-5ttCVtVA9lWDum8dQlatEvoq4",
+      "reason": "mac"
+    },
+    {
+      "name": "expired",
+      "ticket": "LT1.eyJzdWIiOiJ1OjAxOTNmNmMyLTdhMTAtN2QxMS1iMjIyLTAwMDAwMDAwMDAwMSIsImRldiI6IjAxOTNmNmMyLTdhMTAtN2I0NC05ZDkyLTAwMTEyMjMzNDQ1NSIsInNjcCI6ImNvbnRyb2wiLCJpYXQiOjE3OTU3ODA4MDAsImV4cCI6MTc5NTc4NDM5OSwiZXAiOjN9.EM3tp356IuZesoywHW19mQzLhBqdmctYyEuf1Us73D8",
+      "reason": "expired"
+    },
+    {
+      "name": "old_epoch",
+      "ticket": "LT1.eyJzdWIiOiJ1OjAxOTNmNmMyLTdhMTAtN2QxMS1iMjIyLTAwMDAwMDAwMDAwMSIsImRldiI6IjAxOTNmNmMyLTdhMTAtN2I0NC05ZDkyLTAwMTEyMjMzNDQ1NSIsInNjcCI6ImNvbnRyb2wiLCJpYXQiOjE3OTU3ODA4MDAsImV4cCI6MTc5NjM4NTYwMCwiZXAiOjJ9.5o6_vrtgxmnjBN7colS2Q41OpT_E4unTKD2WKSQH6v8",
+      "reason": "epoch"
+    },
+    {
+      "name": "other_device",
+      "ticket": "LT1.eyJzdWIiOiJ1OjAxOTNmNmMyLTdhMTAtN2QxMS1iMjIyLTAwMDAwMDAwMDAwMSIsImRldiI6IjAxOTNmNmMyLTdhMTAtN2I0NC05ZDkyLTAwMTEyMjMzNDRmZiIsInNjcCI6ImNvbnRyb2wiLCJpYXQiOjE3OTU3ODA4MDAsImV4cCI6MTc5NjM4NTYwMCwiZXAiOjN9.w1LuthEFt1dXibUVcxS5R4UmIzg30ZEnnGBlXjy0RwE",
+      "reason": "device"
+    },
+    {
+      "name": "control_lifetime_too_long",
+      "ticket": "LT1.eyJzdWIiOiJ1OjAxOTNmNmMyLTdhMTAtN2QxMS1iMjIyLTAwMDAwMDAwMDAwMSIsImRldiI6IjAxOTNmNmMyLTdhMTAtN2I0NC05ZDkyLTAwMTEyMjMzNDQ1NSIsInNjcCI6ImNvbnRyb2wiLCJpYXQiOjE3OTU3ODA4MDAsImV4cCI6MTc5NjM4NTYwMSwiZXAiOjN9.J94gkLTMYahnLNPjEU-wpaR-8pacSK7bRf9gSpt2WrM",
+      "reason": "lifetime"
+    },
+    {
+      "name": "admin_lifetime_too_long",
+      "ticket": "LT1.eyJzdWIiOiJ1OjAxOTNmNmMyLTdhMTAtN2QxMS1iMjIyLTAwMDAwMDAwMDAwMSIsImRldiI6IjAxOTNmNmMyLTdhMTAtN2I0NC05ZDkyLTAwMTEyMjMzNDQ1NSIsInNjcCI6ImFkbWluIiwiaWF0IjoxNzk1NzgwODAwLCJleHAiOjE3OTU4MjQwMDEsImVwIjozfQ.63VYH_UbmGfJgxF-PFMkPx3c1rvEJO8tAB8PLc1J_p0",
+      "reason": "lifetime"
+    },
+    {
+      "name": "issued_in_future",
+      "ticket": "LT1.eyJzdWIiOiJ1OjAxOTNmNmMyLTdhMTAtN2QxMS1iMjIyLTAwMDAwMDAwMDAwMSIsImRldiI6IjAxOTNmNmMyLTdhMTAtN2I0NC05ZDkyLTAwMTEyMjMzNDQ1NSIsInNjcCI6ImNvbnRyb2wiLCJpYXQiOjE3OTU3ODUwMDAsImV4cCI6MTc5NTc4ODAwMCwiZXAiOjN9.7OnhknWvqzgzb0GQmVOv03b73y27UybfphvFUfctdhg",
+      "reason": "not_yet_valid"
+    },
+    {
+      "name": "wrong_prefix",
+      "ticket": "LT2.eyJzdWIiOiJ1OjAxOTNmNmMyLTdhMTAtN2QxMS1iMjIyLTAwMDAwMDAwMDAwMSIsImRldiI6IjAxOTNmNmMyLTdhMTAtN2I0NC05ZDkyLTAwMTEyMjMzNDQ1NSIsInNjcCI6ImNvbnRyb2wiLCJpYXQiOjE3OTU3ODA4MDAsImV4cCI6MTc5NjM4NTYwMCwiZXAiOjN9.RW88EwYueQi2lcIW0VQp2s8hxz7pcGkiI_MqNiK9TNw",
+      "reason": "format"
+    },
+    {
+      "name": "missing_part",
+      "ticket": "LT1.eyJzdWIiOiJ1OjAxOTNmNmMyLTdhMTAtN2QxMS1iMjIyLTAwMDAwMDAwMDAwMSIsImRldiI6IjAxOTNmNmMyLTdhMTAtN2I0NC05ZDkyLTAwMTEyMjMzNDQ1NSIsInNjcCI6ImNvbnRyb2wiLCJpYXQiOjE3OTU3ODA4MDAsImV4cCI6MTc5NjM4NTYwMCwiZXAiOjN9",
+      "reason": "format"
+    },
+    {
+      "name": "not_base64",
+      "ticket": "LT1.!!!.RW88EwYueQi2lcIW0VQp2s8hxz7pcGkiI_MqNiK9TNw",
+      "reason": "format"
+    },
+    {
+      "name": "too_long",
+      "ticket": "LT1.eyJzdWIiOiJ1OjAxOTNmNmMyLTdhMTAtN2QxMS1iMjIyLTAwMDAwMDAwMDAwMSIsImRldiI6IjAxOTNmNmMyLTdhMTAtN2I0NC05ZDkyLTAwMTEyMjMzNDQ1NSIsInNjcCI6ImNvbnRyb2wiLCJpYXQiOjE3OTU3ODA4MDAsImV4cCI6MTc5NjM4NTYwMCwiZXAiOjN9.RW88EwYueQi2lcIW0VQp2s8hxz7pcGkiI_MqNiK9TNwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "reason": "format"
+    },
+    {
+      "name": "bad_scope",
+      "ticket": "LT1.eyJzdWIiOiJ1OjAxOTNmNmMyLTdhMTAtN2QxMS1iMjIyLTAwMDAwMDAwMDAwMSIsImRldiI6IjAxOTNmNmMyLTdhMTAtN2I0NC05ZDkyLTAwMTEyMjMzNDQ1NSIsInNjcCI6InJvb3QiLCJpYXQiOjE3OTU3ODA4MDAsImV4cCI6MTc5NjM4NTYwMCwiZXAiOjN9.g3xygiuiNC7DxRGgZA_bPPtxyxQZJLkhuu8SaosssLI",
+      "reason": "claims"
+    }
+  ],
+  "rules": {
+    "max_length": 512,
+    "max_lifetime_s": {
+      "control": 604800,
+      "admin": 43200
+    },
+    "clock_skew_s": 300,
+    "comment": "iat may be at most clock_skew_s in the future; exp must be > now; ep must equal the device's ticket epoch."
+  }
+}

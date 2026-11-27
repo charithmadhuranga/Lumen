@@ -1,0 +1,77 @@
+# P3 — Devices, claiming, credentials, broker authorisation, local tickets
+
+## Outcome
+
+- A user can claim a (simulated) gateway, which then connects to EMQX
+  with its own credential.
+- The gateway can register controllers as its children, and the ACL hook
+  allows exactly its own and its children's topics.
+- Controllers never get broker credentials (DECISIONS D-17).
+- The cloud mints local tickets that verify against `protocol/fixtures`.
+
+## Tasks
+
+- [ ] Tables:
+  - `devices`:
+    - `kind` (`controller` / `gateway`),
+    - `hw_model`, `board`, `mac`, `chip`,
+    - `fw_version`, `status`, `controller_id`,
+    - `home_id`, `room_id` (nullable),
+    - `gateway_id`, `route_epoch`,
+    - `ticket_epoch`,
+    - `local_key_enc` (AES-256-GCM under `LUMEN_KEK`, with key ID),
+    - `last_seen_at`.
+  - `gateway_credentials`: gateway device, SHA-256 hash, created, revoked.
+  - `claims`: token hash, user, home, kind (`gateway` / `controller`), gateway, setup-proof hash, expiry, `used_at`.
+- [ ] Claim flow (PROTOCOL §8):
+  - `POST /homes/{home}/gateway-claims` and `POST /homes/{home}/claims`
+    (a controller claim for a chosen gateway), admin or owner only;
+  - `POST /gateway/register`, rate-limited by IP;
+  - `POST /gateways/{gw}/children/register`, gateway-authenticated with a
+    short-lived gateway JWT obtained with its MQTT credential via
+    `POST /gateway/token`.
+
+  Single use is enforced atomically (`UPDATE … WHERE used_at IS NULL`).
+- [ ] Gateway setup proof: the setup code (8 characters) is checked with
+      a constant-time compare against the hash the app sends with the
+      claim.
+- [ ] Device management:
+  - `GET /homes/{home}/devices`, `GET /devices/{id}`, `PATCH` (name, room);
+  - `DELETE` on a controller raises its ticket epoch, unassigns it and tells
+    its gateway; on a gateway it revokes the credential and unassigns its
+    children;
+  - `GET /gateways/{gw}/children`; `POST` and `DELETE` for a child raise
+    `route_epoch` and publish the retained `g/{gw}/children`.
+- [ ] `/internal/mqtt/auth` and `/internal/mqtt/acl` (PROTOCOL §7), on the
+      internal port only, guarded by the hook secret. EMQX is configured
+      to use them in compose. Revocation kicks the client through the EMQX
+      management API.
+- [ ] `POST /devices/{id}/local-ticket`:
+  - role member or above gives a `control` ticket for 7 days;
+  - admin or owner can ask for an `admin` ticket for 12 h.
+
+  The response includes LAN hints (last IP, `controller_id`) from
+  `config/reported`.
+- [ ] `app/services/tickets.py` is the reference implementation of
+      PROTOCOL §6, checked against `protocol/fixtures/tickets.json`.
+
+## Tests
+
+- **Claims:** expiry, reuse, wrong home or mode.
+- **Gateway:** the wrong setup proof is rejected.
+- **Broker hooks:** a parametrised ACL matrix covering:
+  - a gateway on its own `g/` topics, in the allowed directions only,
+  - a gateway on an assigned child (current epoch) versus a removed child,
+  - foreign devices,
+  - wildcard subscriptions refused.
+- **Revocation:** a revoked credential is denied.
+- **Live broker (compose):** a Python MQTT client using a registered
+  gateway credential connects. A wrong password is refused. Publishing to
+  a non-child's topic is refused (EMQX drops it or disconnects the
+  client). Controller-style client IDs (`d:`) are always refused.
+- **Tickets:** fixtures, scope by role, expiry limits, epoch.
+
+## Gate
+
+The tests pass, including the live-broker test against the compose stack
+("local docker").

@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.lumen.invalid/protocol/v1/state.schema.json",
+  "title": "Reported state — topic lumen/v1/d/{device}/state, retained (PROTOCOL.md §5)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "device", "ts", "rev", "lights"],
+  "properties": {
+    "v": { "$ref": "common.schema.json#/$defs/version" },
+    "device": { "$ref": "common.schema.json#/$defs/uuid" },
+    "ts": { "$ref": "common.schema.json#/$defs/timestampMs" },
+    "rev": { "type": "integer", "minimum": 0 },
+    "lights": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "type", "available", "output"],
+        "properties": {
+          "id": { "$ref": "common.schema.json#/$defs/localId" },
+          "type": { "$ref": "common.schema.json#/$defs/lightType" },
+          "available": { "type": "boolean" },
+          "output": { "$ref": "common.schema.json#/$defs/lightOutput" },
+          "effect": { "type": ["string", "null"], "maxLength": 24 }
+        }
+      }
+    },
+    "inputs": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "state"],
+        "properties": {
+          "id": { "$ref": "common.schema.json#/$defs/localId" },
+          "state": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}

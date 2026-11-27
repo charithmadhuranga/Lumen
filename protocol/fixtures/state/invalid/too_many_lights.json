@@ -1,0 +1,528 @@
+{
+  "v": 1,
+  "device": "0193f6c2-7a10-7b44-9d92-001122334455",
+  "ts": 1795780800000,
+  "rev": 0,
+  "lights": [
+    {
+      "id": "l0",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l1",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l2",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l3",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l4",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l5",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l6",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l7",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l8",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l9",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l10",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l11",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l12",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l13",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l14",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l15",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l16",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l17",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l18",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l19",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l20",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l21",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l22",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l23",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l24",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l25",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l26",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l27",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l28",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l29",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l30",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l31",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l32",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l33",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l34",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l35",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l36",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l37",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l38",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l39",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l40",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l41",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l42",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l43",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l44",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l45",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l46",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l47",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l48",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l49",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l50",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l51",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l52",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l53",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l54",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l55",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l56",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l57",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l58",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l59",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l60",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l61",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l62",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l63",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    },
+    {
+      "id": "l64",
+      "type": "switch",
+      "available": true,
+      "output": {
+        "power": false
+      }
+    }
+  ]
+}

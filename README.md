@@ -11,10 +11,14 @@ Firmware and a web app, served from the controller itself. Lights, rooms,
 scenes, floor plans and automations all run locally, with no cloud and no
 internet needed.
 
+**Lumen Pro** (this branch) adds Lumen Cloud, the Lumen Gateway and the
+Lumen mobile app for remote access. Proprietary and confidential; see
+[docs/pro/](docs/pro/ARCHITECTURE.md).
+
 [![CI](https://github.com/charithmadhuranga/Lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/charithmadhuranga/Lumen/actions/workflows/ci.yml)
 [![Release build](https://github.com/charithmadhuranga/Lumen/actions/workflows/release.yml/badge.svg)](https://github.com/charithmadhuranga/Lumen/actions/workflows/release.yml)
 [![Release](https://img.shields.io/github/v/release/charithmadhuranga/Lumen?include_prereleases&sort=semver&label=release)](https://github.com/charithmadhuranga/Lumen/releases)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![License: proprietary](https://img.shields.io/badge/license-proprietary-lightgrey.svg)](LICENSE)
 <br>
 [![ESP-IDF 6.1](https://img.shields.io/badge/ESP--IDF-6.1-E7352C?logo=espressif&logoColor=white)](https://github.com/espressif/esp-idf)
 [![PlatformIO](https://img.shields.io/badge/PlatformIO-espressif32%408.0.0-F5822A?logo=platformio&logoColor=white)](https://platformio.org/)
@@ -248,14 +252,16 @@ ESP32-S3 hardware testing. The full list of known limitations is in the [changel
 
 ## Contributing
 
-Issues and pull requests are welcome. Please read [AGENTS.md](AGENTS.md) first: it sets the architecture rules
+Internal repository. Read [AGENTS.md](AGENTS.md) first: it sets the architecture rules
 (no GPIO numbers outside board profiles, enqueue-only network callbacks, bounded queues), the commands and the
 definition of done. Every change ships with tests. Hardware claims are marked as verified only after a run on a
 real board.
 
 ## License
 
-Lumen is released under the [MIT License](LICENSE).
+Proprietary. Copyright (c) 2026 charithmadhuranga. All rights reserved; see [LICENSE](LICENSE). Lumen 0.1.0
+and earlier were published under the MIT License, and copies obtained under those terms keep them.
+Third-party components keep their own licences: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 `controller-presets/` holds vendor reference material for the KC868-AP. It is kept for reference only and is
 not covered by this license. The logo uses the Lucide "lightbulb" icon ([ISC License](https://lucide.dev/license)).

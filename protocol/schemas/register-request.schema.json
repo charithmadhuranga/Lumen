@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.lumen.invalid/protocol/v1/register-request.schema.json",
+  "title": "Controller registration request \u2014 controller -> gateway, POST /local/v1/register (PROTOCOL.md \u00a78)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "claimToken",
+    "hw",
+    "fw",
+    "controllerId",
+    "url"
+  ],
+  "properties": {
+    "v": {
+      "$ref": "common.schema.json#/$defs/version"
+    },
+    "claimToken": {
+      "type": "string",
+      "pattern": "^lct_[A-Za-z0-9_-]{43}$"
+    },
+    "hw": {
+      "$ref": "common.schema.json#/$defs/hardware"
+    },
+    "fw": {
+      "$ref": "common.schema.json#/$defs/semver"
+    },
+    "controllerId": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]{1,32}$"
+    },
+    "url": {
+      "type": "string",
+      "pattern": "^http://[0-9.]{7,15}(:[0-9]{1,5})?$"
+    }
+  }
+}

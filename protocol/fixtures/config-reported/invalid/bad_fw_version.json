@@ -1,0 +1,75 @@
+{
+  "v": 1,
+  "device": "0193f6c2-7a10-7b44-9d92-001122334455",
+  "rev": 42,
+  "ts": 1795780800000,
+  "fw": "latest",
+  "board": "kincony_kc868_ap",
+  "controllerId": "lumen-0798",
+  "ip": "192.168.1.42",
+  "caps": {
+    "ota": true,
+    "backup": true
+  },
+  "lights": [
+    {
+      "id": "living_main",
+      "name": "Living ceiling",
+      "type": "rgb",
+      "roomId": "living",
+      "supports": {
+        "brightness": true,
+        "color": true,
+        "white": false,
+        "colorTemperature": false,
+        "effects": [
+          "fade",
+          "rainbow"
+        ]
+      }
+    },
+    {
+      "id": "desk",
+      "name": "Desk",
+      "type": "cct",
+      "supports": {
+        "brightness": true,
+        "color": false,
+        "white": false,
+        "colorTemperature": true,
+        "kelvinMin": 2700,
+        "kelvinMax": 6500,
+        "effects": []
+      }
+    }
+  ],
+  "rooms": [
+    {
+      "id": "living",
+      "name": "Living room"
+    }
+  ],
+  "groups": [
+    {
+      "id": "downstairs",
+      "name": "Downstairs",
+      "members": [
+        "living_main",
+        "desk"
+      ]
+    }
+  ],
+  "scenes": [
+    {
+      "id": "evening",
+      "name": "Evening"
+    }
+  ],
+  "automations": [
+    {
+      "id": "evening_lights",
+      "name": "Evening lights",
+      "enabled": true
+    }
+  ]
+}

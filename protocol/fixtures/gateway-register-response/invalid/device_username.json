@@ -1,0 +1,9 @@
+{
+  "v": 1,
+  "gatewayId": "0193f6c2-7a10-7c00-8a00-00000000aa01",
+  "mqtt": {
+    "url": "mqtts://x:8883",
+    "username": "d:0193f6c2-7a10-7b44-9d92-001122334455",
+    "password": "ppppppppppppppppppppppppppppppppppppppppppp"
+  }
+}

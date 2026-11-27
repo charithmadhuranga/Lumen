@@ -1,0 +1,17 @@
+{
+  "v": 1,
+  "id": "0193f6c2-8b20-7e33-a444-556677889900",
+  "ts": 1795780800000,
+  "exp": 1795780815000,
+  "src": {
+    "kind": "user",
+    "id": "0193f6c2-7a10-7d11-b222-000000000001"
+  },
+  "op": "light.set",
+  "target": "living_main",
+  "args": {
+    "power": true,
+    "brightness": 75,
+    "transitionMs": 400
+  }
+}

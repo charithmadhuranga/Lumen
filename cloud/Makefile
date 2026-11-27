@@ -12,6 +12,7 @@ dev-certs/server.pem:
 	tools/dev_certs.sh
 
 up: .env certs    ## start postgres, redis, emqx and the api
+	tools/emqx_api_keys.sh
 	docker compose up -d --build --wait
 
 down:

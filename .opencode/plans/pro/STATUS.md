@@ -9,7 +9,7 @@ Progress record for [README.md](README.md). Verification labels: **mock**,
 | P0 Foundation | done (gate passed 2026-11-27) | see log |
 | P1 Cloud foundation | done (gate passed 2026-11-27) | local docker |
 | P2 Accounts and homes | done (gate passed 2026-11-27) | local docker |
-| P3 Devices and identity | not started | |
+| P3 Devices and identity | done (gate passed 2026-11-27) | local docker |
 | P4 Cloud messaging | not started | |
 | P5 Firmware (tickets, gateway pairing) | not started | no cloud connection on controllers (D-17) |
 | P6 Gateway | not started | |
@@ -48,3 +48,5 @@ Progress record for [README.md](README.md). Verification labels: **mock**,
 | 2026-11-27 | P1 | 41 cloud production deps added to THIRD_PARTY_NOTICES.md (certifi MPL-2.0, unmodified, server side) | done |
 | 2026-11-27 | P2 | Accounts (argon2id, JWT + rotating refresh with reuse detection, sessions, lockout, rate limits, verify/reset), homes, members, rooms, role matrix (60 route×role cases incl. outsider 404) | PASS — 151 tests (local docker) |
 | 2026-11-27 | P2 | HTTP smoke test against the rebuilt API container | PASS (local docker) |
+| 2026-11-27 | P3 | Claims, gateway/controller registration, re-pairing, Basic gateway auth, device management, K_local wrapped (AES-256-GCM), local tickets (protocol vectors), EMQX auth/ACL hooks | PASS — 262 tests (local docker) |
+| 2026-11-27 | P3 | Live EMQX: gateway connects; allowed publish delivered; non-child / children publish dropped; release kicks + refuses reconnect; unknown/anonymous refused | PASS (local docker) |

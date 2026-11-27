@@ -4,10 +4,9 @@
 #   make up        start everything (creates .env and dev certificates first)
 #   make down      stop
 #
-# The broker has no clients yet: every connection is refused until P3 adds
-# the cloud's auth/ACL hooks (authentication: an empty built-in database;
-# authorization: deny when nothing matches). Plain-TCP and WebSocket
-# listeners are off; only TLS (8883) is enabled.
+# The broker asks the API (internal port 8801) to authenticate every client
+# and authorise every publish/subscribe; anything the API does not allow is
+# denied. Plain-TCP and WebSocket listeners are off; only TLS (8883) is enabled.
 name: lumen-cloud
 
 services:
@@ -50,9 +49,22 @@ services:
       EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__CERTFILE: /certs/server.pem
       EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__KEYFILE: /certs/server.key
       EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__CACERTFILE: /certs/ca.pem
-      EMQX_AUTHENTICATION: '[{mechanism = password_based, backend = built_in_database, user_id_type = username}]'
+      # Answered by the cloud's internal API (PROTOCOL.md §7). "$$" escapes compose
+      # interpolation, so EMQX receives its own ${clientid} placeholders.
+      EMQX_AUTHENTICATION: >-
+        [{mechanism = password_based, backend = http, method = post,
+          url = "http://api:8801/internal/mqtt/auth", request_timeout = "5s",
+          body = {clientid = "$${clientid}", username = "$${username}", password = "$${password}"},
+          headers = {"content-type" = "application/json", "x-lumen-hook-secret" = "${LUMEN_HOOK_SECRET:?set in .env}"}}]
       EMQX_AUTHORIZATION__NO_MATCH: deny
-      EMQX_AUTHORIZATION__SOURCES: '[]'
+      EMQX_AUTHORIZATION__CACHE__ENABLE: "true"
+      EMQX_AUTHORIZATION__CACHE__TTL: 60s
+      EMQX_AUTHORIZATION__SOURCES: >-
+        [{type = http, method = post, url = "http://api:8801/internal/mqtt/acl", request_timeout = "5s",
+          body = {clientid = "$${clientid}", username = "$${username}", topic = "$${topic}", action = "$${action}"},
+          headers = {"content-type" = "application/json", "x-lumen-hook-secret" = "${LUMEN_HOOK_SECRET:?set in .env}"}}]
+      # Admin API key the cloud uses to disconnect revoked gateways (tools/emqx_api_keys.sh).
+      EMQX_API_KEY__BOOTSTRAP_FILE: /certs/emqx_api_keys.txt
     ports:
       - "127.0.0.1:28883:8883"
       - "127.0.0.1:28083:18083"
@@ -72,7 +84,7 @@ services:
     environment:
       LUMEN_DATABASE_URL: postgresql+asyncpg://lumen:lumen@postgres:5432/lumen
       LUMEN_REDIS_URL: redis://redis:6379/0
-      LUMEN_BROKER_URL: mqtts://emqx:8883
+      LUMEN_EMQX_API_URL: http://emqx:18083
     ports:
       - "127.0.0.1:8800:8800"
       - "127.0.0.1:8801:8801"

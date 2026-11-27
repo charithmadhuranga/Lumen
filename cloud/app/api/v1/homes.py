@@ -10,7 +10,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
@@ -30,7 +30,9 @@ from app.api.schemas import (
 from app.core.errors import ApiError, ok
 from app.core.permissions import RANK, Action
 from app.models.account import User
+from app.models.device import Device, DeviceKind
 from app.models.home import Home, HomeMember, Role, Room
+from app.services.broker import EmqxAdmin
 
 router = APIRouter(prefix="/api/v1", tags=["homes"])
 
@@ -98,11 +100,18 @@ async def update_home(
 
 @router.delete("/homes/{home_id}", response_model=Envelope[None])
 async def delete_home(
-    access: Annotated[HomeAccess, Depends(home_access(Action.home_delete))], db: DbSession
+    access: Annotated[HomeAccess, Depends(home_access(Action.home_delete))], request: Request, db: DbSession
 ) -> dict[str, Any]:
-    # P3 extends this: devices are released (credentials revoked, epochs raised) first.
+    # Devices go with the home (cascade); connected gateways are disconnected
+    # so their now-deleted credentials stop working at once.
+    gateways = (
+        await db.scalars(select(Device.id).where(Device.home_id == access.home.id, Device.kind == DeviceKind.gateway))
+    ).all()
     await db.delete(access.home)
     await db.commit()
+    admin = EmqxAdmin(request.app.state.settings)
+    for gid in gateways:
+        await admin.kick(f"g:{gid}")
     return ok(None)
 
 

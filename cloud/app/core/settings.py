@@ -33,7 +33,13 @@ class Settings(BaseSettings):
 
     database_url: SecretStr = SecretStr("postgresql+asyncpg://lumen:lumen@localhost:55432/lumen")
     redis_url: SecretStr = SecretStr("redis://localhost:56379/0")
-    broker_url: str = "mqtts://localhost:28883"
+    broker_url: str = "mqtts://localhost:28883"  # given to gateways at registration
+    # EMQX management API (kick revoked gateways). Empty URL disables kicking.
+    emqx_api_url: str = "http://localhost:28083"
+    emqx_api_key: str = "lumen-cloud"
+    emqx_api_secret: SecretStr = SecretStr(DEV_SECRET)
+    # Password of the cloud's own broker clients (svc:*), P4.
+    mqtt_service_password: SecretStr = SecretStr(DEV_SECRET)
 
     jwt_secret: SecretStr = SecretStr(DEV_SECRET)
     jwt_previous_secret: SecretStr | None = None  # still accepted for verification during key rotation
@@ -41,6 +47,8 @@ class Settings(BaseSettings):
     kek: SecretStr = SecretStr(DEV_SECRET)  # wraps per-controller K_local (P3)
 
     # Rate limits (P2). Windows in seconds.
+    claim_ttl_s: int = Field(default=900, ge=60, le=3600)
+    register_device_ip_limit: int = Field(default=20, ge=1)  # gateway/children registrations per IP per hour
     login_fail_limit: int = Field(default=5, ge=1)  # per IP + e-mail
     login_ip_fail_limit: int = Field(default=30, ge=1)  # per IP, all e-mails (spraying)
     login_window_s: int = Field(default=300, ge=1)
@@ -60,7 +68,7 @@ class Settings(BaseSettings):
         if self.environment != "production":
             return self
         problems: list[str] = []
-        for name in ("jwt_secret", "hook_secret", "kek"):
+        for name in ("jwt_secret", "hook_secret", "kek", "emqx_api_secret", "mqtt_service_password"):
             value = getattr(self, name).get_secret_value()
             if value == DEV_SECRET or len(value) < 32:
                 problems.append(f"LUMEN_{name.upper()} must be set to a random value of at least 32 characters")

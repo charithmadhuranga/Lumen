@@ -1,0 +1,11 @@
+{
+  "v": 1,
+  "claimToken": "lct_CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+  "setupProof": "IL0U-1234",
+  "version": "1.0.0",
+  "hw": {
+    "model": "raspberry-pi-5",
+    "mac": "d8:3a:dd:00:00:01",
+    "chip": "bcm2712"
+  }
+}

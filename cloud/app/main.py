@@ -21,7 +21,8 @@ from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, Counter, H
 from redis.asyncio import Redis
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from app.api.v1 import auth, health, homes
+from app.api import internal_mqtt
+from app.api.v1 import auth, devices, health, homes
 from app.core.errors import error_body, install_error_handlers
 from app.core.logging import configure_logging
 from app.core.settings import Settings, get_settings
@@ -197,6 +198,7 @@ def create_public_app(
     app.include_router(health.router)
     app.include_router(auth.router)
     app.include_router(homes.router)
+    app.include_router(devices.router)
     app.add_middleware(BodyLimit, limit=MAX_BODY_BYTES)
     return app
 
@@ -220,6 +222,8 @@ def create_internal_app(
     @app.get("/healthz")
     async def internal_healthz() -> dict[str, str]:
         return {"status": "ok"}
+
+    app.include_router(internal_mqtt.router)
 
     @app.get("/metrics")
     async def prometheus_metrics() -> Response:

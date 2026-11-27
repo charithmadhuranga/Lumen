@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.lumen.invalid/protocol/v1/gateway-register-request.schema.json",
+  "title": "Gateway registration request \u2014 POST /api/v1/gateway/register (PROTOCOL.md \u00a78)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "claimToken",
+    "setupProof",
+    "hw",
+    "version"
+  ],
+  "properties": {
+    "v": {
+      "$ref": "common.schema.json#/$defs/version"
+    },
+    "claimToken": {
+      "type": "string",
+      "pattern": "^lct_[A-Za-z0-9_-]{43}$"
+    },
+    "setupProof": {
+      "type": "string",
+      "pattern": "^[0-9A-HJKMNP-TV-Za-hjkmnp-tv-z -]{8,16}$",
+      "description": "the setup code shown by the gateway; normalised by the cloud"
+    },
+    "hw": {
+      "$ref": "common.schema.json#/$defs/hardware"
+    },
+    "version": {
+      "$ref": "common.schema.json#/$defs/semver"
+    }
+  }
+}

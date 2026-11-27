@@ -175,6 +175,10 @@ VALID = {
     "register-response": {
         "child": {"v": 1, "deviceId": DEV, "localKey": "k" * 43, "ticketEpoch": 0, "gatewayId": GW},
     },
+    "gateway-register-request": {
+        "pi": {"v": 1, "claimToken": "lct_" + "C" * 43, "setupProof": "K7QM-2XRA", "version": "1.0.0",
+               "hw": {"model": "raspberry-pi-5", "mac": "d8:3a:dd:00:00:01", "chip": "bcm2712"}},
+    },
     "gateway-register-response": {
         "ok": {"v": 1, "gatewayId": GW,
                "mqtt": {"url": "mqtts://mqtt.lumen.example:8883", "username": "g:" + GW, "password": "p" * 43}},
@@ -270,6 +274,12 @@ INVALID = {
                                      mqtt={"url": "mqtts://x:8883", "username": "d:" + DEV, "password": "p" * 43}),
         "missing_gateway": without(VALID["register-response"]["child"], "gatewayId"),
         "short_local_key": dict(VALID["register-response"]["child"], localKey="short"),
+    },
+    "gateway-register-request": {
+        "missing_setup_proof": without(VALID["gateway-register-request"]["pi"], "setupProof"),
+        "setup_code_with_ambiguous_letters": dict(VALID["gateway-register-request"]["pi"], setupProof="IL0U-1234"),
+        "setup_code_too_short": dict(VALID["gateway-register-request"]["pi"], setupProof="K7QM"),
+        "extra_field": dict(VALID["gateway-register-request"]["pi"], mqttPassword="x"),
     },
     "gateway-register-response": {
         "plain_mqtt_url": {**VALID["gateway-register-response"]["ok"],

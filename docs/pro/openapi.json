@@ -24,6 +24,398 @@
         "title": "ChangePasswordRequest",
         "type": "object"
       },
+      "ChildOut": {
+        "additionalProperties": false,
+        "properties": {
+          "controllerId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Controllerid"
+          },
+          "deviceId": {
+            "format": "uuid",
+            "title": "Deviceid",
+            "type": "string"
+          },
+          "lanUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lanurl"
+          },
+          "localKey": {
+            "title": "Localkey",
+            "type": "string"
+          },
+          "routeEpoch": {
+            "title": "Routeepoch",
+            "type": "integer"
+          },
+          "ticketEpoch": {
+            "title": "Ticketepoch",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "deviceId",
+          "controllerId",
+          "lanUrl",
+          "routeEpoch",
+          "ticketEpoch",
+          "localKey"
+        ],
+        "title": "ChildOut",
+        "type": "object"
+      },
+      "ClaimOut": {
+        "additionalProperties": false,
+        "properties": {
+          "claimToken": {
+            "title": "Claimtoken",
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "title": "Expiresat",
+            "type": "string"
+          }
+        },
+        "required": [
+          "claimToken",
+          "expiresAt"
+        ],
+        "title": "ClaimOut",
+        "type": "object"
+      },
+      "ControllerClaimCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "gatewayId": {
+            "format": "uuid",
+            "title": "Gatewayid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "gatewayId"
+        ],
+        "title": "ControllerClaimCreate",
+        "type": "object"
+      },
+      "ControllerRegister": {
+        "additionalProperties": false,
+        "description": "protocol/schemas/register-request.schema.json (forwarded by the gateway).",
+        "properties": {
+          "claimToken": {
+            "pattern": "^lct_[A-Za-z0-9_-]{43}$",
+            "title": "Claimtoken",
+            "type": "string"
+          },
+          "controllerId": {
+            "pattern": "^[a-z0-9-]{1,32}$",
+            "title": "Controllerid",
+            "type": "string"
+          },
+          "fw": {
+            "maxLength": 32,
+            "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$",
+            "title": "Fw",
+            "type": "string"
+          },
+          "hw": {
+            "$ref": "#/components/schemas/Hardware"
+          },
+          "url": {
+            "pattern": "^http://[0-9.]{7,15}(:[0-9]{1,5})?$",
+            "title": "Url",
+            "type": "string"
+          },
+          "v": {
+            "maximum": 1.0,
+            "minimum": 1.0,
+            "title": "V",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "v",
+          "claimToken",
+          "hw",
+          "fw",
+          "controllerId",
+          "url"
+        ],
+        "title": "ControllerRegister",
+        "type": "object"
+      },
+      "ControllerRegistered": {
+        "additionalProperties": false,
+        "description": "protocol/schemas/register-response.schema.json.",
+        "properties": {
+          "deviceId": {
+            "format": "uuid",
+            "title": "Deviceid",
+            "type": "string"
+          },
+          "gatewayId": {
+            "format": "uuid",
+            "title": "Gatewayid",
+            "type": "string"
+          },
+          "localKey": {
+            "title": "Localkey",
+            "type": "string"
+          },
+          "ticketEpoch": {
+            "title": "Ticketepoch",
+            "type": "integer"
+          },
+          "v": {
+            "default": 1,
+            "title": "V",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "deviceId",
+          "localKey",
+          "ticketEpoch",
+          "gatewayId"
+        ],
+        "title": "ControllerRegistered",
+        "type": "object"
+      },
+      "DeviceOut": {
+        "additionalProperties": false,
+        "properties": {
+          "board": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Board"
+          },
+          "controllerId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Controllerid"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "fwVersion": {
+            "title": "Fwversion",
+            "type": "string"
+          },
+          "gatewayId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gatewayid"
+          },
+          "hwModel": {
+            "title": "Hwmodel",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "lastSeenAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastseenat"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "roomId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roomid"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "roomId",
+          "hwModel",
+          "board",
+          "fwVersion",
+          "controllerId",
+          "gatewayId",
+          "lastSeenAt",
+          "createdAt"
+        ],
+        "title": "DeviceOut",
+        "type": "object"
+      },
+      "DeviceUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "roomId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roomid"
+          }
+        },
+        "title": "DeviceUpdate",
+        "type": "object"
+      },
+      "Envelope_ClaimOut_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ClaimOut"
+          },
+          "error": {
+            "title": "Error",
+            "type": "null"
+          },
+          "success": {
+            "default": true,
+            "title": "Success",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Envelope[ClaimOut]",
+        "type": "object"
+      },
+      "Envelope_ControllerRegistered_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ControllerRegistered"
+          },
+          "error": {
+            "title": "Error",
+            "type": "null"
+          },
+          "success": {
+            "default": true,
+            "title": "Success",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Envelope[ControllerRegistered]",
+        "type": "object"
+      },
+      "Envelope_DeviceOut_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/DeviceOut"
+          },
+          "error": {
+            "title": "Error",
+            "type": "null"
+          },
+          "success": {
+            "default": true,
+            "title": "Success",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Envelope[DeviceOut]",
+        "type": "object"
+      },
+      "Envelope_GatewayRegistered_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/GatewayRegistered"
+          },
+          "error": {
+            "title": "Error",
+            "type": "null"
+          },
+          "success": {
+            "default": true,
+            "title": "Success",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Envelope[GatewayRegistered]",
+        "type": "object"
+      },
       "Envelope_HomeOut_": {
         "properties": {
           "data": {
@@ -43,6 +435,27 @@
           "data"
         ],
         "title": "Envelope[HomeOut]",
+        "type": "object"
+      },
+      "Envelope_LocalTicketOut_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/LocalTicketOut"
+          },
+          "error": {
+            "title": "Error",
+            "type": "null"
+          },
+          "success": {
+            "default": true,
+            "title": "Success",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Envelope[LocalTicketOut]",
         "type": "object"
       },
       "Envelope_NoneType_": {
@@ -128,6 +541,56 @@
           "data"
         ],
         "title": "Envelope[UserOut]",
+        "type": "object"
+      },
+      "Envelope_list_ChildOut__": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ChildOut"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "error": {
+            "title": "Error",
+            "type": "null"
+          },
+          "success": {
+            "default": true,
+            "title": "Success",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Envelope[list[ChildOut]]",
+        "type": "object"
+      },
+      "Envelope_list_DeviceOut__": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/DeviceOut"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "error": {
+            "title": "Error",
+            "type": "null"
+          },
+          "success": {
+            "default": true,
+            "title": "Success",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Envelope[list[DeviceOut]]",
         "type": "object"
       },
       "Envelope_list_HomeOut__": {
@@ -230,6 +693,84 @@
         "title": "Envelope[list[SessionOut]]",
         "type": "object"
       },
+      "GatewayClaimCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "setupProofHash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Setupproofhash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "setupProofHash"
+        ],
+        "title": "GatewayClaimCreate",
+        "type": "object"
+      },
+      "GatewayRegister": {
+        "additionalProperties": false,
+        "properties": {
+          "claimToken": {
+            "pattern": "^lct_[A-Za-z0-9_-]{43}$",
+            "title": "Claimtoken",
+            "type": "string"
+          },
+          "hw": {
+            "$ref": "#/components/schemas/Hardware"
+          },
+          "setupProof": {
+            "pattern": "^[0-9A-HJKMNP-TV-Za-hjkmnp-tv-z -]{8,16}$",
+            "title": "Setupproof",
+            "type": "string"
+          },
+          "v": {
+            "maximum": 1.0,
+            "minimum": 1.0,
+            "title": "V",
+            "type": "integer"
+          },
+          "version": {
+            "maxLength": 32,
+            "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "v",
+          "claimToken",
+          "setupProof",
+          "hw",
+          "version"
+        ],
+        "title": "GatewayRegister",
+        "type": "object"
+      },
+      "GatewayRegistered": {
+        "additionalProperties": false,
+        "properties": {
+          "gatewayId": {
+            "format": "uuid",
+            "title": "Gatewayid",
+            "type": "string"
+          },
+          "mqtt": {
+            "$ref": "#/components/schemas/MqttCredential"
+          },
+          "v": {
+            "default": 1,
+            "title": "V",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "gatewayId",
+          "mqtt"
+        ],
+        "title": "GatewayRegistered",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -241,6 +782,52 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "Hardware": {
+        "additionalProperties": false,
+        "properties": {
+          "board": {
+            "anyOf": [
+              {
+                "maxLength": 48,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Board"
+          },
+          "chip": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chip"
+          },
+          "mac": {
+            "pattern": "^[0-9a-f]{2}(:[0-9a-f]{2}){5}$",
+            "title": "Mac",
+            "type": "string"
+          },
+          "model": {
+            "maxLength": 48,
+            "minLength": 1,
+            "title": "Model",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model",
+          "mac"
+        ],
+        "title": "Hardware",
         "type": "object"
       },
       "HomeCreate": {
@@ -332,6 +919,87 @@
         "title": "HomeUpdate",
         "type": "object"
       },
+      "LanHints": {
+        "additionalProperties": false,
+        "properties": {
+          "controllerId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Controllerid"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "controllerId",
+          "url"
+        ],
+        "title": "LanHints",
+        "type": "object"
+      },
+      "LocalTicketOut": {
+        "additionalProperties": false,
+        "properties": {
+          "deviceId": {
+            "format": "uuid",
+            "title": "Deviceid",
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "title": "Expiresat",
+            "type": "string"
+          },
+          "lan": {
+            "$ref": "#/components/schemas/LanHints"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "ticket": {
+            "title": "Ticket",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticket",
+          "scope",
+          "expiresAt",
+          "deviceId",
+          "lan"
+        ],
+        "title": "LocalTicketOut",
+        "type": "object"
+      },
+      "LocalTicketRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "scope": {
+            "default": "control",
+            "pattern": "^(control|admin)$",
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "title": "LocalTicketRequest",
+        "type": "object"
+      },
       "LoginRequest": {
         "additionalProperties": false,
         "properties": {
@@ -395,6 +1063,30 @@
           "role"
         ],
         "title": "MemberRoleUpdate",
+        "type": "object"
+      },
+      "MqttCredential": {
+        "additionalProperties": false,
+        "properties": {
+          "password": {
+            "title": "Password",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "username",
+          "password"
+        ],
+        "title": "MqttCredential",
         "type": "object"
       },
       "RefreshRequest": {
@@ -1176,6 +1868,352 @@
         ]
       }
     },
+    "/api/v1/devices/{device_id}": {
+      "delete": {
+        "operationId": "delete_device_api_v1_devices__device_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Device Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_NoneType_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Device",
+        "tags": [
+          "devices"
+        ]
+      },
+      "get": {
+        "operationId": "get_device_api_v1_devices__device_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Device Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_DeviceOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Device",
+        "tags": [
+          "devices"
+        ]
+      },
+      "patch": {
+        "operationId": "update_device_api_v1_devices__device_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Device Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_DeviceOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Device",
+        "tags": [
+          "devices"
+        ]
+      }
+    },
+    "/api/v1/devices/{device_id}/local-ticket": {
+      "post": {
+        "operationId": "local_ticket_api_v1_devices__device_id__local_ticket_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Device Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocalTicketRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_LocalTicketOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Local Ticket",
+        "tags": [
+          "devices"
+        ]
+      }
+    },
+    "/api/v1/gateway/children": {
+      "get": {
+        "operationId": "gateway_children_api_v1_gateway_children_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_list_ChildOut__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Gateway Children",
+        "tags": [
+          "devices"
+        ]
+      }
+    },
+    "/api/v1/gateway/register": {
+      "post": {
+        "operationId": "register_gateway_api_v1_gateway_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GatewayRegister"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_GatewayRegistered_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Register Gateway",
+        "tags": [
+          "devices"
+        ]
+      }
+    },
+    "/api/v1/gateways/{gateway_id}/children": {
+      "get": {
+        "operationId": "list_children_api_v1_gateways__gateway_id__children_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "gateway_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Gateway Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_list_DeviceOut__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Children",
+        "tags": [
+          "devices"
+        ]
+      }
+    },
+    "/api/v1/gateways/{gateway_id}/children/register": {
+      "post": {
+        "operationId": "register_child_api_v1_gateways__gateway_id__children_register_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "gateway_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Gateway Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ControllerRegister"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_ControllerRegistered_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Register Child",
+        "tags": [
+          "devices"
+        ]
+      }
+    },
     "/api/v1/homes": {
       "get": {
         "operationId": "list_homes_api_v1_homes_get",
@@ -1368,6 +2406,155 @@
         "summary": "Update Home",
         "tags": [
           "homes"
+        ]
+      }
+    },
+    "/api/v1/homes/{home_id}/claims": {
+      "post": {
+        "operationId": "create_controller_claim_api_v1_homes__home_id__claims_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "home_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Home Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ControllerClaimCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_ClaimOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Controller Claim",
+        "tags": [
+          "devices"
+        ]
+      }
+    },
+    "/api/v1/homes/{home_id}/devices": {
+      "get": {
+        "operationId": "list_devices_api_v1_homes__home_id__devices_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "home_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Home Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_list_DeviceOut__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Devices",
+        "tags": [
+          "devices"
+        ]
+      }
+    },
+    "/api/v1/homes/{home_id}/gateway-claims": {
+      "post": {
+        "operationId": "create_gateway_claim_api_v1_homes__home_id__gateway_claims_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "home_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Home Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GatewayClaimCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_ClaimOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Gateway Claim",
+        "tags": [
+          "devices"
         ]
       }
     },

@@ -26,6 +26,8 @@ PROD = {
     "jwt_secret": STRONG,
     "hook_secret": STRONG,
     "kek": STRONG,
+    "emqx_api_secret": STRONG,
+    "mqtt_service_password": STRONG,
     "database_url": "postgresql+asyncpg://prod:x@db/lumen",
 }
 
@@ -46,6 +48,8 @@ def test_production_with_strong_values_starts() -> None:
         ({"jwt_secret": DEV_SECRET}, "LUMEN_JWT_SECRET"),
         ({"hook_secret": "short"}, "LUMEN_HOOK_SECRET"),
         ({"kek": DEV_SECRET}, "LUMEN_KEK"),
+        ({"emqx_api_secret": "short"}, "LUMEN_EMQX_API_SECRET"),
+        ({"mqtt_service_password": DEV_SECRET}, "LUMEN_MQTT_SERVICE_PASSWORD"),
         ({"database_url": "postgresql+asyncpg://lumen:lumen@db/lumen"}, "LUMEN_DATABASE_URL"),
         ({"broker_url": "mqtt://broker:1883"}, "mqtts://"),
         ({"log_level": "DEBUG"}, "DEBUG"),

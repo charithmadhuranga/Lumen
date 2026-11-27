@@ -241,20 +241,44 @@ Both endpoints are served only on the internal port and are guarded by
 |---|---|---|
 | 1 | app → `POST /api/v1/homes/{home}/claims` `{gatewayId}` | → `{claimToken, expiresAt}`, single use, 15 min, bound to user + home + gateway. Format: `lct_` + 43 base64url characters (32 random bytes); the cloud stores only its SHA-256 |
 | 2 | controller → gateway `POST /local/v1/register` `{claimToken, hw, fw, controllerId, url}`; the gateway → cloud `POST /api/v1/gateways/{gw}/children/register` (gateway-authenticated) | the cloud → gateway `{deviceId, localKey, ticketEpoch}`; the gateway → controller `{deviceId, localKey, ticketEpoch, gatewayId}` |
-| 3 | app → `GET /api/v1/homes/{home}/devices` | the new device appears once its first `config/reported` arrives |
+| 3 | app → `GET /api/v1/homes/{home}/devices` | the device is listed as soon as it is registered; live state arrives with its first `state` (P4) |
 | gateway claim | app → `POST /api/v1/homes/{home}/gateway-claims` `{setupProofHash}` → `{claimToken}`; gateway → `POST /api/v1/gateway/register` `{claimToken, setupProof, hw, version}` | → `{gatewayId, mqtt:{url, username, password}}` (schema `gateway-register-response`, never logged). `setupProof` is the setup code shown on the gateway; the app sends its SHA-256 with the claim, the gateway sends the code itself |
 
-**Release and re-claim:**
+**Setup code (gateway claim).** 8 characters of Crockford base32
+(`0-9 A-H J K M N P-T V-Z`), shown by the gateway, usually as `XXXX-XXXX`.
+Normalised by removing `-` and spaces and upper-casing. The app sends
+`setupProofHash` = lower-case hex SHA-256 of the normalised code; the gateway
+sends the code. A wrong code **burns the claim** (the app must create a new
+one), so the 40-bit code cannot be guessed against one claim. Request body:
+`protocol/schemas/gateway-register-request.schema.json`.
 
-- `DELETE /api/v1/devices/{id}` (a controller) raises its ticket epoch
-  (pushed through `config.apply` kind `cloud` first, if it is online),
-  removes it from its gateway's children and tells the gateway to forget
-  its `K_local`.
-- `DELETE /api/v1/gateways/{id}` revokes the gateway's MQTT credential.
-  Its controllers become unassigned. They keep working locally and can be
-  adopted by another gateway.
-- The controller clears its `cloud` NVS namespace when told to. A factory
-  reset also clears it.
+**Gateway REST authentication.** Gateway-facing routes take HTTP Basic with
+username `g:{gatewayId}` and the gateway's broker secret as the password
+(256-bit random, so the cloud compares SHA-256 digests; no slow hash). 20
+failures per IP per 5 minutes give 429.
+
+**Re-pairing.** Registering a gateway or controller whose MAC address is
+already known in the same home reuses its device id. A gateway gets a new
+secret (the old one is revoked at once). A controller gets a new `K_local`,
+`routeEpoch` + 1 and `ticketEpoch` + 1, so every ticket minted before stops
+working.
+
+**State recovery.** `GET /api/v1/gateway/children` (gateway auth) returns the
+gateway's controllers with `deviceId`, `controllerId`, `lanUrl`, `routeEpoch`,
+`ticketEpoch` and `localKey`, so a reinstalled gateway can rebuild its state.
+
+**Release:**
+
+- `DELETE /api/v1/devices/{id}` on a controller removes it from its gateway.
+  From P4 the cloud publishes the gateway's new retained `g/{gw}/children`,
+  and the gateway forgets that controller's `K_local`.
+- `DELETE /api/v1/devices/{id}` on a gateway deletes its credential, kicks it
+  from the broker (EMQX management API) and unassigns its controllers. They
+  keep working locally and can be paired with another gateway.
+- Deleting a home deletes all its devices and credentials and kicks its
+  gateways.
+- The controller clears its `cloud` NVS namespace when told to (P5). A
+  factory reset also clears it.
 
 ## 9. Gateway ↔ controller (LAN)
 

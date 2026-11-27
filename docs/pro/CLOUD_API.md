@@ -51,6 +51,22 @@ Anyone can leave a home (`DELETE /homes/{id}/members/{their own id}`) except the
 `OWNER_MUST_TRANSFER`). Limits: 20 homes per account, 100 rooms per home; room names are unique per home.
 Members join through invitations (P10).
 
+## Devices, claims and local tickets (P3)
+
+Gateways and controllers are both "devices" of a home. Controllers reach the cloud only through their gateway
+(DECISIONS D-17). Registration details, the setup code and re-pairing are in PROTOCOL.md §8.
+
+| Step | Who | Call |
+|---|---|---|
+| Add a gateway | app (owner/admin) | `POST /homes/{id}/gateway-claims {setupProofHash}` → `claimToken` (15 min, single use); the gateway then calls `POST /gateway/register` with the token and its setup code and receives its broker credential |
+| Add a controller | app (owner/admin) | `POST /homes/{id}/claims {gatewayId}` → `claimToken`; the controller passes it to its gateway, which calls `POST /gateways/{id}/children/register` (Basic auth) and hands `K_local` to the controller |
+| Rename, set room | owner/admin | `PATCH /devices/{id} {name?, roomId?}` (`roomId: null` clears it) |
+| Remove | owner/admin | `DELETE /devices/{id}`: a gateway loses its credential and is disconnected from the broker; its controllers stay in the home, unassigned |
+| Local access | any member | `POST /devices/{id}/local-ticket {scope}` → `{ticket, expiresAt, lan:{controllerId, url}}`. `control` (7 days) for every role; `admin` (12 h) for owner/admin only |
+
+Limits: 64 devices per home; 20 device registrations per IP per hour. A claim made for one gateway cannot be
+redeemed by another (403, and the claim stays usable for the right gateway).
+
 ## Endpoints
 
 <!-- BEGIN GENERATED ENDPOINTS -->
@@ -68,11 +84,22 @@ Members join through invitations (P10).
 | DELETE | `/api/v1/auth/sessions/{session_id}` | Revoke Session | Bearer |
 | POST | `/api/v1/auth/verify-email` | Verify Email | none |
 | POST | `/api/v1/auth/verify-email/resend` | Resend Verification | Bearer |
+| GET | `/api/v1/devices/{device_id}` | Get Device | Bearer |
+| PATCH | `/api/v1/devices/{device_id}` | Update Device | Bearer |
+| DELETE | `/api/v1/devices/{device_id}` | Delete Device | Bearer |
+| POST | `/api/v1/devices/{device_id}/local-ticket` | Local Ticket | Bearer |
+| GET | `/api/v1/gateway/children` | Gateway Children | gateway (Basic) |
+| POST | `/api/v1/gateway/register` | Register Gateway | claim token + setup code |
+| GET | `/api/v1/gateways/{gateway_id}/children` | List Children | Bearer |
+| POST | `/api/v1/gateways/{gateway_id}/children/register` | Register Child | gateway (Basic) |
 | GET | `/api/v1/homes` | List Homes | Bearer |
 | POST | `/api/v1/homes` | Create Home | Bearer |
 | GET | `/api/v1/homes/{home_id}` | Get Home | Bearer |
 | PATCH | `/api/v1/homes/{home_id}` | Update Home | Bearer |
 | DELETE | `/api/v1/homes/{home_id}` | Delete Home | Bearer |
+| POST | `/api/v1/homes/{home_id}/claims` | Create Controller Claim | Bearer |
+| GET | `/api/v1/homes/{home_id}/devices` | List Devices | Bearer |
+| POST | `/api/v1/homes/{home_id}/gateway-claims` | Create Gateway Claim | Bearer |
 | GET | `/api/v1/homes/{home_id}/members` | List Members | Bearer |
 | PATCH | `/api/v1/homes/{home_id}/members/{user_id}` | Change Role | Bearer |
 | DELETE | `/api/v1/homes/{home_id}/members/{user_id}` | Remove Member | Bearer |

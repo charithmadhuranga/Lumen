@@ -121,6 +121,8 @@ async def test_openapi_is_hidden_in_production(make_client) -> None:  # type: ig
             jwt_secret=strong,
             hook_secret=strong,
             kek=strong,
+            emqx_api_secret=strong,
+            mqtt_service_password=strong,
             database_url="postgresql+asyncpg://prod:x@db/lumen",
         )
     )

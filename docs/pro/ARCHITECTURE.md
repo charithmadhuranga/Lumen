@@ -57,9 +57,10 @@ home's only cloud connection.
 **Remote control:**
 
 1. App → `POST /devices/{id}/commands`.
-2. Cloud checks the user's role for the home, stores the command as
-   `queued`, publishes it to `d/{id}/cmd` with an MQTT 5 expiry, and marks
-   it `sent`.
+2. Cloud checks the user's role and the controller's reported
+   capabilities, stores the command as `sent`, and publishes it to
+   `d/{id}/cmd` with an MQTT 5 expiry (shared subscriptions spread
+   ingestion over all API instances).
 3. The gateway, which subscribes to `d/{child}/cmd`, checks it (PROTOCOL
    §3) and calls the controller's local REST API with a `g:` ticket.
 4. The controller validates the request and enqueues it on its lighting

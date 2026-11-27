@@ -7,6 +7,7 @@ session; every client fixture empties all tables and the Redis DB first.
 from __future__ import annotations
 
 import os
+import sys
 from collections.abc import AsyncIterator
 
 import pytest
@@ -20,6 +21,8 @@ from app.core.settings import Settings
 from app.main import create_internal_app, create_public_app
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# tools/ (simgateway) is importable from tests.
+sys.path.insert(0, os.path.join(HERE, "tools"))
 TEST_DB = os.environ.get("LUMEN_TEST_DATABASE_URL", "postgresql+asyncpg://lumen:lumen@127.0.0.1:55432/lumen_test")
 TEST_REDIS = os.environ.get("LUMEN_TEST_REDIS_URL", "redis://127.0.0.1:56379/15")
 
@@ -31,6 +34,10 @@ def make_settings(**overrides: object) -> Settings:
         "redis_url": TEST_REDIS,
         "log_json": True,
         "readiness_timeout_s": 1.0,
+        # Unit tests use a fake publisher and call the sweeper directly; the live
+        # messaging tests exercise the real bridge in the compose stack.
+        "bridge_enabled": False,
+        "sweeper_enabled": False,
     }
     values.update(overrides)
     return Settings(**values)  # type: ignore[arg-type]

@@ -33,6 +33,7 @@ from app.models.account import User
 from app.models.device import Device, DeviceKind
 from app.models.home import Home, HomeMember, Role, Room
 from app.services.broker import EmqxAdmin
+from app.services.children import clear_children
 
 router = APIRouter(prefix="/api/v1", tags=["homes"])
 
@@ -112,6 +113,7 @@ async def delete_home(
     admin = EmqxAdmin(request.app.state.settings)
     for gid in gateways:
         await admin.kick(f"g:{gid}")
+        await clear_children(request.app.state.publisher, gid)
     return ok(None)
 
 

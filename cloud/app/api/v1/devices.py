@@ -47,6 +47,7 @@ from app.core.permissions import Action
 from app.models.device import Device, DeviceKind
 from app.models.home import Room
 from app.services import devices as svc
+from app.services.children import clear_children, publish_children
 from app.services.keys import b64url
 from app.services.ratelimit import RateLimiter
 
@@ -163,7 +164,13 @@ async def delete_device(
 ) -> dict[str, Any]:
     device, access = await _device_access(db, principal, device_id)
     check(access, Action.devices_manage)
+    kind, gateway_id = device.kind, device.gateway_id
     await svc.release(db, request.app.state.settings, device)
+    publisher = request.app.state.publisher
+    if kind == DeviceKind.gateway:
+        await clear_children(publisher, device_id)
+    elif gateway_id is not None:
+        await publish_children(db, publisher, gateway_id)  # the gateway forgets this controller
     return ok(None)
 
 
@@ -268,6 +275,7 @@ async def register_child(
         raise ApiError(403, "FORBIDDEN", "A gateway can only register its own children")
     await _limit_registrations(request)
     device, local_key = await svc.register_controller(db, request.app.state.settings, gateway, body.model_dump())
+    await publish_children(db, request.app.state.publisher, gateway.id)
     return ok(
         dump(
             ControllerRegistered(

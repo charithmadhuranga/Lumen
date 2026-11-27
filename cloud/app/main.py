@@ -22,12 +22,16 @@ from redis.asyncio import Redis
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.api import internal_mqtt
-from app.api.v1 import auth, devices, health, homes
+from app.api.v1 import auth, commands, devices, events_ws, health, homes
 from app.core.errors import error_body, install_error_handlers
 from app.core.logging import configure_logging
 from app.core.settings import Settings, get_settings
 from app.db.session import make_engine, make_sessionmaker
+from app.mqtt.bridge import MqttBridge, Publisher
 from app.services.email import DevEmailSender, EmailSender
+from app.services.events import EventHub
+from app.services.ingest import Ingestor
+from app.workers.sweeper import Sweeper
 
 log = structlog.get_logger("lumen.http")
 
@@ -158,16 +162,39 @@ class Resources:
         await self.engine.dispose()
 
 
-def _lifespan(settings: Settings, shared: Resources | None) -> Callable[[FastAPI], AbstractAsyncContextManager[None]]:
+def _lifespan(
+    settings: Settings, shared: Resources | None, runtime: bool = False
+) -> Callable[[FastAPI], AbstractAsyncContextManager[None]]:
+    """runtime=True (public app): also run the event hub, the MQTT bridge and the sweeper."""
+
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         resources = shared or Resources(settings)
         app.state.engine = resources.engine
         app.state.sessionmaker = resources.sessionmaker
         app.state.redis = resources.redis
+        started: list[EventHub | MqttBridge | Sweeper] = []
         try:
+            if runtime:
+                hub = EventHub(resources.redis)
+                app.state.hub = hub
+                started.append(hub)
+                if getattr(app.state, "publisher", None) is None:
+                    if settings.bridge_enabled:
+                        ingestor = Ingestor(resources.sessionmaker, resources.redis)
+                        bridge = MqttBridge(settings, ingestor.handle)
+                        app.state.publisher = bridge
+                        started.append(bridge)
+                    else:
+                        app.state.publisher = Publisher()
+                if settings.sweeper_enabled:
+                    started.append(Sweeper(resources.sessionmaker, resources.redis))
+                for component in started:
+                    await component.start()
             yield
         finally:
+            for component in reversed(started):
+                await component.stop()
             if shared is None:
                 await resources.close()
 
@@ -179,6 +206,7 @@ def create_public_app(
     metrics: Metrics | None = None,
     resources: Resources | None = None,
     email: EmailSender | None = None,
+    publisher: Publisher | None = None,
 ) -> FastAPI:
     settings = settings or get_settings()
     metrics = metrics or Metrics()
@@ -186,7 +214,7 @@ def create_public_app(
     app = FastAPI(
         title="Lumen Cloud API",
         version="1",
-        lifespan=_lifespan(settings, resources),
+        lifespan=_lifespan(settings, resources, runtime=True),
         openapi_url="/api/v1/openapi.json" if settings.environment != "production" else None,
         docs_url="/api/v1/docs" if settings.environment != "production" else None,
         redoc_url=None,
@@ -194,11 +222,14 @@ def create_public_app(
     app.state.settings = settings
     app.state.metrics = metrics
     app.state.email = email or DevEmailSender()
+    app.state.publisher = publisher  # None: the lifespan creates the MQTT bridge
     _install_common(app, metrics)
     app.include_router(health.router)
     app.include_router(auth.router)
     app.include_router(homes.router)
     app.include_router(devices.router)
+    app.include_router(commands.router)
+    app.include_router(events_ws.router)
     app.add_middleware(BodyLimit, limit=MAX_BODY_BYTES)
     return app
 

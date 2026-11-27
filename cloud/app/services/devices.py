@@ -255,7 +255,6 @@ async def release(db: AsyncSession, settings: Settings, device: Device) -> None:
     await db.commit()
     if kick:
         await EmqxAdmin(settings).kick(kick)
-    # P4: publish the gateway's new children list / tell it to forget the controller's K_local.
 
 
 def mint_ticket(settings: Settings, device: Device, user: User, role: Role, scope: str) -> tuple[str, datetime]:

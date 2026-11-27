@@ -67,6 +67,20 @@ Gateways and controllers are both "devices" of a home. Controllers reach the clo
 Limits: 64 devices per home; 20 device registrations per IP per hour. A claim made for one gateway cannot be
 redeemed by another (403, and the claim stays usable for the right gateway).
 
+## Commands, status and live events (P4)
+
+| Call | Notes |
+|---|---|
+| `POST /devices/{id}/commands {op, target?, args?, ttlSeconds?}` | 202 with the command (`status: sent`). Ops and args: PROTOCOL.md §3. Guests and members may send light/group/room/scene/status commands; `device.restart` needs owner/admin; `config.apply` is 400 `NOT_AVAILABLE` until configuration sync (P8). TTL 15 s by default, 1–60 s. Optional `Idempotency-Key` header (8–64 of `A-Za-z0-9_-`): the same key returns the same command; reusing it for a different command is 409. |
+| Errors | 409 `DEVICE_OFFLINE` (controller or its gateway offline — never queued), 409 `CONFIG_UNKNOWN` (no configuration reported yet), 404 `UNKNOWN_TARGET`, 422 `UNSUPPORTED_PROPERTY` (e.g. colour on a CCT light, Kelvin outside its range), 400 `INVALID_COMMAND`, 503 `UNAVAILABLE` (broker unreachable; the command is `failed`) |
+| `GET /commands/{id}`, `GET /devices/{id}/commands` | status `sent` → `received` → `applied` / `rejected` (with `code`) / `expired` / `failed`; last 50 per device |
+| `GET /devices/{id}/status` | `{online, lastSeenAt, state (reported output), configRev, config (mirror)}` |
+| `WS /api/v1/events` | send `{"type":"auth","accessToken":"…"}` first (or `?access_token=`). Messages `{"v":1,"event","ts","data"}`: `hello`, `ping` (25 s), `device.online`, `device.offline` (`reason: gateway_offline` for children of a lost gateway), `device.state`, `device.config`, `device.event`, `command.updated`. Only homes the user belongs to; re-checked every 30 s. Close 4401 = signed out, 1013 = too slow (reconnect and refetch). |
+
+Measured locally (compose, two API replicas, simulated gateway): command → `applied` event median ~80 ms,
+95th percentile ~83 ms; a dropped gateway connection → `device.offline` in < 1 s; a silent loss after up to
+2 × keepalive (10 s at keepalive 5 s).
+
 ## Endpoints
 
 <!-- BEGIN GENERATED ENDPOINTS -->
@@ -84,10 +98,14 @@ redeemed by another (403, and the claim stays usable for the right gateway).
 | DELETE | `/api/v1/auth/sessions/{session_id}` | Revoke Session | Bearer |
 | POST | `/api/v1/auth/verify-email` | Verify Email | none |
 | POST | `/api/v1/auth/verify-email/resend` | Resend Verification | Bearer |
+| GET | `/api/v1/commands/{command_id}` | Get Command | Bearer |
 | GET | `/api/v1/devices/{device_id}` | Get Device | Bearer |
 | PATCH | `/api/v1/devices/{device_id}` | Update Device | Bearer |
 | DELETE | `/api/v1/devices/{device_id}` | Delete Device | Bearer |
+| GET | `/api/v1/devices/{device_id}/commands` | List Commands | Bearer |
+| POST | `/api/v1/devices/{device_id}/commands` | Send Command | Bearer |
 | POST | `/api/v1/devices/{device_id}/local-ticket` | Local Ticket | Bearer |
+| GET | `/api/v1/devices/{device_id}/status` | Device Status | Bearer |
 | GET | `/api/v1/gateway/children` | Gateway Children | gateway (Basic) |
 | POST | `/api/v1/gateway/register` | Register Gateway | claim token + setup code |
 | GET | `/api/v1/gateways/{gateway_id}/children` | List Children | Bearer |

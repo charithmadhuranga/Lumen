@@ -98,6 +98,176 @@
         "title": "ClaimOut",
         "type": "object"
       },
+      "CommandOut": {
+        "additionalProperties": false,
+        "properties": {
+          "args": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Args"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "completedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completedat"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "deviceId": {
+            "format": "uuid",
+            "title": "Deviceid",
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "title": "Expiresat",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "op": {
+            "title": "Op",
+            "type": "string"
+          },
+          "sentAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sentat"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          }
+        },
+        "required": [
+          "id",
+          "deviceId",
+          "op",
+          "target",
+          "args",
+          "status",
+          "code",
+          "message",
+          "createdAt",
+          "expiresAt",
+          "sentAt",
+          "completedAt"
+        ],
+        "title": "CommandOut",
+        "type": "object"
+      },
+      "CommandRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "args": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Args"
+          },
+          "op": {
+            "maxLength": 24,
+            "title": "Op",
+            "type": "string"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "maxLength": 48,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "ttlSeconds": {
+            "anyOf": [
+              {
+                "maximum": 60.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ttlseconds"
+          }
+        },
+        "required": [
+          "op"
+        ],
+        "title": "CommandRequest",
+        "type": "object"
+      },
       "ControllerClaimCreate": {
         "additionalProperties": false,
         "properties": {
@@ -300,6 +470,77 @@
         "title": "DeviceOut",
         "type": "object"
       },
+      "DeviceStatusOut": {
+        "additionalProperties": false,
+        "properties": {
+          "config": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Config"
+          },
+          "configRev": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Configrev"
+          },
+          "deviceId": {
+            "format": "uuid",
+            "title": "Deviceid",
+            "type": "string"
+          },
+          "lastSeenAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastseenat"
+          },
+          "online": {
+            "title": "Online",
+            "type": "boolean"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          }
+        },
+        "required": [
+          "deviceId",
+          "online",
+          "lastSeenAt",
+          "state",
+          "configRev",
+          "config"
+        ],
+        "title": "DeviceStatusOut",
+        "type": "object"
+      },
       "DeviceUpdate": {
         "additionalProperties": false,
         "properties": {
@@ -353,6 +594,27 @@
         "title": "Envelope[ClaimOut]",
         "type": "object"
       },
+      "Envelope_CommandOut_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/CommandOut"
+          },
+          "error": {
+            "title": "Error",
+            "type": "null"
+          },
+          "success": {
+            "default": true,
+            "title": "Success",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Envelope[CommandOut]",
+        "type": "object"
+      },
       "Envelope_ControllerRegistered_": {
         "properties": {
           "data": {
@@ -393,6 +655,27 @@
           "data"
         ],
         "title": "Envelope[DeviceOut]",
+        "type": "object"
+      },
+      "Envelope_DeviceStatusOut_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/DeviceStatusOut"
+          },
+          "error": {
+            "title": "Error",
+            "type": "null"
+          },
+          "success": {
+            "default": true,
+            "title": "Success",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Envelope[DeviceStatusOut]",
         "type": "object"
       },
       "Envelope_GatewayRegistered_": {
@@ -566,6 +849,31 @@
           "data"
         ],
         "title": "Envelope[list[ChildOut]]",
+        "type": "object"
+      },
+      "Envelope_list_CommandOut__": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/CommandOut"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "error": {
+            "title": "Error",
+            "type": "null"
+          },
+          "success": {
+            "default": true,
+            "title": "Success",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "Envelope[list[CommandOut]]",
         "type": "object"
       },
       "Envelope_list_DeviceOut__": {
@@ -1868,6 +2176,49 @@
         ]
       }
     },
+    "/api/v1/commands/{command_id}": {
+      "get": {
+        "operationId": "get_command_api_v1_commands__command_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "command_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Command Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_CommandOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Command",
+        "tags": [
+          "commands"
+        ]
+      }
+    },
     "/api/v1/devices/{device_id}": {
       "delete": {
         "operationId": "delete_device_api_v1_devices__device_id__delete",
@@ -2003,6 +2354,118 @@
         ]
       }
     },
+    "/api/v1/devices/{device_id}/commands": {
+      "get": {
+        "operationId": "list_commands_api_v1_devices__device_id__commands_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Device Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_list_CommandOut__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Commands",
+        "tags": [
+          "commands"
+        ]
+      },
+      "post": {
+        "operationId": "send_command_api_v1_devices__device_id__commands_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Device Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "pattern": "^[A-Za-z0-9_-]{8,64}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommandRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_CommandOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Send Command",
+        "tags": [
+          "commands"
+        ]
+      }
+    },
     "/api/v1/devices/{device_id}/local-ticket": {
       "post": {
         "operationId": "local_ticket_api_v1_devices__device_id__local_ticket_post",
@@ -2053,6 +2516,49 @@
         "summary": "Local Ticket",
         "tags": [
           "devices"
+        ]
+      }
+    },
+    "/api/v1/devices/{device_id}/status": {
+      "get": {
+        "operationId": "device_status_api_v1_devices__device_id__status_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Device Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_DeviceStatusOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Device Status",
+        "tags": [
+          "commands"
         ]
       }
     },

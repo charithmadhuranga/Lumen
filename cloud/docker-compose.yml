@@ -78,13 +78,22 @@ services:
       retries: 20
       start_period: 30s
 
-  api:
+  api: &api
     build: .
+    image: lumen-cloud-api:dev
     env_file: .env
-    environment:
+    environment: &api-env
       LUMEN_DATABASE_URL: postgresql+asyncpg://lumen:lumen@postgres:5432/lumen
       LUMEN_REDIS_URL: redis://redis:6379/0
       LUMEN_EMQX_API_URL: http://emqx:18083
+      # The cloud's own MQTT connection (svc:api-*), trusting the dev CA.
+      LUMEN_BROKER_INTERNAL_URL: mqtts://emqx:8883
+      LUMEN_BROKER_CA_FILE: /certs/ca.pem
+      # Development only: the live test suites register many users and devices from one IP.
+      LUMEN_REGISTER_IP_LIMIT: "1000"
+      LUMEN_REGISTER_DEVICE_IP_LIMIT: "1000"
+    volumes:
+      - ./dev-certs/ca.pem:/certs/ca.pem:ro
     ports:
       - "127.0.0.1:8800:8800"
       - "127.0.0.1:8801:8801"
@@ -93,6 +102,18 @@ services:
       redis: {condition: service_healthy}
       emqx: {condition: service_healthy}
     command: ["sh", "-c", "alembic upgrade head && exec python -m app.serve"]
+
+  # A second API instance for the multi-replica test (P4):
+  #   docker compose --profile replicas up -d --wait
+  api2:
+    <<: *api
+    build: !reset null
+    profiles: ["replicas"]
+    ports:
+      - "127.0.0.1:8802:8800"
+    depends_on:
+      api: {condition: service_healthy}
+    command: ["python", "-m", "app.serve"]
 
 volumes:
   pgdata:

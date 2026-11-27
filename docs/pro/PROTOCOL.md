@@ -133,8 +133,16 @@ ticket check.
 A `conflict` result carries `revision`, the controller's current config
 revision.
 
-The cloud keeps its own states on top of these: `queued` (stored) and
-`sent` (published). The app shows success only on `applied` (brief §8.5).
+The cloud stores a command as `sent` immediately before publishing it, and
+marks it `failed` (code `broker_unavailable`) if the broker does not take it.
+Nothing is written after the publish, so a fast device's result is never
+overwritten. Results only move a command forward: `received` after `sent`;
+`applied`, `rejected`, `expired` or `failed` from any open state. A result
+for a finished command, for another device's command, or a duplicate is
+ignored. The cloud's sweeper marks open commands past `exp` as `expired`.
+The app shows success only on `applied` (brief §8.5). (`queued` remains in
+the cloud's status enum for future offline-aware senders; nothing produces
+it today.)
 
 ## 5. State, config and availability
 

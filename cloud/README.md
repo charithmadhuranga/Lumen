@@ -4,9 +4,12 @@ API-only backend for Lumen Pro (Python 3.12, FastAPI, PostgreSQL 16, EMQX 5.8, R
 device and gateway registry, claiming, broker auth/ACL hooks, command routing, state, events WebSocket and OTA
 orchestration. No web frontend. Gateways are its only device clients (`docs/pro/DECISIONS.md` D-17).
 
-Status: **P3 done**: foundation, accounts, homes, plus devices (gateways and controllers), claiming, local
-tickets and the EMQX auth/ACL hooks. API reference: `docs/pro/CLOUD_API.md` (+ generated `openapi.json`).
-Commands, state and the events WebSocket come in P4. Plan: `.opencode/plans/pro/`.
+Status: **P4 done**: accounts, homes, devices, claiming, tickets, broker hooks, plus the cloud MQTT bridge,
+ingestion, remote commands, device status and the live events WebSocket. API reference:
+`docs/pro/CLOUD_API.md` (+ generated `openapi.json`). Plan: `.opencode/plans/pro/`.
+
+Simulated gateway (protocol reference for the Go gateway): `uv run python tools/simgateway.py --children 2`.
+Second API replica: `docker compose --profile replicas up -d --wait` (port 8802).
 
 ## Develop
 
@@ -36,6 +39,10 @@ app/core       settings (env only, production refuses unsafe values), envelope +
 app/db         base model (UUIDv7 ids, timestamps), engine/session, models registry
 app/api/v1     routers: health, auth, homes (members, rooms), devices (claims, registration, tickets)
 app/api/internal_mqtt.py  EMQX auth/ACL hooks (internal port)
+app/api/v1/commands.py, events_ws.py  commands, device status, events WebSocket
+app/mqtt/bridge.py   the cloud's MQTT connection (svc:api-*)
+app/protocol.py      wire models (contract-tested against protocol/fixtures)
+app/workers/sweeper.py  command expiry, 30-day retention
 app/api        deps (signed-in user, home access = tenant isolation), schemas (camelCase, envelope)
 app/core       ... also security (argon2id, JWT, opaque tokens), permissions (role matrix)
 app/models     account (users, sessions, refresh/e-mail tokens), home (homes, members, rooms)

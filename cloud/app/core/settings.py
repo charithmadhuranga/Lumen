@@ -38,6 +38,11 @@ class Settings(BaseSettings):
     emqx_api_url: str = "http://localhost:28083"
     emqx_api_key: str = "lumen-cloud"
     emqx_api_secret: SecretStr = SecretStr(DEV_SECRET)
+    # The cloud's own broker connection (P4). Inside compose: mqtts://emqx:8883.
+    broker_internal_url: str = "mqtts://localhost:28883"
+    broker_ca_file: str = ""  # CA bundle for the broker certificate; empty = system CAs
+    bridge_enabled: bool = True
+    sweeper_enabled: bool = True
     # Password of the cloud's own broker clients (svc:*), P4.
     mqtt_service_password: SecretStr = SecretStr(DEV_SECRET)
 

@@ -17,7 +17,11 @@ import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const ALLOWED = new Set(["MIT", "ISC", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "0BSD", "Zlib",
-  "EPL-2.0 OR EDL-1.0", "MIT OR Apache-2.0", "Apache-2.0 OR MIT", "BlueOak-1.0.0", "CC0-1.0", "Unlicense"]);
+  "EPL-2.0 OR EDL-1.0", "MIT OR Apache-2.0", "Apache-2.0 OR MIT", "BlueOak-1.0.0", "CC0-1.0", "Unlicense",
+  "PSF-2.0", "MIT-0", "MIT AND PSF-2.0", "EPL-2.0 OR BSD-3-Clause", "Apache-2.0 OR BSD-3-Clause",
+  "Apache-2.0 AND BSD-2-Clause",
+  // MPL-2.0 is file-level copyleft: allowed for unmodified components (certifi, cloud server side).
+  "MPL-2.0"]);
 
 const FIRMWARE = [
   { name: "ESP-IDF", version: "6.1.0", license: "Apache-2.0", url: "https://github.com/espressif/esp-idf", note: "includes FreeRTOS (MIT), lwIP (BSD-3-Clause), mbedTLS (Apache-2.0)" },
@@ -77,6 +81,9 @@ function check(section, items) {
 }
 
 const web = npmTree(join(root, "webui"));
+const cloudFile = join(root, "cloud", "licenses.json");
+const cloud = existsSync(cloudFile) ? JSON.parse(readFileSync(cloudFile, "utf8")) : [];
+check("cloud", cloud);
 const go = goModules();
 check("firmware", FIRMWARE);
 check("webui", web);
@@ -104,9 +111,13 @@ ${table(web)}
 
 ${go.length ? table(go) : "No third-party modules yet (standard library only)."}
 
-## Lumen Cloud and mobile app
+## Lumen Cloud (Python, production dependencies; from \`cloud/licenses.json\`)
 
-Added when \`cloud/\` (P1) and \`mobile/\` (P7) gain dependencies.
+${cloud.length ? table(cloud) : "None yet."}
+
+## Lumen mobile app
+
+Added when \`mobile/\` (P7) gains dependencies.
 `;
 
 if (problems.length) {
@@ -122,5 +133,5 @@ if (process.argv.includes("--check")) {
   console.log("third-party notices up to date");
 } else {
   writeFileSync(target, out);
-  console.log(`wrote THIRD_PARTY_NOTICES.md (${FIRMWARE.length} firmware, ${web.length} web UI, ${go.length} Go)`);
+  console.log(`wrote THIRD_PARTY_NOTICES.md (${FIRMWARE.length} firmware, ${web.length} web UI, ${go.length} Go, ${cloud.length} cloud)`);
 }

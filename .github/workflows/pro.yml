@@ -66,3 +66,37 @@ jobs:
             IFS=/ read -r os arch arm <<< "$t"
             GOOS=$os GOARCH=$arch GOARM=$arm CGO_ENABLED=0 go build ./...
           done
+
+  cloud:
+    name: Cloud (Python)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloud
+    services:
+      postgres:
+        image: postgres:16.16-alpine
+        env:
+          POSTGRES_USER: lumen
+          POSTGRES_PASSWORD: lumen
+          POSTGRES_DB: lumen_test
+        ports: ["55432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U lumen" --health-interval 5s --health-timeout 3s --health-retries 20
+      redis:
+        image: redis:7.4.12-alpine
+        ports: ["56379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          version: "0.13.7"
+      - run: uv sync --frozen
+      - run: uv run ruff check . && uv run ruff format --check . && uv run mypy
+      - run: uv run python tools/licenses.py --check
+      # The broker tests skip here (no dev certificates / EMQX); they run locally against compose.
+      - run: uv run pytest -q
+      - name: Image builds
+        run: docker build -t lumen-cloud:ci .

@@ -1,0 +1,87 @@
+# Lumen Cloud development stack (P1). Ports are bound to 127.0.0.1 and chosen
+# not to clash with other local services (1883/1884/8124/18830 are in use).
+#
+#   make up        start everything (creates .env and dev certificates first)
+#   make down      stop
+#
+# The broker has no clients yet: every connection is refused until P3 adds
+# the cloud's auth/ACL hooks (authentication: an empty built-in database;
+# authorization: deny when nothing matches). Plain-TCP and WebSocket
+# listeners are off; only TLS (8883) is enabled.
+name: lumen-cloud
+
+services:
+  postgres:
+    image: postgres:16.16-alpine
+    environment:
+      POSTGRES_USER: lumen
+      POSTGRES_PASSWORD: lumen
+      POSTGRES_DB: lumen
+    ports: ["127.0.0.1:55432:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/postgres-init.sql:/docker-entrypoint-initdb.d/10-test-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lumen -d lumen"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7.4.12-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports: ["127.0.0.1:56379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  emqx:
+    image: emqx/emqx:5.8.9
+    environment:
+      EMQX_NODE__NAME: emqx@127.0.0.1
+      EMQX_NODE__COOKIE: ${EMQX_NODE_COOKIE:?set in .env}
+      EMQX_DASHBOARD__DEFAULT_PASSWORD: ${EMQX_DASHBOARD_PASSWORD:?set in .env}
+      EMQX_LISTENERS__TCP__DEFAULT__ENABLE: "false"
+      EMQX_LISTENERS__WS__DEFAULT__ENABLE: "false"
+      EMQX_LISTENERS__WSS__DEFAULT__ENABLE: "false"
+      EMQX_LISTENERS__SSL__DEFAULT__BIND: "0.0.0.0:8883"
+      EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__CERTFILE: /certs/server.pem
+      EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__KEYFILE: /certs/server.key
+      EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__CACERTFILE: /certs/ca.pem
+      EMQX_AUTHENTICATION: '[{mechanism = password_based, backend = built_in_database, user_id_type = username}]'
+      EMQX_AUTHORIZATION__NO_MATCH: deny
+      EMQX_AUTHORIZATION__SOURCES: '[]'
+    ports:
+      - "127.0.0.1:28883:8883"
+      - "127.0.0.1:28083:18083"
+    volumes:
+      - ./dev-certs:/certs:ro
+      - emqxdata:/opt/emqx/data
+    healthcheck:
+      test: ["CMD", "/opt/emqx/bin/emqx", "ctl", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  api:
+    build: .
+    env_file: .env
+    environment:
+      LUMEN_DATABASE_URL: postgresql+asyncpg://lumen:lumen@postgres:5432/lumen
+      LUMEN_REDIS_URL: redis://redis:6379/0
+      LUMEN_BROKER_URL: mqtts://emqx:8883
+    ports:
+      - "127.0.0.1:8800:8800"
+      - "127.0.0.1:8801:8801"
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      emqx: {condition: service_healthy}
+    command: ["sh", "-c", "alembic upgrade head && exec python -m app.serve"]
+
+volumes:
+  pgdata:
+  emqxdata:

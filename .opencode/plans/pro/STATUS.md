@@ -7,7 +7,7 @@ Progress record for [README.md](README.md). Verification labels: **mock**,
 | Phase | State | Notes |
 |---|---|---|
 | P0 Foundation | done (gate passed 2026-11-27) | see log |
-| P1 Cloud foundation | not started | |
+| P1 Cloud foundation | done (gate passed 2026-11-27) | local docker |
 | P2 Accounts and homes | not started | |
 | P3 Devices and identity | not started | |
 | P4 Cloud messaging | not started | |
@@ -43,3 +43,6 @@ Progress record for [README.md](README.md). Verification labels: **mock**,
 | 2026-11-27 | P0 | THIRD_PARTY_NOTICES.md generated: 6 firmware, 127 web UI deps, all on the commercial-use allowlist | PASS |
 | 2026-11-27 | P0 | README / AGENTS.md updated for Lumen Pro; `.github/workflows/pro.yml`; release workflow refuses public repos | done (CI not yet run) |
 | 2026-11-27 | P0 | Firmware regression build `pio run -e esp32` (no firmware changes in P0) | PASS |
+| 2026-11-27 | P1 | Cloud: ruff + mypy --strict clean; 35 pytest tests incl. live broker refusal | PASS (local docker) |
+| 2026-11-27 | P1 | `make up`: postgres 16.16, redis 7.4.12, emqx 5.8.9 (TLS only), api image (python 3.12.16-slim) all healthy; `/readyz` 200 | PASS (local docker) |
+| 2026-11-27 | P1 | 41 cloud production deps added to THIRD_PARTY_NOTICES.md (certifi MPL-2.0, unmodified, server side) | done |

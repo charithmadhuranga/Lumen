@@ -70,7 +70,7 @@ Environment names: `esp32` (KC868-AP reference board + flash/monitor ports), `es
 | Validate schemas | `npm run validate:schemas` (repo root; first `npm ci` at root installs ajv; also checks `protocol/`) |
 | Protocol fixtures / ticket vectors | `python3 protocol/tools/make_fixtures.py` (regenerate), `python3 protocol/tools/ticket_ref.py` |
 | Gateway tests | `cd gateway && go vet ./... && go test -race ./...` (Go 1.27.4 at `~/.local/opt/go/bin`) |
-| Cloud tests | `cd cloud && make test` (from Lumen Pro P1) |
+| Cloud dev stack / tests | `cd cloud && make up` (postgres, redis, emqx, api on 127.0.0.1), `make test`, `make lint` |
 
 ## 3a. Lumen Pro (branch `lumen-pro`)
 

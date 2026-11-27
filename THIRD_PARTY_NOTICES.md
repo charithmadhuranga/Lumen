@@ -153,6 +153,52 @@ module cache) and are bundled into release packages (P11).
 
 No third-party modules yet (standard library only).
 
-## Lumen Cloud and mobile app
+## Lumen Cloud (Python, production dependencies; from `cloud/licenses.json`)
 
-Added when `cloud/` (P1) and `mobile/` (P7) gain dependencies.
+| Component | Version | Licence | Source |
+|---|---|---|---|
+| aiomqtt | 2.5.1 | BSD-3-Clause | https://pypi.org/project/aiomqtt/ |
+| alembic | 1.20.1 | MIT | https://pypi.org/project/alembic/ |
+| annotated-doc | 0.0.7 | MIT | https://pypi.org/project/annotated-doc/ |
+| annotated-types | 0.8.0 | MIT | https://pypi.org/project/annotated-types/ |
+| anyio | 4.16.0 | MIT | https://pypi.org/project/anyio/ |
+| argon2-cffi | 25.1.0 | MIT | https://pypi.org/project/argon2-cffi/ |
+| argon2-cffi-bindings | 26.2.0 | MIT | https://pypi.org/project/argon2-cffi-bindings/ |
+| asyncpg | 0.32.0 | Apache-2.0 | https://pypi.org/project/asyncpg/ |
+| certifi | 2026.11.20 | MPL-2.0 | https://pypi.org/project/certifi/ |
+| cffi | 2.1.1 | MIT-0 | https://pypi.org/project/cffi/ |
+| click | 8.5.1 | BSD-3-Clause | https://pypi.org/project/click/ |
+| cryptography | 50.0.2 | Apache-2.0 OR BSD-3-Clause | https://pypi.org/project/cryptography/ |
+| fastapi | 0.165.0 | MIT | https://pypi.org/project/fastapi/ |
+| greenlet | 3.5.6 | MIT AND PSF-2.0 | https://pypi.org/project/greenlet/ |
+| h11 | 0.16.0 | MIT | https://pypi.org/project/h11/ |
+| httpcore | 1.0.9 | BSD-3-Clause | https://pypi.org/project/httpcore/ |
+| httptools | 0.9.0 | MIT | https://pypi.org/project/httptools/ |
+| httpx | 0.29.0 | BSD-3-Clause | https://pypi.org/project/httpx/ |
+| idna | 3.20 | BSD-3-Clause | https://pypi.org/project/idna/ |
+| Mako | 1.4.3 | MIT | https://pypi.org/project/Mako/ |
+| MarkupSafe | 3.0.4 | BSD-3-Clause | https://pypi.org/project/MarkupSafe/ |
+| opentelemetry-api | 1.45.2 | Apache-2.0 | https://pypi.org/project/opentelemetry-api/ |
+| paho-mqtt | 2.2.0 | EPL-2.0 OR BSD-3-Clause | https://pypi.org/project/paho-mqtt/ |
+| prometheus_client | 0.26.0 | Apache-2.0 AND BSD-2-Clause | https://pypi.org/project/prometheus_client/ |
+| pycparser | 3.12 | BSD-3-Clause | https://pypi.org/project/pycparser/ |
+| pydantic | 2.14.4 | MIT | https://pypi.org/project/pydantic/ |
+| pydantic_core | 2.50.5 | MIT | https://pypi.org/project/pydantic_core/ |
+| pydantic-settings | 2.16.3 | MIT | https://pypi.org/project/pydantic-settings/ |
+| PyJWT | 2.15.1 | MIT | https://pypi.org/project/PyJWT/ |
+| python-dotenv | 1.2.4 | BSD-3-Clause | https://pypi.org/project/python-dotenv/ |
+| PyYAML | 6.0.4 | MIT | https://pypi.org/project/PyYAML/ |
+| redis | 8.2.0 | MIT | https://pypi.org/project/redis/ |
+| SQLAlchemy | 2.1.9 | MIT | https://pypi.org/project/SQLAlchemy/ |
+| starlette | 1.10.0 | BSD-3-Clause | https://pypi.org/project/starlette/ |
+| structlog | 26.1.0 | MIT OR Apache-2.0 | https://pypi.org/project/structlog/ |
+| typing_extensions | 4.16.0 | PSF-2.0 | https://pypi.org/project/typing_extensions/ |
+| typing-inspection | 0.4.5 | MIT | https://pypi.org/project/typing-inspection/ |
+| uvicorn | 0.54.0 | BSD-3-Clause | https://pypi.org/project/uvicorn/ |
+| uvloop | 0.23.0 | Apache-2.0 OR MIT | https://pypi.org/project/uvloop/ |
+| watchfiles | 1.3.0 | MIT | https://pypi.org/project/watchfiles/ |
+| websockets | 17.4 | BSD-3-Clause | https://pypi.org/project/websockets/ |
+
+## Lumen mobile app
+
+Added when `mobile/` (P7) gains dependencies.

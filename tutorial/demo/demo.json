@@ -1,0 +1,114 @@
+{
+  "product": "Lumen",
+  "slug": "lumen-project-demo",
+  "tagline": "Universal ESP32 smart lighting controller",
+  "recording": {
+    "baseURL": "${LUMEN_KC}/",
+    "width": 1920,
+    "height": 1080,
+    "deviceScaleFactor": 1.5,
+    "colorScheme": "dark",
+    "pace": 1.1
+  },
+  "intro": {
+    "eyebrow": "Project demo",
+    "title": "Lumen",
+    "subtitle": "A universal ESP32 smart lighting controller with its web app built in",
+    "duration": 5.5
+  },
+  "sections": [
+    {
+      "id": "first_login",
+      "title": "Secure first start",
+      "subtitle": "Default login forces a new password",
+      "start": "${LUMEN_KC}/"
+    },
+    {
+      "id": "overview",
+      "title": "Overview",
+      "subtitle": "Every room, light and scene on one screen",
+      "start": "/"
+    },
+    {
+      "id": "devices",
+      "title": "Devices",
+      "subtitle": "Add lights of any type to any output",
+      "start": "/devices"
+    },
+    {
+      "id": "rooms",
+      "title": "Rooms and groups",
+      "subtitle": "Control a whole room at once",
+      "start": "/rooms"
+    },
+    {
+      "id": "scenes",
+      "title": "Scenes",
+      "subtitle": "Capture the current lights and recall them",
+      "start": "/scenes"
+    },
+    {
+      "id": "floorplans",
+      "title": "Floor plans",
+      "subtitle": "Your home, glowing with the real light output",
+      "start": "/floorplans"
+    },
+    {
+      "id": "automations",
+      "title": "Automations",
+      "subtitle": "Local rules, no cloud and no internet",
+      "start": "/automations"
+    },
+    {
+      "id": "hardware",
+      "title": "Hardware",
+      "subtitle": "Board profiles, pins, outputs and diagnostics",
+      "start": "/hardware"
+    },
+    {
+      "id": "homeassistant",
+      "title": "Home Assistant",
+      "subtitle": "MQTT discovery and two-way control",
+      "start": "/integrations"
+    },
+    {
+      "id": "multi",
+      "title": "Multiple controllers",
+      "subtitle": "ESP-NOW links controllers without a router",
+      "start": "/integrations"
+    },
+    {
+      "id": "network",
+      "title": "Network",
+      "subtitle": "Wi-Fi, fallback hotspot and local discovery",
+      "start": "/network",
+      "redact": [
+        {
+          "text": "([0-9a-f]{2}:){5}[0-9a-f]{2}"
+        },
+        {
+          "selector": "#ssid"
+        }
+      ]
+    },
+    {
+      "id": "settings",
+      "title": "Settings and updates",
+      "subtitle": "Themes, backups and safe firmware updates",
+      "start": "/settings",
+      "redact": [
+        {
+          "text": "([0-9a-f]{2}:){5}[0-9a-f]{2}"
+        }
+      ]
+    }
+  ],
+  "outro": {
+    "title": "Lumen",
+    "subtitle": "Open source firmware and web app for ESP32 lighting",
+    "lines": [
+      "github.com/charithmadhuranga/Lumen"
+    ],
+    "duration": 6
+  }
+}

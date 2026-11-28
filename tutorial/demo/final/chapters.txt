@@ -1,0 +1,14 @@
+0:00 Intro
+0:05 Secure first start
+0:35 Overview
+0:57 Devices
+1:31 Rooms and groups
+2:07 Scenes
+2:31 Floor plans
+3:04 Automations
+3:44 Hardware
+4:11 Home Assistant
+4:44 Multiple controllers
+5:08 Network
+5:25 Settings and updates
+5:48 Wrap-up

@@ -1,0 +1,21 @@
+{
+  "product": "Lumen",
+  "slug": "lumen-mobile",
+  "recording": {
+    "baseURL": "${LUMEN_KC}/",
+    "mobile": true,
+    "width": 1080,
+    "height": 2160,
+    "deviceScaleFactor": 2.7692,
+    "colorScheme": "dark",
+    "pace": 1.0
+  },
+  "sections": [
+    {"id": "m_floorplan", "title": "Floor plan", "start": "/floorplans/home"},
+    {"id": "m_colour", "title": "Colour and effects", "start": "/rooms/living"},
+    {"id": "m_ha", "title": "Home Assistant", "start": "${HA_URL}/config/devices/dashboard"},
+    {"id": "m_multi", "title": "Two controllers", "start": "/devices"},
+    {"id": "m_auto", "title": "Automations", "start": "/automations/new"},
+    {"id": "m_overview", "title": "Overview", "start": "/"}
+  ]
+}

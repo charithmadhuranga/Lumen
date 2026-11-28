@@ -1,0 +1,48 @@
+Lumen is an open source smart lighting controller for ESP32 boards, with a complete web app built into the firmware. In this demo, every screen runs on real hardware: a KinCony KC868-AP and a generic ESP32 DevKit, plus Home Assistant over MQTT. No cloud, no internet, everything local.
+
+What you'll see:
+• Secure first start: the default login forces a new password before anything else works
+• Overview: every room, light and scene on one screen, with live state from the controller
+• Devices: add switch, dimmer, RGB, RGBW and tunable white lights to any free output
+• Rooms: room dimming, colour picker, built-in effects and colour temperature
+• Scenes: capture the current lights and recall them with a smooth fade
+• Floor plans: upload an SVG of your home, where every glow shows the real light output, plus a drag-and-drop editor
+• Automations: local triggers, conditions and actions, in a simple form or a visual node editor
+• Hardware: board profiles, pin map with conflict checks, I²C scan, output tests and diagnostics
+• Home Assistant: automatic MQTT discovery and two-way control
+• Multiple controllers: ESP-NOW links two boards with no router, and each controls the other's lights
+• Network and security: Wi-Fi with a WPA2 fallback hotspot, mDNS, salted password hashes, secrets never exported
+• Settings: themes, backups without secrets, and A/B firmware updates with automatic rollback
+
+Chapters:
+0:00 Intro
+0:10 Secure first start
+0:40 Overview
+1:02 Devices
+1:36 Rooms and groups
+2:12 Scenes
+2:36 Floor plans
+3:09 Automations
+3:49 Hardware
+4:16 Home Assistant
+4:49 Multiple controllers
+5:13 Network
+5:30 Settings and updates
+5:53 Wrap-up
+
+Hardware in this video:
+• KinCony KC868-AP (ESP32, 16× PCA9685 PWM outputs, 2 relays, 18 inputs)
+• Generic ESP32 DevKit (native PWM outputs)
+
+Built with: ESP-IDF, C++17, FreeRTOS, React, TypeScript, Tailwind CSS
+
+Links:
+Source code and docs: https://github.com/charithmadhuranga/Lumen
+Ready-to-flash releases: https://github.com/charithmadhuranga/Lumen/releases
+Flashing guide: https://github.com/charithmadhuranga/Lumen/blob/main/docs/FLASHING.md
+
+Music I use: Bensound
+License code: 7YQDRSV9F7HOY3F9
+Artist: Indie Box
+
+#ESP32 #SmartHome #HomeAssistant #HomeAutomation #SmartLighting #OpenSource #IoT #ESPNOW #MQTT #KinCony

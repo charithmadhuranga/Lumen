@@ -1,0 +1,133 @@
+{
+  "slug": "lumen-short-mobile",
+  "recordings": "recordings-mobile",
+  "window": [
+    0,
+    600,
+    1080,
+    1320
+  ],
+  "beats": [
+    {
+      "section": "m_floorplan",
+      "from": 0.5,
+      "to": 4.9,
+      "focus": [
+        60,
+        470,
+        960,
+        820
+      ],
+      "zoom": 0.06,
+      "text": "My whole house runs on *one ESP32*",
+      "sub": "No cloud. No subscription."
+    },
+    {
+      "section": "m_floorplan",
+      "from": 4.9,
+      "to": 10.4,
+      "speed": 1.3,
+      "focus": [
+        60,
+        470,
+        960,
+        820
+      ],
+      "zoom": 0.06,
+      "text": "Tap the plan. *Real lights* react."
+    },
+    {
+      "section": "m_colour",
+      "from": 1.0,
+      "to": 8.4,
+      "speed": 1.7,
+      "focus": [
+        0,
+        200,
+        1080,
+        1320
+      ],
+      "zoom": 0.06,
+      "text": "Any *colour* you want"
+    },
+    {
+      "section": "m_colour",
+      "from": 8.4,
+      "to": 12.4,
+      "focus": [
+        0,
+        200,
+        1080,
+        1320
+      ],
+      "zoom": 0.06,
+      "text": "*Effects* built in"
+    },
+    {
+      "section": "m_ha",
+      "from": 2.0,
+      "to": 12.6,
+      "speed": 2.0,
+      "focus": [
+        0,
+        150,
+        1080,
+        1320
+      ],
+      "zoom": 0.05,
+      "text": "Works with *Home Assistant*",
+      "sub": "Found automatically over MQTT"
+    },
+    {
+      "section": "m_multi",
+      "from": 2.3,
+      "to": 10.4,
+      "speed": 1.6,
+      "focus": [
+        0,
+        280,
+        1080,
+        1320
+      ],
+      "zoom": 0.05,
+      "text": "Two boards. *No router.*",
+      "sub": "They talk over ESP-NOW"
+    },
+    {
+      "section": "m_auto",
+      "from": 4.0,
+      "to": 16.4,
+      "speed": 2.4,
+      "focus": [
+        0,
+        150,
+        1080,
+        1320
+      ],
+      "zoom": 0.05,
+      "text": "Automations run *offline*",
+      "sub": "Right on the controller"
+    },
+    {
+      "section": "m_overview",
+      "from": 1.4,
+      "to": 10.6,
+      "speed": 1.8,
+      "focus": [
+        0,
+        150,
+        1080,
+        1320
+      ],
+      "zoom": 0.05,
+      "text": "One tap. *Every light.*"
+    }
+  ],
+  "end": {
+    "dur": 3.8,
+    "title": "Lumen",
+    "text": "Open source ESP32 lighting",
+    "sub": "Link in bio",
+    "link": "github.com/charithmadhuranga/Lumen"
+  }
+}

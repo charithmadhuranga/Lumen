@@ -1,0 +1,15 @@
+# Build tools and intermediates (regenerable) — only code and final outputs are committed
+.venv/
+__pycache__/
+media/
+demo/recordings/
+demo/recordings-mobile/
+demo/manim_build/
+demo/parts/
+demo/short/
+demo/review/
+demo/final/*.silent.mp4
+
+# Secrets (never commit)
+demo/.secrets.env
+demo/.espnow.key
